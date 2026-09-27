@@ -83,6 +83,10 @@ interface Arrow {
   life: number;
   stuck: number;
   mesh: THREE.Mesh;
+  /** player-shot arrow: hits mobs, sticks are pickupable */
+  fromPlayer: boolean;
+  /** damage on hit (player arrows) */
+  dmg: number;
 }
 
 // ─── Model builders ──────────────────────────────────────────────────────────
@@ -219,7 +223,10 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   },
   skeleton: {
     hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
-    drops: [], sound: 'rattle',
+    drops: [
+      { id: ITEM.ARROW, min: 0, max: 2 },
+      { id: ITEM.BONE, min: 0, max: 2 },
+    ], sound: 'rattle',
     builder: (s) => humanoid(s, true),
   },
   spider: {
@@ -349,6 +356,7 @@ export class MobManager {
   private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void };
   private spawnTimer = 0;
   private arrowMat: THREE.MeshLambertMaterial;
+  private playerArrowMat: THREE.MeshLambertMaterial;
   private time = 0;
   /** most recent callbacks (for hurt→teleport outside update loop) */
   private lastCb: MobCallbacks | null = null;
@@ -357,6 +365,7 @@ export class MobManager {
     this.scene = scene;
     this.world = world;
     this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+    this.playerArrowMat = new THREE.MeshLambertMaterial({ color: 0xc8a06a });
   }
 
   get count(): number {
@@ -1008,33 +1017,73 @@ export class MobManager {
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.life -= dt;
-      if (a.life <= 0 || a.stuck > 0.8) {
+      if (a.life <= 0 || a.stuck > (a.fromPlayer ? 45 : 0.8)) {
         this.scene.remove(a.mesh);
         this.arrows.splice(i, 1);
         continue;
       }
       if (a.stuck > 0) {
         a.stuck += dt;
+        // stuck player arrows are pickupable: walk near them to collect
+        if (a.fromPlayer && a.stuck > 0.8) {
+          const dxp = a.x - player.x, dyp = a.y - (player.y + player.height * 0.5), dzp = a.z - player.z;
+          if (Math.hypot(dxp, dyp, dzp) < 1.5) {
+            cb.spawnDrop(ITEM.ARROW, a.x, a.y, a.z);
+            this.scene.remove(a.mesh);
+            this.arrows.splice(i, 1);
+            continue;
+          }
+        }
         continue;
       }
-      a.vy -= 18 * dt;
-      const nx = a.x + a.vx * dt;
-      const ny = a.y + a.vy * dt;
-      const nz = a.z + a.vz * dt;
-      // block hit
-      const bid = this.world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
-      if (bid !== 0) {
-        a.stuck = 0.001;
-        continue;
+      // substepped movement so fast arrows can't tunnel through mobs/blocks
+      const speedLen = Math.hypot(a.vx, a.vy, a.vz);
+      const steps = Math.max(1, Math.ceil((speedLen * dt) / 0.45));
+      const sdt = dt / steps;
+      let done = false;
+      for (let s = 0; s < steps && !done; s++) {
+        a.vy -= 18 * sdt;
+        const nx = a.x + a.vx * sdt;
+        const ny = a.y + a.vy * sdt;
+        const nz = a.z + a.vz * sdt;
+        // block hit
+        const bid = this.world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+        if (bid !== 0) {
+          a.stuck = 0.001;
+          audio.arrowHit();
+          done = true;
+          break;
+        }
+        a.x = nx; a.y = ny; a.z = nz;
+        if (a.fromPlayer) {
+          // mob hit: point-in-expanded-AABB test per mob
+          for (const m of this.mobs) {
+            if (m.dead) continue;
+            if (
+              a.x > m.x - m.width / 2 - 0.15 && a.x < m.x + m.width / 2 + 0.15 &&
+              a.y > m.y - 0.1 && a.y < m.y + m.height + 0.1 &&
+              a.z > m.z - m.width / 2 - 0.15 && a.z < m.z + m.width / 2 + 0.15
+            ) {
+              const klen = Math.hypot(a.vx, a.vz) || 1;
+              this.hurtMob(m, a.dmg, (a.vx / klen) * 4.5, (a.vz / klen) * 4.5, cb);
+              a.life = 0;
+              done = true;
+              break;
+            }
+          }
+          if (done) break;
+        } else {
+          // player hit
+          const px = player.x, py = player.y + player.height * 0.5, pz = player.z;
+          if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 0.75) {
+            cb.damagePlayer(3, a.x - a.vx, a.z - a.vz);
+            a.life = 0;
+            done = true;
+            break;
+          }
+        }
       }
-      a.x = nx; a.y = ny; a.z = nz;
-      // player hit
-      const px = player.x, py = player.y + player.height * 0.5, pz = player.z;
-      if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 0.75) {
-        cb.damagePlayer(3, a.x - a.vx, a.z - a.vz);
-        a.life = 0;
-        continue;
-      }
+      if (done) continue;
       a.mesh.position.set(a.x, a.y, a.z);
       a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
     }
@@ -1077,8 +1126,17 @@ export class MobManager {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.55), this.arrowMat);
     mesh.position.set(ox, oy, oz);
     this.scene.add(mesh);
-    this.arrows.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 8, stuck: 0, mesh });
+    this.arrows.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 8, stuck: 0, mesh, fromPlayer: false, dmg: 0 });
     audio.bowShoot(dist);
+  }
+
+  /** player-shot arrow (from bow). dx,dy,dz = unit direction. */
+  shootPlayerArrow(x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number, dmg: number): void {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.6), this.playerArrowMat);
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
+    this.arrows.push({ x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, life: 20, stuck: 0, mesh, fromPlayer: true, dmg });
+    audio.bowShoot(0);
   }
 }
 

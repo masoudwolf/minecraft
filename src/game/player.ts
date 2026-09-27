@@ -31,6 +31,8 @@ export class Player {
   xp = 0;
 
   sprinting = false;
+  /** external speed multiplier (bow drawing slows the player, MC-style) */
+  speedMultiplier = 1;
   sneaking = false;
   fallStartY = 0;
   bobPhase = 0;
@@ -118,7 +120,7 @@ export class Player {
   ): void {
     const e = this.entity;
     this.sneaking = wishSneak && e.onGround && !this.flying;
-    const speed = this.sprinting ? SPRINT_SPEED : this.sneaking ? SNEAK_SPEED : WALK_SPEED;
+    const speed = (this.sprinting ? SPRINT_SPEED : this.sneaking ? SNEAK_SPEED : WALK_SPEED) * this.speedMultiplier;
 
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);

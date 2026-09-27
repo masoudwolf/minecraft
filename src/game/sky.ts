@@ -36,6 +36,13 @@ export class SkySystem {
   private lastCloudRebuild = 0;
   private lastCamChunk = { x: 9999, z: 9999 };
   cloudsEnabled = true;
+  /** weather: 0..1 storm darkening (set by engine from WeatherSystem) */
+  weatherDarkness = 0;
+  /** weather: 0..1 lightning flash brightness */
+  lightningFlash = 0;
+  /** storm gray targets */
+  private static STORM_SKY = new THREE.Color(0x5a6068);
+  private static STORM_HORIZON = new THREE.Color(0x707680);
 
   constructor(scene: THREE.Scene, seed: number) {
     this.group = new THREE.Group();
@@ -141,6 +148,20 @@ export class SkySystem {
     this.horizonColor.lerp(SUNSET_HORIZON, sunsetAmount * 0.75);
     this.skyColor.lerp(SUNSET_SKY, sunsetAmount * 0.4);
 
+    // weather: darken sky/fog toward storm gray + lightning flash brightening
+    const dark = this.weatherDarkness;
+    if (dark > 0) {
+      this.skyColor.lerp(SkySystem.STORM_SKY, dark);
+      this.horizonColor.lerp(SkySystem.STORM_HORIZON, dark);
+      this.sunLevel *= 1 - dark * 0.55;
+    }
+    if (this.lightningFlash > 0.01) {
+      const f = this.lightningFlash;
+      this.skyColor.lerp(WHITE, f * 0.85);
+      this.horizonColor.lerp(WHITE, f * 0.7);
+      this.fogColor.copy(this.horizonColor).lerp(this.skyColor, 0.45);
+    }
+
     this.fogColor.copy(this.horizonColor).lerp(this.skyColor, 0.45);
     scene.background = this.skyColor;
     if (!scene.fog) scene.fog = new THREE.Fog(this.fogColor, fogNear, fogFar);
@@ -161,6 +182,10 @@ export class SkySystem {
     const cloudY = 114 + Math.sin(this.time * 0.01) * 2;
     // instances are placed at absolute world grid coords; only drift + height here
     this.clouds.position.set(this.cloudOffset % 12, cloudY, 0);
+    // storm: clouds darker + denser looking
+    const cmat = this.clouds.material as THREE.MeshBasicMaterial;
+    cmat.opacity = 0.55 + this.weatherDarkness * 0.4;
+    cmat.color.setRGB(1 - this.weatherDarkness * 0.62, 1 - this.weatherDarkness * 0.6, 1 - this.weatherDarkness * 0.55);
   }
 
   private rebuildClouds(camX: number, camZ: number): void {
@@ -192,6 +217,7 @@ export class SkySystem {
 }
 
 /** time-of-day helpers for UI */
+const WHITE = new THREE.Color(0xffffff);
 export function getTimeLabel(time: number): string {
   const hours = Math.floor(((time / DAY_LENGTH) * 24 + 6) % 24);
   const minutes = Math.floor((((time / DAY_LENGTH) * 24 + 6) % 1) * 60);

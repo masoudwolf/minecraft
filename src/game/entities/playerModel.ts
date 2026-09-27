@@ -34,6 +34,11 @@ export interface PlayerModelParts {
   legs: THREE.Mesh[];
   arms: THREE.Mesh[];
   shadow: THREE.Mesh;
+  /** armor overlay meshes (rebuilt when armor changes) */
+  armorGroup: THREE.Group;
+  armorKey: string;
+  /** boot shells (attached to leg meshes, tracked for removal) */
+  bootMeshes: THREE.Mesh[];
 }
 
 /** build a Steve-like humanoid; textures are flat-color pixel noise (no per-face mapping) */
@@ -65,6 +70,8 @@ export function createPlayerModel(scene: THREE.Scene): PlayerModelParts {
   const shoeM = mk(shoeTex);
 
   const group = new THREE.Group();
+  const armorGroup = new THREE.Group();
+  group.add(armorGroup);
 
   // head (face material on +Z front — model faces +Z like mobs)
   const headMats = [skinM, skinM, skinM, skinM, faceM, skinM];
@@ -106,7 +113,109 @@ export function createPlayerModel(scene: THREE.Scene): PlayerModelParts {
   scene.add(shadow);
 
   scene.add(group);
-  return { group, head, body, legs, arms, shadow };
+  return { group, head, body, legs, arms, shadow, armorGroup, armorKey: '', bootMeshes: [] };
+}
+
+// ─── armor overlays (3rd person) ────────────────────────────────────────────
+const ARMOR_MODEL_COLORS: Record<string, number> = {
+  leather: 0xa5662c,
+  iron: 0xd8d8d8,
+  gold: 0xf6d33c,
+  diamond: 0x5ce8d5,
+};
+
+function armorMat(id: number): THREE.MeshLambertMaterial {
+  const tier = id >= 313 ? 'diamond' : id >= 309 ? 'gold' : id >= 305 ? 'iron' : 'leather';
+  const c = ARMOR_MODEL_COLORS[tier];
+  return new THREE.MeshLambertMaterial({
+    color: c,
+    transparent: tier === 'leather' ? true : false,
+    opacity: tier === 'leather' ? 0.92 : 1,
+  });
+}
+
+function aBox(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.castShadow = false;
+  return m;
+}
+
+/**
+ * sync the 3rd-person model's armor overlays with the player's equipped pieces.
+ * armorIds: [helmet, chest, legs, boots] item ids (null = empty).
+ */
+export function setPlayerModelArmor(model: PlayerModelParts, armorIds: (number | null)[]): void {
+  const key = armorIds.map((a) => a ?? 0).join(',');
+  if (key === model.armorKey) return;
+  model.armorKey = key;
+
+  // clear old (boots live on the leg meshes — remove them first)
+  for (const boot of model.bootMeshes) {
+    boot.parent?.remove(boot);
+    (boot.material as THREE.MeshLambertMaterial).dispose();
+    boot.geometry.dispose();
+  }
+  model.bootMeshes = [];
+  for (const child of [...model.armorGroup.children]) {
+    model.armorGroup.remove(child);
+    const mesh = child as THREE.Mesh;
+    const mat = mesh.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[];
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else mat.dispose();
+    mesh.geometry.dispose();
+  }
+
+  // helmet (0): top cap + rear/side shell, face stays open
+  if (armorIds[0]) {
+    const mat = armorMat(armorIds[0]!);
+    const cap = aBox(0.56, 0.22, 0.56, mat);
+    cap.position.y = 1.98;
+    const shell = aBox(0.56, 0.34, 0.56, mat);
+    shell.position.set(0, 1.7, 0.05); // shifted back, front open
+    // thin front brow above the face
+    const brow = aBox(0.56, 0.12, 0.08, mat);
+    brow.position.set(0, 1.9, 0.26);
+    model.armorGroup.add(cap, shell, brow);
+  }
+
+  // chestplate (1): torso shell + shoulder pads
+  if (armorIds[1]) {
+    const mat = armorMat(armorIds[1]!);
+    const torso = aBox(0.54, 0.74, 0.3, mat);
+    torso.position.y = 1.1;
+    const shL = aBox(0.26, 0.26, 0.28, mat);
+    shL.position.set(-0.36, 1.4, 0);
+    const shR = aBox(0.26, 0.26, 0.28, mat);
+    shR.position.set(0.36, 1.4, 0);
+    model.armorGroup.add(torso, shL, shR);
+  }
+
+  // leggings (2): upper-leg shells + waistband
+  if (armorIds[2]) {
+    const mat = armorMat(armorIds[2]!);
+    const waist = aBox(0.54, 0.18, 0.3, mat);
+    waist.position.y = 0.8;
+    for (const sx of [-1, 1]) {
+      const leg = aBox(0.28, 0.44, 0.28, mat);
+      leg.position.set(sx * 0.125, 0.56, 0);
+      model.armorGroup.add(leg);
+    }
+    model.armorGroup.add(waist);
+  }
+
+  // boots (3): lower-leg + toe shells (attach to leg meshes so they swing with walk)
+  if (armorIds[3]) {
+    const mat = armorMat(armorIds[3]!);
+    for (let i = 0; i < 2; i++) {
+      const boot = aBox(0.28, 0.3, 0.3, mat);
+      boot.position.set(0, -0.3, 0.02);
+      model.legs[i].add(boot);
+      model.bootMeshes.push(boot);
+    }
+  }
+
+  // hide the whole group when nothing equipped
+  model.armorGroup.visible = armorIds.some((a) => !!a);
 }
 
 /** animate + place the player model (third person). swing = limb swing amplitude */

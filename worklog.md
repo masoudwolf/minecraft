@@ -465,3 +465,58 @@ Stage Summary:
 - PHASE 6 COMPLETE: biome-tinted world (jungle/swamp/forest differentiation), fully functional TNT (place→ignite→fuse→explosion→chain reactions→camera shake), complete armor progression (leather→diamond w/ crafting, equipping, HUD bar, damage reduction, durability, persistence), sheep color variants + colored wool blocks, F5 persistence + fixed the settings-never-load bug
 - Known minor: armor not rendered on 3rd-person Steve model (visual only); TNT explosion drops 30% flat (MC uses blast-resistance curve); sheep variant chosen at spawn not persisted for naturally-despawned mobs (irrelevant); legacy settings bug means pre-fix users' saved settings were already lost (nothing to migrate)
 - NEXT (Phase 7 candidates): armor on player model in 3rd person, weather (rain/snow + thunder), boats/minecarts, villager farms or simple villages, mushroom biome + mooshroom, skeleton horse trap?, enchanting table real implementation, mob spawn caps per-type tuning, sprint FOV polish, biome-specific water color, beacons/potions stretch
+---
+Task ID: 10 (Phase 7 — Weather System, Bow & Ranged Combat, Player Armor Model, Biome Water Tints)
+Agent: main (status-assess round)
+Task: Status assessment + agent-browser QA of Phases 1-6, then Phase 7: dynamic weather (rain/snow/thunderstorms with sky darkening + lightning), full bow & arrow ranged combat (charge mechanics, arrow physics, stuck-arrow pickup), armor rendered on 3rd-person Steve model, per-biome water colors
+
+Work Log:
+- QA round 0 (pre-existing build): lint pass, dev.log 200s only, fresh agent-browser session (closed stale tabs first per Task 9 lesson), created "Phase 7 QA" world (seed 777), verified engine boot (121 chunks), mine→drop→magnet→hotbar, block placement, passive mob spawns (6 chicken/1 pig/2 sheep/3 cow), Save&Quit → running=false + world persisted to DB list. Verdict: Phases 1-6 STABLE → proceeded to Phase 7.
+- Bow & Arrow (items.ts, crafting.ts, blocks→engine, mobs.ts, HUD.tsx, state.ts):
+  - 4 new items: BOW 317 (BowDef dur 385, maxStack 1, curved-limb pixel icon), ARROW 318 (flint tip + fletching icon), BONE 319 (skeleton drop), FLINT 320 (dark shard icon)
+  - crafting: bow = 3x3 [0,S,ST | S,0,ST | 0,S,ST] (MC pattern, mirror works); arrow = 1x3 column [FLINT, STICK, FEATHER] → 4; both verified via engine craft grid (2x2 correctly too small for bow)
+  - gravel 12% flint drop (mineTick break path, survival-relevant for arrows)
+  - freshDur() extended to bow (fix: initial version forgot isBowItem/getBowDef import → runtime ReferenceError in updateCraftOut → caught by QA eval, fixed same round)
+- Ranged combat (mobs.ts + engine.ts):
+  - Arrow interface + fromPlayer/dmg fields; playerArrowMat (lighter color 0xc8a06a); shootPlayerArrow(x,y,z,dir,speed,dmg) public API
+  - arrow update rewritten with SUBSTEPPED collision (0.45-block steps) — full-charge arrow at 54 m/s tunnels mob AABBs at low fps without it (found by QA: sheep at 5 blocks missed at 9fps headless); substeps fix verified: sheep hp 8→-1 kill with full draw
+  - player arrows hit mobs → hurtMob w/ 4.5 knockback + XP/drops via cb; skeleton arrows unchanged (hit player)
+  - stuck player arrows persist 45s, pickupable within 1.5 blocks → spawns ARROW drop entity (verified: teleport to stuck arrow → collected, hotbar 19→20)
+  - skeleton drops now ARROW 0-2 + BONE 0-2
+  - audio: arrowHit() (highpass tick), bowDraw() (string creak every 0.32s while drawing)
+- Bow mechanics (engine.ts + player.ts + HUD):
+  - rightClick() dispatcher: bow held + arrow available → charge (creative ignores arrow check); "No arrows left!" toast otherwise; else falls through to placeBlock (placement regression-tested ✓)
+  - releaseBow(): charge ≥0.14 fires; speed 14+40·charge; dmg max(1, round(2+7·charge)) = 2..9; consumes 1 arrow (hotbar-first, then main); bow dur −1, breaks w/ glass sound + toast at 0
+  - charging: move speed ×0.5 (player.speedMultiplier), FOV −10°·charge zoom, hand pulls back (+z 0.22, +x 0.12, rot 0.25), draw creak loop
+  - HUD charge bar under crosshair (110px, wood→gold gradient, red/yellow at full) + "Full Draw!" label; store.hud.bowCharge pushed on >0.04 delta only
+- Weather system (weather.ts NEW, sky.ts, audio.ts, engine.ts, DebugOverlay.tsx, state.ts):
+  - WeatherSystem: state machine clear(140-400s)→rain(70-200s)→/thunder(45-105s)→clear, intensity fade 0.25-0.5 rate, seeded rng
+  - rain: 900 world-anchored drops in ±26 box around camera, wrap-around, vy 21-27, slant 2.2, streak texture; collision vs terrain band-scan (camY+22 down) → respawn; splash-free (cheap)
+  - snow: 550 flakes, vy 1.4-2.5, sinusoidal drift, blocky clump texture — in snowy/mountains biomes; desert = dry (no precip)
+  - thunder: strike every 3-10s when intensity>0.6 → 2-4 blink flash sequence (decay dt·7) + audio.thunder(dist) w/ close crack + delayed rumble
+  - sky integration: weatherDarkness lerps sky/fog toward storm gray (thunder 0.72 / rain 0.5 depth), sunLevel ×(1−dark·0.55) → hostiles stop burning in storms automatically (sunLevel<0.82 gate); lightningFlash whitens sky/fog; clouds darken (×0.62) + opacity 0.55→0.95
+  - audio: looping rain noise (highpass 900 + lowpass 4200, 2.5s fade-in, 1.2s fade-out), thunder(dist) crack+rumble w/ distance delay
+  - F3 debug: "Weather: clear | rain100% | snow | thunderN%" line
+  - dispose: audio.stopRain() on world teardown; weather recreated per setupWorld
+- Armor on player model (playerModel.ts + engine.ts):
+  - setPlayerModelArmor(model, armorIds[4]): hashed rebuild; helmet = top cap + rear/side shell + brow (face open); chest = torso shell + 2 shoulder pads; legs = waistband + upper-leg shells; boots = shells parented to leg meshes (swing with walk) tracked in bootMeshes[] for clean removal
+  - tier colors: leather 0xa5662c (92% opacity), iron 0xd8d8d8, gold 0xf6d33c, diamond 0x5ce8d5; engine syncs per-frame in updateCameraPerspective (cheap hash guard)
+- Biome water tints (mesher.ts): WATER_TINTS per biome on all water faces via existing aTint channel: swamp [0.52,0.66,0.42] murky, jungle [0.5,0.82,0.72] teal, snowy [0.68,0.84,1.0] + mountains [0.7,0.87,1.0] pale, desert [0.55,0.85,0.92]; verified mountains water mesh aTint = [0.7,0.87,1.0] on 436 verts
+- Creative palette: BOW/ARROW auto-included via ITEMS registry (visible in palette DOM); BONE/FLINT in data (below fold)
+
+QA (agent-browser + eval-driven, all verified):
+- Bow: rightClick → charging=true, charge 0→1 over 1s ✓; Full Draw! + bar render at full ✓; FOV zoom visible ✓; release → arrow fromPlayer=true, dmg=9, speed=54, arrow 12→11, dur 385→384 ✓
+- Combat: sheep (h 1.3) at 5 blocks full draw → hp 8→-1 dead ✓ (post-substep fix); chicken miss pre-fix proved tunneling bug + fix necessity
+- Stuck pickup: ground shot at charge 0.4 → stuck; teleport to arrow → collected (world 1→0, hotbar 19→20) ✓
+- Recipes: bow 3x3 match w/ dur 385 ✓; arrow column → 4x ✓ (note: 1-wide recipes need column layout positions 0,3,6 — matcher correct)
+- Weather: forced rain → intensity 1, 900 drops, rain.visible, skyDarkness 0.5, storm-gray screenshot ✓; natural transition to rain observed post-reload (state machine live) ✓; thunder strike → flash blink sequence + thunderTimer reset + audio.thunder scheduled ✓; flash screenshot captured (white-washed sky) ✓
+- Armor model: F5 → 9 armor overlay children, iron-colored Steve w/ open face, boots on legs ✓ (screenshot)
+- Water tints: mountains chunk water aTint [0.7,0.87,1.0] ✓
+- F3: "Weather: rain100% Mode: creative" ✓
+- Regression: block place via rightClick fallback ✓ (creative no-consume correct); Save&Quit → running=false, 214 total successful autosave PUTs, 0 console errors post-fix
+- Incidents during round: (1) freshDur bow import missing → updateCraftOut ReferenceError → caught via eval, fixed, hot-reload full-reload warnings in dev.log all pre-fix; (2) test player killed twice by night mobs while AFK (death screen halts simulation — pre-existing correct behavior, confused arrow QA twice until identified)
+
+Stage Summary:
+- PHASE 7 COMPLETE: dynamic weather (rain/snow per-biome, thunderstorms w/ lightning + procedural rain/thunder audio, storm sky/cloud darkening), full bow & arrow ranged combat (charge/draw/slow/zoom, substepped arrow physics, mob hits w/ knockback+XP, stuck-arrow pickup loop, skeleton arrow+bone drops, gravel→flint), armor visually rendered on 3rd-person model per tier, per-biome water colors, F3 weather debug
+- Known minor: rain drops have no per-drop splash particle (cost trade-off); thunder has no lightning bolt geometry (flash+audio only); bow charge HUD re-renders React ~25x/sec while drawing (short bursts, imperceptible); snow biomes precipitation has no ground accumulation
+- NEXT (Phase 8 candidates): beds skip stormy nights?, lightning bolt visual (column mesh) + fire igniting at strike point, villager NPC + simple village structures, mushroom biome + mooshroom, boats, potion/enchanting stretch, mob spawn caps per-type tuning, sprint dust already done, achievements for bow kills ("Sniper Duel"-style), bonemeal from bones → crop/sapling growth, snow golem/iron golem

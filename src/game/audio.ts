@@ -215,6 +215,70 @@ class AudioManager {
   burp(): void {
     this.tone(140, 0.25, 0.3, 'sawtooth', 70);
   }
+
+  /** arrow sticking into a block */
+  arrowHit(): void {
+    this.noiseBurst(2400, 0.07, 0.16, 'highpass', 1);
+    this.tone(900, 0.05, 0.08, 'square', 300);
+  }
+
+  /** bow string pull creak (called while charging, throttled by caller) */
+  bowDraw(): void {
+    this.noiseBurst(300, 0.18, 0.05, 'bandpass', 4, 1.3);
+  }
+
+  // ─── weather ────────────────────────────────────────────────────────────────
+  private rainSrc: AudioBufferSourceNode | null = null;
+  private rainGain: GainNode | null = null;
+
+  /** start looping rain noise (idempotent) */
+  startRain(): void {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || !this.noiseBuffer || this.rainSrc) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 900;
+    const filter2 = ctx.createBiquadFilter();
+    filter2.type = 'lowpass';
+    filter2.frequency.value = 4200;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.09, ctx.currentTime + 2.5); // fade in
+    src.connect(filter).connect(filter2).connect(g).connect(this.master);
+    src.start();
+    this.rainSrc = src;
+    this.rainGain = g;
+  }
+
+  stopRain(): void {
+    if (!this.rainSrc || !this.rainGain || !this.ctx) return;
+    const g = this.rainGain;
+    const src = this.rainSrc;
+    g.gain.cancelScheduledValues(this.ctx.currentTime);
+    g.gain.setValueAtTime(g.gain.value, this.ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1.2);
+    setTimeout(() => { try { src.stop(); } catch { /* already stopped */ } }, 1400);
+    this.rainSrc = null;
+    this.rainGain = null;
+  }
+
+  /** thunder rumble + crack (distance 0..1, 0 = close) */
+  thunder(dist = 0.3): void {
+    const close = 1 - Math.min(1, dist);
+    // crack when close
+    if (close > 0.55) {
+      this.noiseBurst(3000, 0.18, 0.4 * close, 'highpass', 1);
+    }
+    // rumble always (delayed for far strikes)
+    const delay = Math.round(dist * 1200);
+    setTimeout(() => {
+      this.noiseBurst(90, 2.6, 0.45 * (0.35 + close * 0.65), 'lowpass', 0.4, 0.85);
+      this.tone(46, 2.2, 0.3 * (0.3 + close * 0.7), 'sine', 24);
+    }, delay);
+  }
 }
 
 export const audio = new AudioManager();

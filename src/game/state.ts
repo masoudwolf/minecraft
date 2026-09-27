@@ -29,6 +29,7 @@ export interface DebugInfo {
   tris: number;
   mode?: string;
   flying?: boolean;
+  weather?: string;
 }
 
 export interface Settings {
@@ -59,6 +60,8 @@ export interface HUDState {
   flying: boolean;
   /** total armor points (0..20) for the armor bar */
   armor: number;
+  /** bow draw charge 0..1 (0 = not charging; HUD shows a charge indicator) */
+  bowCharge: number;
 }
 
 /** snapshot pushed by engine for the inventory screen */
@@ -138,7 +141,7 @@ export const useGameStore = create<GameStore>((set) => ({
   debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'north', targetBlock: '—', chunks: 0, mobs: 0, time: '06:00', tris: 0 },
   debugVisible: false,
   settings: loadSettings(),
-  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false, armor: 0 },
+  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false, armor: 0, bowCharge: 0 },
   toast: null,
   inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, creative: false, armor: [null, null, null, null] },
   advancement: null,

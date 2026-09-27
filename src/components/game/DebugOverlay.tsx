@@ -15,7 +15,7 @@ export function DebugOverlay() {
     `Facing: ${debug.facing}   Mobs: ${debug.mobs}`,
     `Targeted Block: ${debug.targetBlock}`,
     `Time: ${debug.time}   Tris: ${debug.tris.toLocaleString()}`,
-    `Mode: ${debug.mode ?? 'survival'}${debug.flying ? ' (flying)' : ''}`,
+    `Weather: ${debug.weather ?? 'clear'}   Mode: ${debug.mode ?? 'survival'}${debug.flying ? ' (flying)' : ''}`,
   ];
 
   return (

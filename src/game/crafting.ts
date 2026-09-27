@@ -1,6 +1,6 @@
 // ─── Crafting: recipe registry + shaped/shapeless matcher ────────────────────
 import { BLOCK } from './blocks';
-import { ITEM, isToolItem, isArmorItem, getToolDef, getArmorDef } from './items';
+import { ITEM, isToolItem, isArmorItem, isBowItem, getToolDef, getArmorDef, getBowDef } from './items';
 
 export interface CraftResult {
   id: number;
@@ -32,6 +32,9 @@ const G = ITEM.GOLD_INGOT;
 const D = ITEM.DIAMOND;
 const L = ITEM.LEATHER;
 const W = BLOCK.WOOL;
+const ST = ITEM.STRING;
+const F = ITEM.FLINT;
+const FE = ITEM.FEATHER;
 
 function shaped(w: number, h: number, cells: number[], id: number, count = 1): ShapedRecipe {
   return { kind: 'shaped', w, h, cells, out: { id, count } };
@@ -78,6 +81,11 @@ export const RECIPES: Recipe[] = [
   shaped(1, 2, [ITEM.COAL, S], BLOCK.TORCH, 4),
   shaped(3, 2, [W, W, W, P, P, P], BLOCK.BED),
   shaped(2, 2, [ITEM.STRING, ITEM.STRING, ITEM.STRING, ITEM.STRING], BLOCK.WOOL),
+  // ── ranged combat ──
+  // bow: MC pattern (sticks diagonal, strings right column)
+  shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),
+  // arrow: flint over stick over feather (1-wide column) → 4
+  shaped(1, 3, [F, S, FE], ITEM.ARROW, 4),
   // ── wooden tools ──
   pickaxe(P, ITEM.WOOD_PICKAXE),
   axe(P, ITEM.WOOD_AXE),
@@ -186,9 +194,10 @@ export function needsTable(recipe: Recipe): boolean {
   return recipe.kind === 'shaped' ? recipe.w > 2 || recipe.h > 2 : recipe.ids.length > 4;
 }
 
-/** full durability for a fresh tool or armor piece (0 when neither) */
+/** full durability for a fresh tool, bow or armor piece (0 when neither) */
 export function freshDur(id: number): number | undefined {
   if (isToolItem(id)) return getToolDef(id)?.dur ?? 0;
   if (isArmorItem(id)) return getArmorDef(id)?.dur ?? 0;
+  if (isBowItem(id)) return getBowDef(id)?.dur ?? 0;
   return undefined;
 }

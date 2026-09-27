@@ -51,6 +51,31 @@ export function HUD() {
         </div>
       </div>
 
+      {/* bow draw charge indicator (under crosshair) */}
+      {hud.bowCharge > 0 && (
+        <div className="absolute left-1/2 top-1/2 mt-6 -translate-x-1/2">
+          <div className="h-[6px] w-[110px] border-2 border-black/70 bg-black/40">
+            <div
+              className="h-full transition-[width] duration-75"
+              style={{
+                width: `${Math.min(100, hud.bowCharge * 100)}%`,
+                background: hud.bowCharge >= 1
+                  ? 'linear-gradient(90deg,#c8341f,#f4b41a)'
+                  : 'linear-gradient(90deg,#8a683c,#d8c46a)',
+              }}
+            />
+          </div>
+          {hud.bowCharge >= 1 && (
+            <div
+              className="mt-0.5 text-center text-[10px] text-yellow-300"
+              style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 rgba(0,0,0,0.8)' }}
+            >
+              Full Draw!
+            </div>
+          )}
+        </div>
+      )}
+
       {/* toast */}
       {toast && (
         <div

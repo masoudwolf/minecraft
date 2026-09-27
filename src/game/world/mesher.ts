@@ -82,6 +82,15 @@ const BIOME_TINTS: Record<Biome, [number, number, number]> = {
 };
 const TINT_WHITE: [number, number, number] = [1, 1, 1];
 
+/** per-biome water surface tint (swamp murky, jungle teal, snowy pale) */
+const WATER_TINTS: Partial<Record<Biome, [number, number, number]>> = {
+  swamp: [0.52, 0.66, 0.42],
+  jungle: [0.5, 0.82, 0.72],
+  snowy: [0.68, 0.84, 1.0],
+  mountains: [0.7, 0.87, 1.0],
+  desert: [0.55, 0.85, 0.92],
+};
+
 export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, materials: { opaque: THREE.ShaderMaterial; cutout: THREE.ShaderMaterial; water: THREE.ShaderMaterial }): void {
   disposeChunkMesh(chunk, group);
 
@@ -245,8 +254,12 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           const tileIdx = Array.isArray(tiles) ? tiles[f] : tiles;
           const [u0, v0, u1, v1] = tileUV(tileIdx);
 
-          // biome tint: grass top face + oak leaves (others white)
-          const tint = (id === BLOCK.GRASS && f === 2) || id === BLOCK.LEAVES ? biomeTint(wx, wz) : TINT_WHITE;
+          // biome tint: grass top face + oak leaves (others white); water gets per-biome color
+          const tint = isWater
+            ? (WATER_TINTS[world.terrain.biomeAt(wx, wz)] ?? TINT_WHITE)
+            : (id === BLOCK.GRASS && f === 2) || id === BLOCK.LEAVES
+              ? biomeTint(wx, wz)
+              : TINT_WHITE;
 
           // AO axes
           const axis = face.dir[0] !== 0 ? 0 : face.dir[1] !== 0 ? 1 : 2;

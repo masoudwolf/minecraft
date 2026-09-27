@@ -22,8 +22,15 @@ export interface ItemDef {
   tool?: ToolDef;
   /** armor stats (armor only) */
   armor?: ArmorDef;
+  /** ranged weapon stats (bow only) */
+  bow?: BowDef;
   /** draw 16x16 pixel-art icon; returns canvas */
   icon: (ctx: CanvasRenderingContext2D) => void;
+}
+
+export interface BowDef {
+  /** durability (shots) */
+  dur: number;
 }
 
 export const ITEM = {
@@ -87,6 +94,11 @@ export const ITEM = {
   DIAMOND_CHESTPLATE: 314,
   DIAMOND_LEGGINGS: 315,
   DIAMOND_BOOTS: 316,
+  // ranged combat + misc 317..320
+  BOW: 317,
+  ARROW: 318,
+  BONE: 319,
+  FLINT: 320,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -99,6 +111,9 @@ export interface ArmorDef {
   /** durability (uses) */
   dur: number;
 }
+
+// ─── bow ─────────────────────────────────────────────────────────────────────────
+const BOW_DUR = 385; // MC bow durability
 
 /** slot index for player.armor[] storage */
 export const ARMOR_SLOT_INDEX: Record<ArmorSlot, number> = { helmet: 0, chest: 1, legs: 2, boots: 3 };
@@ -488,6 +503,50 @@ export const ITEMS: Record<number, ItemDef> = {
       ctx.fillRect(7, 4, 1, 1); ctx.fillRect(8, 11, 1, 1);
     },
   },
+  [ITEM.FLINT]: {
+    id: ITEM.FLINT, name: 'Flint',
+    icon: (ctx) => {
+      // dark angular shard
+      px(ctx, 5, 3, '#3a3a3a', 5, 2);
+      px(ctx, 4, 5, '#2e2e2e', 8, 3);
+      px(ctx, 5, 8, '#262626', 6, 3);
+      px(ctx, 6, 11, '#1e1e1e', 4, 2);
+      px(ctx, 5, 4, '#4e4e4e', 2, 1);
+      px(ctx, 6, 6, '#484848', 2, 2);
+      px(ctx, 8, 10, '#3e3e3e', 2, 1);
+      px(ctx, 4, 7, '#161616', 1, 2);
+    },
+  },
+  [ITEM.BONE]: {
+    id: ITEM.BONE, name: 'Bone',
+    icon: (ctx) => {
+      // diagonal bone with knob ends
+      for (let i = 0; i < 7; i++) px(ctx, 5 + i, 11 - i, '#ececd8', 2, 2);
+      // top-right knob (2x2 blobs)
+      px(ctx, 11, 2, '#f6f6ea', 3, 2); px(ctx, 13, 4, '#f6f6ea', 2, 3);
+      px(ctx, 11, 4, '#d8d8c0', 1, 1);
+      // bottom-left knob
+      px(ctx, 1, 11, '#f6f6ea', 2, 3); px(ctx, 3, 13, '#f6f6ea', 3, 2);
+      px(ctx, 3, 11, '#d8d8c0', 1, 1);
+      // shaft shading
+      px(ctx, 6, 11, '#c8c8b0', 1, 1); px(ctx, 9, 8, '#c8c8b0', 1, 1);
+    },
+  },
+  [ITEM.ARROW]: {
+    id: ITEM.ARROW, name: 'Arrow',
+    icon: (ctx) => {
+      // diagonal shaft
+      for (let i = 0; i < 8; i++) px(ctx, 4 + i, 11 - i, '#8a683c', 1, 2);
+      // flint tip (top-right)
+      px(ctx, 12, 2, '#3a3a3a', 2, 2);
+      px(ctx, 11, 3, '#4e4e4e', 2, 1);
+      px(ctx, 12, 4, '#2e2e2e', 1, 1);
+      // feather fletching (bottom-left)
+      px(ctx, 2, 12, '#e8e8e8', 2, 1); px(ctx, 3, 13, '#e8e8e8', 2, 1);
+      px(ctx, 4, 12, '#c8c8c8', 1, 1); px(ctx, 2, 14, '#c8c8c8', 1, 1);
+      px(ctx, 3, 11, '#f6f6f6', 1, 1);
+    },
+  },
   [ITEM.ENDER_PEARL]: {
     id: ITEM.ENDER_PEARL, name: 'Ender Pearl',
     icon: (ctx) => {
@@ -500,6 +559,38 @@ export const ITEMS: Record<number, ItemDef> = {
       ctx.fillStyle = '#0e4038';
       ctx.fillRect(8, 8, 2, 2);
     },
+  },
+};
+
+// register bow
+ITEMS[ITEM.BOW] = {
+  id: ITEM.BOW, name: 'Bow',
+  bow: { dur: BOW_DUR },
+  icon: (ctx) => {
+    // curved wooden limb (arc from bottom-left grip to top-right tip)
+    px(ctx, 4, 3, '#8a683c', 2, 2);
+    px(ctx, 6, 2, '#8a683c', 3, 1);
+    px(ctx, 9, 2, '#9c7848', 2, 1);
+    px(ctx, 11, 3, '#9c7848', 1, 2);
+    px(ctx, 12, 5, '#8a683c', 1, 2);
+    // lower limb
+    px(ctx, 3, 6, '#8a683c', 1, 3);
+    px(ctx, 3, 9, '#7c5a32', 1, 2);
+    px(ctx, 4, 11, '#7c5a32', 1, 2);
+    px(ctx, 5, 13, '#6b4d2a', 2, 1);
+    px(ctx, 7, 14, '#6b4d2a', 2, 1);
+    // grip
+    px(ctx, 6, 7, '#5c4020', 2, 3);
+    px(ctx, 5, 8, '#5c4020', 1, 2);
+    // string (right side arc)
+    px(ctx, 13, 3, '#e8e8e8', 1, 1);
+    px(ctx, 14, 4, '#e8e8e8', 1, 2);
+    px(ctx, 14, 6, '#e8e8e8', 1, 2);
+    px(ctx, 14, 8, '#e8e8e8', 1, 2);
+    px(ctx, 14, 10, '#e8e8e8', 1, 2);
+    px(ctx, 13, 12, '#e8e8e8', 1, 1);
+    px(ctx, 12, 13, '#e8e8e8', 1, 1);
+    px(ctx, 10, 14, '#d8d8d8', 2, 1);
   },
 };
 
@@ -559,9 +650,15 @@ export function armorSlotIndex(id: number): number {
   const def = ITEMS[id]?.armor;
   return def ? ARMOR_SLOT_INDEX[def.slot] : -1;
 }
+export function getBowDef(id: number): BowDef | undefined {
+  return ITEMS[id]?.bow;
+}
+export function isBowItem(id: number): boolean {
+  return !!ITEMS[id]?.bow;
+}
 /** max stack size for an item or block id */
 export function maxStack(id: number): number {
-  return isToolItem(id) || isArmorItem(id) ? 1 : 64;
+  return isToolItem(id) || isArmorItem(id) || isBowItem(id) ? 1 : 64;
 }
 
 // ─── mining model ─────────────────────────────────────────────────────────────

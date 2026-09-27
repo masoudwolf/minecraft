@@ -7,15 +7,16 @@ import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
-import { createPlayerModel, animatePlayerModel, type PlayerModelParts } from './entities/playerModel';
+import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
-import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, ITEM } from './items';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, ITEM } from './items';
 import { matchRecipe, freshDur } from './crafting';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
+import { WeatherSystem } from './weather';
 import { audio, type MaterialSound } from './audio';
 import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL } from './textures/atlas';
 import { getItemIconCanvas } from './items';
@@ -59,6 +60,7 @@ export class Game {
   xpOrbs!: XPOrbManager;
   particles!: ParticleSystem;
   sky!: SkySystem;
+  weather!: WeatherSystem;
   blockEnts!: BlockEntityManager;
   achievements = new AchievementManager();
   spawnPoint: { x: number; y: number; z: number } | null = null;
@@ -99,6 +101,10 @@ export class Game {
   private playerModel: PlayerModelParts | null = null;
   private modelWalkPhase = 0;
   private sprintFxTimer = 0;
+  /** bow draw state (RMB held with bow) */
+  private bowCharging = false;
+  private bowCharge = 0;
+  private bowDrawSoundT = 0;
   /** latest mob callbacks (mining attack → hurt→teleport chain) */
   private mobCb: MobCallbacks | null = null;
 
@@ -350,6 +356,8 @@ export class Game {
     this.scene.add(this.world.group);
     this.sky = new SkySystem(this.scene, seed);
     this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
+    this.weather?.dispose();
+    this.weather = new WeatherSystem(this.scene, seed, (wx, wz) => this.world.terrain.biomeAt(wx, wz));
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
@@ -590,12 +598,13 @@ export class Game {
     if (document.pointerLockElement !== this.canvas) { this.requestLock(); return; }
     audio.resume();
     if (e.button === 0) { this.mining = true; this.startSwing(); }
-    else if (e.button === 2) { this.placeBlock(); }
+    else if (e.button === 2) { this.rightClick(); }
     else if (e.button === 1) { e.preventDefault(); this.pickBlock(); }
   };
 
   private onMouseUp = (e: MouseEvent): void => {
     if (e.button === 0) { this.mining = false; this.mineProgress = 0; }
+    else if (e.button === 2) { this.releaseBow(); }
   };
 
   private onWheel = (e: WheelEvent): void => {
@@ -633,6 +642,89 @@ export class Game {
   };
 
   private onContextMenu = (e: Event): void => e.preventDefault();
+
+  /** RMB: draw bow when held, otherwise interact/place */
+  private rightClick(): void {
+    const slot = this.player.hotbar[this.player.selected];
+    if (slot && slot.count > 0 && isBowItem(slot.blockId)) {
+      if (!this.bowCharging) {
+        if (this.player.isCreative || this.countItem(ITEM.ARROW) > 0) {
+          this.bowCharging = true;
+          this.bowCharge = 0;
+          this.bowDrawSoundT = 0;
+        } else {
+          this.showToast('No arrows left!');
+        }
+      }
+      return;
+    }
+    this.placeBlock();
+  }
+
+  /** RMB released: fire the arrow (charge ≥ 0.14) or cancel */
+  private releaseBow(): void {
+    if (!this.bowCharging) return;
+    this.bowCharging = false;
+    const charge = this.bowCharge;
+    this.bowCharge = 0;
+    if (charge < 0.14) return; // too weak — cancel
+    const p = this.player;
+    if (!p.isCreative) {
+      if (this.countItem(ITEM.ARROW) <= 0) return;
+      this.consumeItem(ITEM.ARROW, 1);
+    }
+    const fwd = p.forwardVector();
+    const speed = 14 + 40 * Math.min(1, charge);
+    const dmg = Math.max(1, Math.round(2 + 7 * Math.min(1, charge)));
+    this.mobs.shootPlayerArrow(p.x, p.eyeY() - 0.08, p.z, fwd.x, fwd.y, fwd.z, speed, dmg);
+    // bow durability
+    const slot = p.hotbar[p.selected];
+    const bow = slot ? getBowDef(slot.blockId) : undefined;
+    if (bow && !p.isCreative) {
+      slot.dur = (slot.dur ?? bow.dur) - 1;
+      if (slot.dur <= 0) {
+        p.hotbar[p.selected] = { blockId: 0, count: 0 };
+        audio.breakBlock('glass');
+        this.showToast('Your bow broke!');
+        this.updateHandMesh(true);
+      }
+      this.syncHUD();
+      this.syncInventory();
+    }
+    this.startSwing();
+  }
+
+  /** total count of an item id across hotbar + main inventory */
+  private countItem(id: number): number {
+    let n = 0;
+    for (const s of this.player.hotbar) if (s.count > 0 && s.blockId === id) n += s.count;
+    for (const s of this.player.main) if (s.count > 0 && s.blockId === id) n += s.count;
+    return n;
+  }
+
+  /** remove n of an item id (hotbar first), returns true when fully consumed */
+  private consumeItem(id: number, n: number): boolean {
+    let left = n;
+    const takeFrom = (slots: HotbarSlot[]): void => {
+      for (const s of slots) {
+        if (left <= 0) return;
+        if (s.count > 0 && s.blockId === id) {
+          const take = Math.min(s.count, left);
+          s.count -= take;
+          left -= take;
+          if (s.count <= 0) { s.blockId = 0; s.count = 0; }
+        }
+      }
+    };
+    takeFrom(this.player.hotbar);
+    takeFrom(this.player.main);
+    if (left < n) {
+      this.syncHUD();
+      this.syncInventory();
+      this.updateHandMesh();
+    }
+    return left === 0;
+  }
 
   private bindEvents(): void {
     window.addEventListener('keydown', this.onKeyDown);
@@ -747,8 +839,10 @@ export class Game {
       this.particles.burstBlockBreak(t.x, t.y, t.z, col);
       audio.breakBlock((def.sound ?? 'stone') as MaterialSound);
       const dropId = def.drop === undefined ? t.id : def.drop;
-      if (harvest && dropId && dropId > 0) {
-        this.drops.spawn(dropId, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+      // gravel has a 12% chance to drop flint (MC-style, used for arrows)
+      const actualDrop = harvest && t.id === BLOCK.GRAVEL && Math.random() < 0.12 ? ITEM.FLINT : dropId;
+      if (harvest && actualDrop && actualDrop > 0) {
+        this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
       }
       // XP from ores
       const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
@@ -1596,6 +1690,13 @@ export class Game {
     const swingCurve = Math.sin(s * Math.PI);
     this.handGroup.position.set(0.42 - swingCurve * 0.18, -0.42 + swingCurve * 0.12, -0.65 - swingCurve * 0.18);
     this.handGroup.rotation.set(-swingCurve * 1.15, 0.62 - swingCurve * 0.5, swingCurve * 0.28);
+    // bow draw: pull the bow back toward the shoulder
+    if (this.bowCharging) {
+      const c = this.bowCharge;
+      this.handGroup.position.z += c * 0.22;
+      this.handGroup.position.x += c * 0.12;
+      this.handGroup.rotation.y += c * 0.25;
+    }
     // walk sway
     const sway = Math.sin(this.player.bobPhase) * 0.012;
     this.handGroup.position.x += sway;
@@ -1613,6 +1714,9 @@ export class Game {
         this.modelWalkPhase += dt * Math.min(9, hSpeed * 1.9);
       }
       animatePlayerModel(this.playerModel, p.x, p.y, p.z, p.yaw, p.pitch, this.modelWalkPhase, moving, p.sneaking, p.dead, 0);
+      // sync armor overlays (hashed inside — cheap per frame)
+      const armorIds = p.armor.map((a) => (a && a.count > 0 ? a.blockId : null)) as (number | null)[];
+      setPlayerModelArmor(this.playerModel, armorIds);
       this.handGroup.visible = false;
     } else {
       if (this.playerModel) {
@@ -1913,7 +2017,8 @@ export class Game {
     }
 
     // camera
-    p.applyCamera(this.settings.fov, 8, dt);
+    p.speedMultiplier = this.bowCharging ? 0.5 : 1;
+    p.applyCamera(this.settings.fov + (this.bowCharging ? -10 * this.bowCharge : 0), 8, dt);
     this.updateCameraPerspective(dt);
     // explosion camera shake
     if (this.shakeT > 0) {
@@ -1950,6 +2055,22 @@ export class Game {
     // interaction
     this.updateTarget();
     this.mineTick(dt);
+
+    // bow drawing (charge + creak sound)
+    if (this.bowCharging) {
+      const slot = this.player.hotbar[this.player.selected];
+      if (!slot || slot.count <= 0 || !isBowItem(slot.blockId)) {
+        this.bowCharging = false;
+        this.bowCharge = 0;
+      } else {
+        this.bowCharge = Math.min(1, this.bowCharge + dt);
+        this.bowDrawSoundT -= dt;
+        if (this.bowDrawSoundT <= 0 && this.bowCharge < 1) {
+          audio.bowDraw();
+          this.bowDrawSoundT = 0.32;
+        }
+      }
+    }
 
     // block entities (furnace smelting etc.)
     this.blockEnts.tick(dt);
@@ -2081,10 +2202,28 @@ export class Game {
 
     // sky + fog + lighting uniforms
     this.sky.update(dt, this.camera, this.scene, 60, 130);
+    // weather (needs camera + ground height for rain collision)
+    this.sky.weatherDarkness = this.weather.darkness;
+    this.sky.lightningFlash = this.weather.flash;
+    const camY = this.camera.position.y;
+    this.weather.update(dt, this.camera.position.x, camY, this.camera.position.z, (wx, wz) => {
+      const top = Math.min(WORLD_HEIGHT - 1, Math.floor(camY) + 22);
+      for (let y = top; y > 0; y--) {
+        const id = this.world.getBlock(wx, y, wz);
+        if (id !== BLOCK.AIR && !isWaterId(id)) return y + 1;
+      }
+      return 0;
+    });
     this.applySkyFog();
 
     // hand animation
     this.animateHand(dt);
+
+    // bow charge indicator → HUD (throttled to meaningful changes)
+    const st2 = useGameStore.getState();
+    if (Math.abs(st2.hud.bowCharge - this.bowCharge) > 0.04 || (st2.hud.bowCharge > 0) !== this.bowCharging) {
+      st2.setHud({ bowCharge: this.bowCharging ? this.bowCharge : 0 });
+    }
 
     // streaming + autosave
     this.streamChunks();
@@ -2153,6 +2292,11 @@ export class Game {
       tris: this.renderer.info.render.triangles,
       mode: p.gameMode,
       flying: p.flying,
+      weather: this.weather
+        ? (this.weather.state === 'clear'
+          ? 'clear'
+          : `${this.weather.snowing ? 'snow' : this.weather.state}${Math.round(this.weather.intensity * 100)}%`)
+        : 'clear',
     });
   }
 
@@ -2210,6 +2354,7 @@ export class Game {
       this.playerModel = null;
     }
     this.particles?.dispose();
+    this.weather?.dispose();
     this.drops?.clear();
     this.mobs?.clear();
     this.renderer.dispose();
