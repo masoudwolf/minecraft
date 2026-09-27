@@ -1,0 +1,130 @@
+// ─── Block registry ──────────────────────────────────────────────────────────
+// Face order: [+X, -X, +Y(top), -Y(bottom), +Z, -Z]
+export interface BlockDef {
+  id: number;
+  name: string;
+  /** atlas tile index per face; single number means all faces */
+  tiles: number[] | number;
+  solid: boolean;          // blocks movement
+  opaque: boolean;         // blocks light fully & culls faces
+  liquid?: boolean;        // water-like
+  cutout?: boolean;        // leaves/glass — rendered with alphaTest
+  hardness: number;        // seconds to break by hand
+  tool?: 'pickaxe' | 'axe' | 'shovel' | 'sword';
+  drop?: number | null;    // block id dropped (default: itself)
+  lightEmit?: number;      // 0..15
+  sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
+}
+
+export const BLOCK = {
+  AIR: 0,
+  STONE: 1,
+  GRASS: 2,
+  DIRT: 3,
+  COBBLESTONE: 4,
+  PLANKS: 5,
+  SAND: 6,
+  GRAVEL: 7,
+  LOG: 8,
+  LEAVES: 9,
+  WATER: 10,
+  GLASS: 11,
+  COAL_ORE: 12,
+  IRON_ORE: 13,
+  GOLD_ORE: 14,
+  DIAMOND_ORE: 15,
+  BEDROCK: 16,
+  SNOW_GRASS: 17,
+  SANDSTONE: 18,
+  BRICKS: 19,
+  TNT: 20,
+  CRAFTING_TABLE: 21,
+  FURNACE: 22,
+  GLOWSTONE: 23,
+  SPRUCE_LOG: 24,
+  SPRUCE_LEAVES: 25,
+  SNOW_BLOCK: 26,
+  BOOKSHELF: 27,
+  MOSSY_COBBLE: 28,
+  OBSIDIAN: 29,
+} as const;
+
+// Atlas tile indices — filled by textures/atlas.ts (same order)
+export const TILE = {
+  grass_top: 0, grass_side: 1, dirt: 2, stone: 3, cobblestone: 4, planks: 5,
+  sand: 6, gravel: 7, log_side: 8, log_top: 9, leaves: 10, glass: 11,
+  water: 12, coal_ore: 13, iron_ore: 14, gold_ore: 15, diamond_ore: 16,
+  bedrock: 17, snow: 18, grass_snow_side: 19, sandstone: 20, sandstone_top: 21,
+  bricks: 22, tnt_side: 23, tnt_top: 24, crafting_top: 25, crafting_side: 26,
+  crafting_front: 27, furnace_front: 28, furnace_side: 29, furnace_top: 30,
+  glowstone: 31, spruce_log_side: 32, spruce_log_top: 33, spruce_leaves: 34,
+  bookshelf: 35, mossy_cobble: 36, obsidian: 37,
+} as const;
+
+function t(...faces: number[]): number[] {
+  return faces;
+}
+function all(tile: number): number[] {
+  return [tile, tile, tile, tile, tile, tile];
+}
+function logTiles(sideTile: number, topTile: number): number[] {
+  return [sideTile, sideTile, topTile, topTile, sideTile, sideTile];
+}
+
+export const BLOCKS: Record<number, BlockDef> = {
+  [BLOCK.STONE]: { id: BLOCK.STONE, name: 'Stone', tiles: TILE.stone, solid: true, opaque: true, hardness: 1.5, tool: 'pickaxe', drop: BLOCK.COBBLESTONE, sound: 'stone' },
+  [BLOCK.GRASS]: { id: BLOCK.GRASS, name: 'Grass Block', tiles: t(TILE.grass_side, TILE.grass_side, TILE.grass_top, TILE.dirt, TILE.grass_side, TILE.grass_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'grass' },
+  [BLOCK.DIRT]: { id: BLOCK.DIRT, name: 'Dirt', tiles: TILE.dirt, solid: true, opaque: true, hardness: 0.5, tool: 'shovel', sound: 'dirt' },
+  [BLOCK.COBBLESTONE]: { id: BLOCK.COBBLESTONE, name: 'Cobblestone', tiles: TILE.cobblestone, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.PLANKS]: { id: BLOCK.PLANKS, name: 'Oak Planks', tiles: TILE.planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
+  [BLOCK.SAND]: { id: BLOCK.SAND, name: 'Sand', tiles: TILE.sand, solid: true, opaque: true, hardness: 0.5, tool: 'shovel', sound: 'sand' },
+  [BLOCK.GRAVEL]: { id: BLOCK.GRAVEL, name: 'Gravel', tiles: TILE.gravel, solid: true, opaque: true, hardness: 0.6, tool: 'shovel', sound: 'dirt' },
+  [BLOCK.LOG]: { id: BLOCK.LOG, name: 'Oak Log', tiles: logTiles(TILE.log_side, TILE.log_top), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.LEAVES]: { id: BLOCK.LEAVES, name: 'Oak Leaves', tiles: TILE.leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
+  [BLOCK.WATER]: { id: BLOCK.WATER, name: 'Water', tiles: TILE.water, solid: false, opaque: false, liquid: true, hardness: 100, sound: 'dirt' },
+  [BLOCK.GLASS]: { id: BLOCK.GLASS, name: 'Glass', tiles: TILE.glass, solid: true, opaque: false, cutout: true, hardness: 0.4, drop: null, sound: 'glass' },
+  [BLOCK.COAL_ORE]: { id: BLOCK.COAL_ORE, name: 'Coal Ore', tiles: TILE.coal_ore, solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.IRON_ORE]: { id: BLOCK.IRON_ORE, name: 'Iron Ore', tiles: TILE.iron_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.GOLD_ORE]: { id: BLOCK.GOLD_ORE, name: 'Gold Ore', tiles: TILE.gold_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.DIAMOND_ORE]: { id: BLOCK.DIAMOND_ORE, name: 'Diamond Ore', tiles: TILE.diamond_ore, solid: true, opaque: true, hardness: 3.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.BEDROCK]: { id: BLOCK.BEDROCK, name: 'Bedrock', tiles: TILE.bedrock, solid: true, opaque: true, hardness: Infinity, sound: 'stone' },
+  [BLOCK.SNOW_GRASS]: { id: BLOCK.SNOW_GRASS, name: 'Snowy Grass', tiles: t(TILE.grass_snow_side, TILE.grass_snow_side, TILE.snow, TILE.dirt, TILE.grass_snow_side, TILE.grass_snow_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'grass' },
+  [BLOCK.SANDSTONE]: { id: BLOCK.SANDSTONE, name: 'Sandstone', tiles: t(TILE.sandstone, TILE.sandstone, TILE.sandstone_top, TILE.sandstone_top, TILE.sandstone, TILE.sandstone), solid: true, opaque: true, hardness: 1.6, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.BRICKS]: { id: BLOCK.BRICKS, name: 'Bricks', tiles: TILE.bricks, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.TNT]: { id: BLOCK.TNT, name: 'TNT', tiles: t(TILE.tnt_side, TILE.tnt_side, TILE.tnt_top, TILE.tnt_top, TILE.tnt_side, TILE.tnt_side), solid: true, opaque: true, hardness: 0.4, sound: 'grass' },
+  [BLOCK.CRAFTING_TABLE]: { id: BLOCK.CRAFTING_TABLE, name: 'Crafting Table', tiles: t(TILE.crafting_side, TILE.crafting_side, TILE.crafting_top, TILE.planks, TILE.crafting_front, TILE.crafting_front), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.FURNACE]: { id: BLOCK.FURNACE, name: 'Furnace', tiles: t(TILE.furnace_side, TILE.furnace_side, TILE.furnace_top, TILE.furnace_top, TILE.furnace_front, TILE.furnace_side), solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.GLOWSTONE]: { id: BLOCK.GLOWSTONE, name: 'Glowstone', tiles: TILE.glowstone, solid: true, opaque: true, hardness: 0.4, lightEmit: 15, sound: 'glass' },
+  [BLOCK.SPRUCE_LOG]: { id: BLOCK.SPRUCE_LOG, name: 'Spruce Log', tiles: logTiles(TILE.spruce_log_side, TILE.spruce_log_top), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.SPRUCE_LEAVES]: { id: BLOCK.SPRUCE_LEAVES, name: 'Spruce Leaves', tiles: TILE.spruce_leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
+  [BLOCK.SNOW_BLOCK]: { id: BLOCK.SNOW_BLOCK, name: 'Snow Block', tiles: TILE.snow, solid: true, opaque: true, hardness: 0.4, tool: 'shovel', sound: 'sand' },
+  [BLOCK.BOOKSHELF]: { id: BLOCK.BOOKSHELF, name: 'Bookshelf', tiles: t(TILE.bookshelf, TILE.bookshelf, TILE.planks, TILE.planks, TILE.bookshelf, TILE.bookshelf), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.MOSSY_COBBLE]: { id: BLOCK.MOSSY_COBBLE, name: 'Mossy Cobblestone', tiles: TILE.mossy_cobble, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.OBSIDIAN]: { id: BLOCK.OBSIDIAN, name: 'Obsidian', tiles: TILE.obsidian, solid: true, opaque: true, hardness: 12, tool: 'pickaxe', sound: 'stone' },
+};
+
+export function getBlockDef(id: number): BlockDef | undefined {
+  return BLOCKS[id];
+}
+export function isSolid(id: number): boolean {
+  const d = BLOCKS[id];
+  return d ? d.solid : false;
+}
+export function isOpaque(id: number): boolean {
+  const d = BLOCKS[id];
+  return d ? d.opaque : false;
+}
+export function isLiquid(id: number): boolean {
+  const d = BLOCKS[id];
+  return d ? !!d.liquid : false;
+}
+/** can a raycast / light pass through */
+export function isTranslucent(id: number): boolean {
+  const d = BLOCKS[id];
+  if (!d) return true; // air
+  return !d.opaque;
+}
+/** does this block type cull the face of a neighbor of the same type (water-water) */
+export function sameCull(id: number): boolean {
+  return id === BLOCK.WATER;
+}

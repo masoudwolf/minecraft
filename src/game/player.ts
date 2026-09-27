@@ -1,0 +1,167 @@
+// ─── Player: controller, camera, physics state, health ───────────────────────
+import * as THREE from 'three';
+import { moveEntity, type AABBEntity } from './physics';
+import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPEED, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_EYE } from './constants';
+
+export interface HotbarSlot {
+  blockId: number; // 0 = empty
+  count: number;
+}
+
+export class Player {
+  entity: AABBEntity;
+  yaw = 0;
+  pitch = 0;
+
+  health = 20;
+  maxHealth = 20;
+  hunger = 20;
+  dead = false;
+
+  sprinting = false;
+  sneaking = false;
+  fallStartY = 0;
+  bobPhase = 0;
+  stepDistance = 0;
+  hurtCooldown = 0;
+
+  hotbar: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
+  selected = 0;
+
+  private camera: THREE.PerspectiveCamera;
+
+  constructor(camera: THREE.PerspectiveCamera) {
+    this.camera = camera;
+    this.entity = {
+      x: 0, y: 70, z: 0,
+      vx: 0, vy: 0, vz: 0,
+      width: PLAYER_WIDTH, height: PLAYER_HEIGHT,
+      onGround: false, inWater: false,
+    };
+  }
+
+  get x(): number { return this.entity.x; }
+  get y(): number { return this.entity.y; }
+  get z(): number { return this.entity.z; }
+  set x(v: number) { this.entity.x = v; }
+  set y(v: number) { this.entity.y = v; }
+  set z(v: number) { this.entity.z = v; }
+  get onGround(): boolean { return this.entity.onGround; }
+  get inWater(): boolean { return this.entity.inWater; }
+  get vx(): number { return this.entity.vx; }
+  get vz(): number { return this.entity.vz; }
+
+  eyeY(): number {
+    return this.entity.y + (this.sneaking ? PLAYER_EYE - 0.25 : PLAYER_EYE);
+  }
+
+  applyCamera(baseFov: number, sprintFovBoost: number, dt: number): void {
+    this.camera.position.set(this.x, this.eyeY(), this.z);
+    this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+    // subtle view bob
+    if (this.entity.onGround && (Math.abs(this.entity.vx) > 0.5 || Math.abs(this.entity.vz) > 0.5)) {
+      this.bobPhase += dt * Math.min(9, Math.hypot(this.entity.vx, this.entity.vz) * 1.9);
+      this.camera.position.y += Math.sin(this.bobPhase * 2) * 0.05;
+      this.camera.position.x += Math.cos(this.bobPhase) * 0.02;
+    }
+    const targetFov = baseFov + (this.sprinting ? sprintFovBoost : 0);
+    if (Math.abs(this.camera.fov - targetFov) > 0.1) {
+      this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 10);
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  forwardVector(): THREE.Vector3 {
+    return new THREE.Vector3(
+      -Math.sin(this.yaw) * Math.cos(this.pitch),
+      Math.sin(this.pitch),
+      -Math.cos(this.yaw) * Math.cos(this.pitch)
+    );
+  }
+
+  moveInput(
+    input: { forward: number; strafe: number },
+    world: { getBlock(x: number, y: number, z: number): number },
+    dt: number,
+    wishJump: boolean,
+    wishSneak: boolean
+  ): void {
+    const e = this.entity;
+    this.sneaking = wishSneak && e.onGround;
+    const speed = this.sprinting ? SPRINT_SPEED : this.sneaking ? SNEAK_SPEED : WALK_SPEED;
+
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    let wx = input.strafe * cos - input.forward * sin;
+    let wz = -input.strafe * sin - input.forward * cos;
+    const len = Math.hypot(wx, wz);
+    if (len > 0) { wx /= len; wz /= len; }
+
+    if (e.inWater) {
+      const accel = Math.min(1, dt * 6);
+      e.vx += (wx * SWIM_SPEED - e.vx) * accel;
+      e.vz += (wz * SWIM_SPEED - e.vz) * accel;
+      e.vy += GRAVITY * 0.28 * dt;
+      if (wishJump) e.vy = Math.min(e.vy + 30 * dt, 3.4);
+      e.vy *= Math.pow(0.35, dt);
+      this.sprinting = false;
+    } else {
+      const accel = e.onGround ? 10 : 2.2;
+      e.vx += (wx * speed - e.vx) * Math.min(1, dt * accel);
+      e.vz += (wz * speed - e.vz) * Math.min(1, dt * accel);
+      e.vy += GRAVITY * dt;
+      if (wishJump && e.onGround) {
+        e.vy = JUMP_VELOCITY;
+        e.onGround = false;
+      }
+      e.vy = Math.max(e.vy, -60);
+    }
+
+    const wasOnGround = e.onGround;
+    moveEntity(world, e, dt);
+
+    // fall damage
+    if (!e.inWater) {
+      if (!wasOnGround && e.onGround) {
+        const fallDist = this.fallStartY - e.y;
+        if (fallDist > 3.5) {
+          const dmg = Math.floor(fallDist - 3);
+          if (dmg > 0) this.damage(dmg);
+        }
+        this.fallStartY = e.y;
+      } else if (e.onGround) {
+        this.fallStartY = e.y;
+      } else if (e.vy > 0) {
+        this.fallStartY = e.y;
+      }
+    } else {
+      this.fallStartY = e.y;
+    }
+
+    if (e.onGround) {
+      this.stepDistance += Math.hypot(e.vx, e.vz) * dt;
+    }
+  }
+
+  damage(amount: number): void {
+    if (this.dead || this.hurtCooldown > 0) return;
+    this.health = Math.max(0, this.health - amount);
+    this.hurtCooldown = 0.5;
+    if (this.health <= 0) this.dead = true;
+  }
+
+  heal(amount: number): void {
+    this.health = Math.min(this.maxHealth, this.health + amount);
+  }
+
+  respawn(x: number, y: number, z: number): void {
+    this.entity.x = x; this.entity.y = y; this.entity.z = z;
+    this.entity.vx = 0; this.entity.vy = 0; this.entity.vz = 0;
+    this.health = this.maxHealth;
+    this.hunger = 20;
+    this.dead = false;
+    this.fallStartY = y;
+  }
+}
