@@ -1,0 +1,784 @@
+// ─── Mobs: box-model entities, AI, spawning, combat ──────────────────────────
+import * as THREE from 'three';
+import { moveEntity, type AABBEntity } from '../physics';
+import { BLOCK } from '../blocks';
+import { getMobSkins } from './mobSkins';
+import { audio } from '../audio';
+import { ITEM } from '../items';
+
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton';
+
+interface MobDef {
+  hostile: boolean;
+  width: number;
+  height: number;
+  health: number;
+  speed: number;
+  /** contact/attack damage to player */
+  damage: number;
+  drops: { id: number; min: number; max: number }[];
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle';
+  builder: (skins: ReturnType<typeof getMobSkins>) => MobParts;
+}
+
+export interface MobParts {
+  group: THREE.Group;
+  head: THREE.Mesh;
+  legs: THREE.Mesh[];
+  arms: THREE.Mesh[];
+  materials: THREE.MeshLambertMaterial[];
+  shadow: THREE.Mesh;
+}
+
+interface Mob extends AABBEntity {
+  type: MobType;
+  def: MobDef;
+  group: THREE.Group;
+  parts: MobParts;
+  health: number;
+  yaw: number;
+  targetYaw: number;
+  state: 'idle' | 'walk' | 'flee' | 'chase';
+  stateTimer: number;
+  walkPhase: number;
+  hurtT: number;
+  attackCd: number;
+  ambientCd: number;
+  burnTimer: number;
+  burning: boolean;
+  fuse: number;          // creeper
+  dead: boolean;
+  deathT: number;
+  wanderX: number;
+  wanderZ: number;
+}
+
+interface Arrow {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  life: number;
+  stuck: number;
+  mesh: THREE.Mesh;
+}
+
+// ─── Model builders ──────────────────────────────────────────────────────────
+function partMat(tex: THREE.CanvasTexture): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+function boxPart(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial, tag: string): THREE.Mesh {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.part = tag;
+  return mesh;
+}
+
+function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
+  const geo = new THREE.CircleGeometry(radius, 12);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.renderOrder = 1;
+  scene.add(mesh);
+  return mesh;
+}
+
+function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
+  bodyW: number; bodyH: number; bodyD: number; bodyY: number;
+  legW: number; legH: number;
+  headS: number; headY: number; headZ: number;
+  shadowR: number;
+}): MobParts {
+  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+  const group = new THREE.Group();
+  const body = boxPart(opts.bodyW, opts.bodyH, opts.bodyD, mats[1], 'body');
+  body.position.y = opts.bodyY;
+  group.add(body);
+  const head = boxPart(opts.headS, opts.headS, opts.headS, mats[0], 'head');
+  head.position.set(0, opts.headY, opts.headZ);
+  group.add(head);
+  const legs: THREE.Mesh[] = [];
+  const lx = opts.bodyW / 2 - opts.legW / 2;
+  const lz = opts.bodyD / 2 - opts.legW / 2;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = boxPart(opts.legW, opts.legH, opts.legW, mats[2], 'limb');
+    leg.position.set(sx * lx, opts.bodyY - opts.bodyH / 2 - opts.legH / 2, sz * lz);
+    group.add(leg);
+    legs.push(leg);
+  }
+  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+}
+
+function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts {
+  const lw = thin ? 0.16 : 0.25;
+  const aw = thin ? 0.14 : 0.22;
+  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+  const group = new THREE.Group();
+  const body = boxPart(0.5, 0.72, 0.26, mats[1], 'body');
+  body.position.y = 1.1;
+  group.add(body);
+  const head = boxPart(0.5, 0.5, 0.5, mats[0], 'head');
+  head.position.y = 1.72;
+  group.add(head);
+  const legs: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    const leg = boxPart(lw, 0.74, lw, mats[2], 'limb');
+    leg.position.set(sx * 0.125, 0.37, 0);
+    group.add(leg);
+    legs.push(leg);
+  }
+  const arms: THREE.Mesh[] = [];
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * (0.25 + aw / 2), 1.42, 0);
+    const arm = boxPart(aw, 0.7, aw, mats[2], 'limb');
+    arm.position.y = -0.32;
+    pivot.add(arm);
+    group.add(pivot);
+    arms.push(arm);
+    (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+  }
+  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+}
+
+// ─── Mob definitions ─────────────────────────────────────────────────────────
+const MOB_DEFS: Record<MobType, MobDef> = {
+  pig: {
+    hostile: false, width: 0.9, height: 0.9, health: 10, speed: 1.1, damage: 0,
+    drops: [{ id: ITEM.PORKCHOP, min: 1, max: 2 }], sound: 'oink',
+    builder: (s) => quadruped(s, { bodyW: 0.62, bodyH: 0.5, bodyD: 1.0, bodyY: 0.55, legW: 0.24, legH: 0.32, headS: 0.5, headY: 0.62, headZ: 0.62, shadowR: 0.45 }),
+  },
+  cow: {
+    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'moo',
+    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+  },
+  sheep: {
+    hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
+    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }], sound: 'baa',
+    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48 }),
+  },
+  chicken: {
+    hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
+    drops: [{ id: ITEM.CHICKEN_RAW, min: 1, max: 1 }, { id: ITEM.FEATHER, min: 0, max: 2 }], sound: 'cluck',
+    builder: (s) => {
+      const p = quadruped(s, { bodyW: 0.38, bodyH: 0.38, bodyD: 0.5, bodyY: 0.5, legW: 0.08, legH: 0.3, headS: 0.26, headY: 0.78, headZ: 0.28, shadowR: 0.25 });
+      return p;
+    },
+  },
+  zombie: {
+    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.9, damage: 3,
+    drops: [], sound: 'groan',
+    builder: (s) => humanoid(s),
+  },
+  creeper: {
+    hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
+    drops: [], sound: 'hiss',
+    builder: (s) => {
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const group = new THREE.Group();
+      const body = boxPart(0.5, 0.78, 0.32, mats[1], 'body');
+      body.position.y = 0.76;
+      group.add(body);
+      const head = boxPart(0.52, 0.52, 0.52, mats[0], 'head');
+      head.position.y = 1.42;
+      group.add(head);
+      const legs: THREE.Mesh[] = [];
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const leg = boxPart(0.24, 0.38, 0.24, mats[2], 'limb');
+        leg.position.set(sx * 0.14, 0.19, sz * 0.18);
+        group.add(leg);
+        legs.push(leg);
+      }
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+    },
+  },
+  skeleton: {
+    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
+    drops: [], sound: 'rattle',
+    builder: (s) => humanoid(s, true),
+  },
+};
+
+// ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
+export interface MobHit { mob: Mob; dist: number }
+
+function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, e: AABBEntity, maxDist: number): number | null {
+  const half = e.width / 2;
+  const minX = e.x - half, maxX = e.x + half;
+  const minY = e.y, maxY = e.y + e.height;
+  const minZ = e.z - half, maxZ = e.z + half;
+  let tmin = 0;
+  let tmax = maxDist;
+  for (const [o, d, min, max] of [[ox, dx, minX, maxX], [oy, dy, minY, maxY], [oz, dz, minZ, maxZ]] as const) {
+    if (Math.abs(d) < 1e-9) {
+      if (o < min || o > max) return null;
+    } else {
+      let t1 = (min - o) / d;
+      let t2 = (max - o) / d;
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      if (tmin > tmax) return null;
+    }
+  }
+  return tmin;
+}
+
+// ─── MobManager ──────────────────────────────────────────────────────────────
+export interface MobCallbacks {
+  damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
+  spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
+  explodeParticles: (x: number, y: number, z: number) => void;
+  deathParticles: (x: number, y: number, z: number) => void;
+  fireParticle: (x: number, y: number, z: number) => void;
+  playerX: number;
+  playerY: number;
+  playerZ: number;
+}
+
+export class MobManager {
+  mobs: Mob[] = [];
+  arrows: Arrow[] = [];
+  private scene: THREE.Scene;
+  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void };
+  private spawnTimer = 0;
+  private arrowMat: THREE.MeshLambertMaterial;
+  private time = 0;
+
+  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void }) {
+    this.scene = scene;
+    this.world = world;
+    this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+  }
+
+  get count(): number {
+    return this.mobs.length;
+  }
+
+  /** QA/testing helper: force-spawn a mob at position */
+  debugSpawn(type: MobType, x: number, y: number, z: number): Mob | null {
+    return this.spawn(type, x, y, z);
+  }
+
+  clear(): void {
+    for (const m of this.mobs) {
+      this.scene.remove(m.group);
+      this.scene.remove(m.parts.shadow);
+    }
+    this.mobs = [];
+    for (const a of this.arrows) this.scene.remove(a.mesh);
+    this.arrows = [];
+  }
+
+  /** raycast mobs for attacks; returns nearest hit within reach */
+  raycastMob(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number): MobHit | null {
+    let best: MobHit | null = null;
+    for (const m of this.mobs) {
+      if (m.dead) continue;
+      const t = rayAABB(ox, oy, oz, dx, dy, dz, m, reach);
+      if (t !== null && (!best || t < best.dist)) best = { mob: m, dist: t };
+    }
+    return best;
+  }
+
+  private spawn(type: MobType, x: number, y: number, z: number): Mob | null {
+    const def = MOB_DEFS[type];
+    const skins = getMobSkins(type);
+    const parts = def.builder(skins);
+    // per-instance material clones so hurt tint is individual
+    const cloned = parts.materials.map((mm) => mm.clone());
+    const mapping = new Map<THREE.Material, THREE.Material>();
+    parts.materials.forEach((mm, i2) => mapping.set(mm, cloned[i2]));
+    parts.group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mapping.has(mesh.material as THREE.Material)) {
+        mesh.material = mapping.get(mesh.material) as THREE.Material;
+      }
+    });
+    parts.materials = cloned;
+    this.scene.add(parts.group);
+    const shadow = makeShadow(def.width * 0.55, this.scene);
+    const mob: Mob = {
+      type, def,
+      x, y, z, vx: 0, vy: 0, vz: 0,
+      width: def.width, height: def.height,
+      onGround: false, inWater: false,
+      group: parts.group, parts,
+      health: def.health,
+      yaw: Math.random() * Math.PI * 2,
+      targetYaw: 0,
+      state: 'idle',
+      stateTimer: 1 + Math.random() * 3,
+      walkPhase: 0,
+      hurtT: 0, attackCd: 0, ambientCd: 3 + Math.random() * 6,
+      burnTimer: 0, burning: false,
+      fuse: -1, dead: false, deathT: 0,
+      wanderX: x, wanderZ: z,
+    };
+    mob.targetYaw = mob.yaw;
+    parts.shadow = shadow;
+    this.mobs.push(mob);
+    return mob;
+  }
+
+  private trySpawnMob(playerX: number, playerY: number, playerZ: number, sunLevel: number, passiveCount: number, hostileCount: number): void {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 16 + Math.random() * 26;
+    const x = Math.floor(playerX + Math.cos(angle) * dist) + 0.5;
+    const z = Math.floor(playerZ + Math.sin(angle) * dist) + 0.5;
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    // find surface
+    let sy = -1;
+    for (let y = 95; y > 2; y--) {
+      const id = this.world.getBlock(cx, y, cz);
+      if (id !== 0 && id !== BLOCK.WATER) {
+        sy = y;
+        break;
+      }
+    }
+    if (sy < 3) return;
+    const above = this.world.getBlock(cx, sy + 1, cz);
+    const above2 = this.world.getBlock(cx, sy + 2, cz);
+    if (above !== 0 || above2 !== 0) return;
+    const groundId = this.world.getBlock(cx, sy, cz);
+    if (groundId === BLOCK.WATER) return;
+
+    const l = this.world.getLight(cx, sy + 1, cz);
+    if (l < 0) return;
+    const skyL = l >> 4;
+    const blkL = l & 15;
+    const effLight = Math.max(blkL, skyL * sunLevel);
+
+    const wantHostile = hostileCount < 12 && (effLight < 6);
+    const wantPassive = passiveCount < 10 && skyL >= 9 && sunLevel > 0.55 && (groundId === BLOCK.GRASS || groundId === BLOCK.SNOW_GRASS);
+
+    if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
+      const roll = Math.random();
+      const type: MobType = roll < 0.45 ? 'zombie' : roll < 0.75 ? 'skeleton' : 'creeper';
+      this.spawn(type, x, sy + 1, z);
+    } else if (wantPassive) {
+      const roll = Math.random();
+      const type: MobType = roll < 0.3 ? 'pig' : roll < 0.55 ? 'sheep' : roll < 0.8 ? 'cow' : 'chicken';
+      // spawn small herd for passive
+      const herd = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < herd; i++) {
+        this.spawn(type, x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3);
+      }
+    }
+  }
+
+  hurtMob(mob: Mob, dmg: number, kx: number, kz: number): void {
+    if (mob.dead) return;
+    mob.health -= dmg;
+    mob.hurtT = 0.4;
+    const len = Math.hypot(kx, kz) || 1;
+    mob.vx += (kx / len) * 7;
+    mob.vz += (kz / len) * 7;
+    mob.vy = Math.max(mob.vy, 4.4);
+    audio.mobHurt(mob.def.sound);
+    if (mob.def.hostile) {
+      mob.state = 'chase';
+    } else {
+      mob.state = 'flee';
+      mob.stateTimer = 4;
+      mob.wanderX = mob.x + (mob.x - kx) * 10;
+      mob.wanderZ = mob.z + (mob.z - kz) * 10;
+    }
+    if (mob.health <= 0) {
+      mob.dead = true;
+      mob.deathT = 0.45;
+      if (mob.type === 'creeper' && mob.fuse >= 0) mob.fuse = -1;
+    }
+  }
+
+  /** creeper explosion */
+  private explode(x: number, y: number, z: number, cb: MobCallbacks): void {
+    audio.boom();
+    const R = 2.6;
+    for (let bx = Math.floor(x - R); bx <= Math.floor(x + R); bx++)
+      for (let by = Math.floor(y - R); by <= Math.floor(y + R); by++)
+        for (let bz = Math.floor(z - R); bz <= Math.floor(z + R); bz++) {
+          const d = Math.hypot(bx + 0.5 - x, by + 0.5 - y, bz + 0.5 - z);
+          if (d > R) continue;
+          const id = this.world.getBlock(bx, by, bz);
+          if (id !== 0 && id !== BLOCK.BEDROCK && id !== BLOCK.WATER) {
+            this.world.setBlock(bx, by, bz, 0);
+          }
+        }
+    // damage nearby mobs (chain) + player
+    for (const m of this.mobs) {
+      if (m.dead) continue;
+      const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+      if (d < R * 2 && m.type !== 'creeper') {
+        this.hurtMob(m, Math.max(1, Math.round(14 * (1 - d / (R * 2)))), m.x - x, m.z - z);
+      }
+    }
+    const pd = Math.hypot(cb.playerX - x, cb.playerY - y, cb.playerZ - z);
+    if (pd < R * 2) {
+      cb.damagePlayer(Math.max(1, Math.round(16 * (1 - pd / (R * 2)))), x, z);
+    }
+    cb.explodeParticles(x, y, z);
+  }
+
+  update(dt: number, player: AABBEntity & { eyeY(): number }, sunLevel: number, cb: MobCallbacks): void {
+    this.time += dt;
+    // ── spawning ──
+    this.spawnTimer -= dt;
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = 1.6;
+      let passive = 0, hostile = 0;
+      for (const m of this.mobs) {
+        if (m.def.hostile) hostile++; else passive++;
+      }
+      if (this.mobs.length < 22 && Math.random() < 0.5) {
+        this.trySpawnMob(player.x, player.y, player.z, sunLevel, passive, hostile);
+      }
+    }
+
+    // ── mobs ──
+    for (let i = this.mobs.length - 1; i >= 0; i--) {
+      const m = this.mobs[i];
+      const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y, player.z - m.z);
+
+      // despawn far
+      if (distToPlayer > 64) {
+        this.scene.remove(m.group);
+        this.scene.remove(m.parts.shadow);
+        this.mobs.splice(i, 1);
+        continue;
+      }
+
+      // death animation
+      if (m.dead) {
+        m.deathT -= dt;
+        m.group.rotation.z = Math.min(Math.PI / 2, m.group.rotation.z + dt * 6);
+        tint(m.parts.materials, 1, 0.35, 0.35);
+        if (m.deathT <= 0) {
+          for (const drop of m.def.drops) {
+            const n = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+            for (let d = 0; d < n; d++) {
+              cb.spawnDrop(drop.id, m.x, m.y + 0.4, m.z);
+            }
+          }
+          cb.deathParticles(m.x, m.y + m.height / 2, m.z);
+          this.scene.remove(m.group);
+          this.scene.remove(m.parts.shadow);
+          this.mobs.splice(i, 1);
+        }
+        continue;
+      }
+
+      // hurt tint decay
+      if (m.hurtT > 0) {
+        m.hurtT -= dt;
+        tint(m.parts.materials, 1, 0.35, 0.35);
+        if (m.hurtT <= 0) tint(m.parts.materials, 1, 1, 1);
+      }
+
+      // ambient sound
+      m.ambientCd -= dt;
+      if (m.ambientCd <= 0 && distToPlayer < 18) {
+        m.ambientCd = 5 + Math.random() * 9;
+        audio.mobAmbient(m.def.sound, distToPlayer);
+      }
+
+      // ── AI ──
+      m.attackCd -= dt;
+      m.stateTimer -= dt;
+      let moveSpeed = 0;
+      let wantX = 0, wantZ = 0;
+
+      if (!m.def.hostile) {
+        // passive
+        if (m.state === 'flee') {
+          const dx = m.x - player.x;
+          const dz = m.z - player.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed * 1.7;
+          if (m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+        } else if (m.state === 'walk') {
+          const dx = m.wanderX - m.x;
+          const dz = m.wanderZ - m.z;
+          const len = Math.hypot(dx, dz);
+          if (len < 0.8 || m.stateTimer <= 0) {
+            m.state = 'idle';
+            m.stateTimer = 2 + Math.random() * 4;
+          } else {
+            wantX = dx / len; wantZ = dz / len;
+            moveSpeed = m.def.speed;
+          }
+        } else {
+          if (m.stateTimer <= 0) {
+            m.state = 'walk';
+            m.stateTimer = 4 + Math.random() * 5;
+            const a = Math.random() * Math.PI * 2;
+            const r = 3 + Math.random() * 6;
+            m.wanderX = m.x + Math.cos(a) * r;
+            m.wanderZ = m.z + Math.sin(a) * r;
+          }
+        }
+      } else if (m.type === 'zombie') {
+        // burn in sunlight
+        this.updateBurning(m, dt, sunLevel, cb);
+        if (distToPlayer < 24) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed;
+          if (distToPlayer < 1.7 && m.attackCd <= 0) {
+            m.attackCd = 1.1;
+            cb.damagePlayer(m.def.damage, m.x, m.z);
+            audio.zombieAttack();
+          }
+        } else {
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+          }
+        }
+      } else if (m.type === 'skeleton') {
+        this.updateBurning(m, dt, sunLevel, cb);
+        if (distToPlayer < 17) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          // keep distance ~8
+          if (distToPlayer > 9.5) { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed; }
+          else if (distToPlayer < 6) { wantX = -dx / len; wantZ = -dz / len; moveSpeed = m.def.speed * 0.8; }
+          else {
+            // strafe
+            wantX = -dz / len * 0.6; wantZ = dx / len * 0.6;
+            moveSpeed = m.def.speed * 0.5;
+          }
+          if (m.attackCd <= 0 && distToPlayer < 15) {
+            m.attackCd = 2.2;
+            this.shootArrow(m, player);
+          }
+        } else {
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+          }
+        }
+      } else if (m.type === 'creeper') {
+        if (m.fuse >= 0) {
+          // fused: flash + wait
+          m.fuse += dt;
+          const flash = Math.sin(m.fuse * 22) > 0 ? 1 : 0;
+          tint(m.parts.materials, 1, 1 + flash * 1.2, 1 + flash * 1.2);
+          if (distToPlayer > 5) {
+            m.fuse = -1;
+            tint(m.parts.materials, 1, 1, 1);
+          } else if (m.fuse > 1.5) {
+            this.explode(m.x, m.y + 0.8, m.z, cb);
+            this.scene.remove(m.group);
+            this.scene.remove(m.parts.shadow);
+            this.mobs.splice(i, 1);
+            continue;
+          }
+        } else if (distToPlayer < 13) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed;
+          if (distToPlayer < 2.4) {
+            m.fuse = 0;
+            audio.fuseHiss();
+          }
+        } else {
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+          }
+        }
+      }
+
+      // ── movement + physics ──
+      const prevX = m.x, prevZ = m.z;
+      if (moveSpeed > 0) {
+        m.vx += (wantX * moveSpeed - m.vx) * Math.min(1, dt * 8);
+        m.vz += (wantZ * moveSpeed - m.vz) * Math.min(1, dt * 8);
+        m.targetYaw = Math.atan2(wantX, wantZ);
+      } else {
+        m.vx *= Math.pow(0.02, dt);
+        m.vz *= Math.pow(0.02, dt);
+      }
+      m.vy -= 32 * dt;
+      if (m.type === 'chicken') m.vy = Math.max(m.vy, -3.2);
+      moveEntity(this.world, m, dt);
+
+      // jump when blocked (or climb 1 block)
+      if (moveSpeed > 0 && m.onGround) {
+        const blockedXZ = Math.hypot(m.x - prevX, m.z - prevZ) < moveSpeed * dt * 0.3;
+        if (blockedXZ) {
+          m.vy = 8.4;
+        }
+      }
+      if (m.inWater) {
+        m.vy = Math.max(m.vy, 1.8); // swim up
+      }
+
+      // ── visuals ──
+      // smooth yaw
+      let dyaw = m.targetYaw - m.yaw;
+      while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+      while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+      m.yaw += dyaw * Math.min(1, dt * 8);
+      m.group.position.set(m.x, m.y, m.z);
+      m.group.rotation.y = m.yaw;
+
+      // walk animation
+      const hSpeed = Math.hypot(m.vx, m.vz);
+      m.walkPhase += hSpeed * dt * 3.2;
+      const swing = Math.sin(m.walkPhase * 2.4) * Math.min(1, hSpeed / m.def.speed) * 0.65;
+      const legs = m.parts.legs;
+      if (legs.length === 4) {
+        legs[0].rotation.x = swing;
+        legs[3].rotation.x = swing;
+        legs[1].rotation.x = -swing;
+        legs[2].rotation.x = -swing;
+      } else {
+        legs[0].rotation.x = swing;
+        if (legs[1]) legs[1].rotation.x = -swing;
+      }
+      // zombie arms forward
+      for (const arm of m.parts.arms) {
+        const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+        if (pivot) {
+          pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
+          pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
+        }
+      }
+      // head bob
+      m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
+
+      // shadow
+      m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
+      const shadowScale = m.onGround ? 1 : Math.max(0.4, 1 - Math.min(1, Math.abs(m.vy) * 0.06));
+      m.parts.shadow.scale.setScalar(shadowScale);
+
+      // burning visual
+      if (m.burning && Math.random() < dt * 12) {
+        cb.fireParticle(m.x + (Math.random() - 0.5) * 0.5, m.y + Math.random() * m.height, m.z + (Math.random() - 0.5) * 0.5);
+      }
+    }
+
+    // ── arrows ──
+    for (let i = this.arrows.length - 1; i >= 0; i--) {
+      const a = this.arrows[i];
+      a.life -= dt;
+      if (a.life <= 0 || a.stuck > 0.8) {
+        this.scene.remove(a.mesh);
+        this.arrows.splice(i, 1);
+        continue;
+      }
+      if (a.stuck > 0) {
+        a.stuck += dt;
+        continue;
+      }
+      a.vy -= 18 * dt;
+      const nx = a.x + a.vx * dt;
+      const ny = a.y + a.vy * dt;
+      const nz = a.z + a.vz * dt;
+      // block hit
+      const bid = this.world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+      if (bid !== 0) {
+        a.stuck = 0.001;
+        continue;
+      }
+      a.x = nx; a.y = ny; a.z = nz;
+      // player hit
+      const px = player.x, py = player.y + player.height * 0.5, pz = player.z;
+      if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 0.75) {
+        cb.damagePlayer(3, a.x - a.vx, a.z - a.vz);
+        a.life = 0;
+        continue;
+      }
+      a.mesh.position.set(a.x, a.y, a.z);
+      a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
+    }
+  }
+
+  private updateBurning(m: Mob, dt: number, sunLevel: number, _cb: MobCallbacks): void {
+    void _cb;
+    const lx = Math.floor(m.x);
+    const ly = Math.floor(m.y + 1);
+    const lz = Math.floor(m.z);
+    const light = this.world.getLight(lx, ly, lz);
+    const skyL = light < 0 ? 0 : light >> 4;
+    const inSunlight = skyL === 15 && sunLevel > 0.82;
+    if (inSunlight) {
+      m.burnTimer += dt;
+      m.burning = true;
+      if (m.burnTimer > 1) {
+        m.burnTimer = 0;
+        this.hurtMob(m, 1, 0, 0.01);
+      }
+    } else {
+      m.burning = false;
+      m.burnTimer = 0;
+    }
+  }
+
+  private shootArrow(m: Mob, player: AABBEntity & { eyeY(): number }): void {
+    const ox = m.x;
+    const oy = m.y + 1.5;
+    const oz = m.z;
+    const tx = player.x;
+    const ty = player.eyeY() - 0.2;
+    const tz = player.z;
+    const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+    const dist = Math.hypot(dx, dy, dz);
+    const speed = 18;
+    const lead = dist / speed;
+    const vx = dx / dist * speed + (Math.random() - 0.5) * 1.2;
+    const vy = dy / dist * speed + lead * 9 + (Math.random() - 0.5) * 0.8;
+    const vz = dz / dist * speed + (Math.random() - 0.5) * 1.2;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.55), this.arrowMat);
+    mesh.position.set(ox, oy, oz);
+    this.scene.add(mesh);
+    this.arrows.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 8, stuck: 0, mesh });
+    audio.bowShoot(dist);
+  }
+}
+
+function tint(mats: THREE.MeshLambertMaterial[], r: number, g: number, b: number): void {
+  for (const m of mats) m.color.setRGB(r, g, b);
+}
+
+/** idle<->walk transitions for hostile mobs far from player */
+function wanderAI(m: Mob, _dt: number): void {
+  void _dt;
+  if (m.state === 'chase' || m.state === 'flee') {
+    m.state = 'idle';
+    m.stateTimer = 1 + Math.random() * 2;
+  }
+  if (m.state === 'idle' && m.stateTimer <= 0) {
+    m.state = 'walk';
+    m.stateTimer = 4 + Math.random() * 5;
+    const a = Math.random() * Math.PI * 2;
+    const r = 3 + Math.random() * 6;
+    m.wanderX = m.x + Math.cos(a) * r;
+    m.wanderZ = m.z + Math.sin(a) * r;
+  }
+}

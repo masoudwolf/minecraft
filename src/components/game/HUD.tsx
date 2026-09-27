@@ -3,7 +3,8 @@
 // ─── HUD: crosshair, hotbar, hearts, toast, underwater overlay ───────────────
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/game/state';
-import { BLOCK, getBlockDef } from '@/game/blocks';
+import { getBlockDef } from '@/game/blocks';
+import { isItemId, getItemIcon, getItemDef } from '@/game/items';
 import { getBlockIcon } from '@/game/textures/atlas';
 import { Heart } from './ui';
 
@@ -13,14 +14,15 @@ export function HUD() {
   const prevHealth = useRef(20);
   const hurtFlash = useRef<HTMLDivElement>(null);
 
-  // hurt red flash
+  // hurt red flash (restart-safe, no cancellable timeout)
   useEffect(() => {
     if (hud.health < prevHealth.current && hurtFlash.current) {
       const el = hurtFlash.current;
+      el.style.transition = 'none';
       el.style.opacity = '0.45';
-      const t = setTimeout(() => { el.style.opacity = '0'; }, 180);
-      prevHealth.current = hud.health;
-      return () => clearTimeout(t);
+      void el.offsetWidth; // force reflow to restart
+      el.style.transition = 'opacity 0.5s ease-out';
+      el.style.opacity = '0';
     }
     prevHealth.current = hud.health;
   }, [hud.health]);
@@ -53,19 +55,37 @@ export function HUD() {
 
       {/* bottom bars */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
-        {/* health hearts */}
-        <div className="flex w-[366px] justify-start gap-[1px] pb-0.5">
-          {Array.from({ length: 10 }, (_, i) => {
-            const hp = hud.health - i * 2;
-            return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
-          })}
+        {/* status bars row: hearts left, hunger right (like MC) */}
+        <div className="flex w-[366px] items-end justify-between pb-0.5">
+          <div className="flex gap-[1px]">
+            {Array.from({ length: 10 }, (_, i) => {
+              const hp = hud.health - i * 2;
+              return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
+            })}
+          </div>
+          <div className="flex flex-row-reverse gap-[1px]">
+            {Array.from({ length: 10 }, (_, i) => {
+              const hg = hud.hunger - i * 2;
+              return <Drumstick key={i} state={hg >= 2 ? 'full' : hg === 1 ? 'half' : 'empty'} />;
+            })}
+          </div>
         </div>
 
         {/* hotbar */}
         <div className="flex" style={{ background: 'rgba(0,0,0,0.35)', border: '2px solid rgba(0,0,0,0.8)', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.15)' }}>
           {hud.hotbar.map((slot, i) => {
-            const def = slot.blockId > 0 ? getBlockDef(slot.blockId) : null;
-            const icon = def ? getBlockIcon(def.id, Array.isArray(def.tiles) ? def.tiles[2] : def.tiles, Array.isArray(def.tiles) ? def.tiles[4] : def.tiles) : null;
+            let icon: string | null = null;
+            let name = '';
+            if (slot.blockId > 0 && isItemId(slot.blockId)) {
+              icon = getItemIcon(slot.blockId);
+              name = 'item';
+            } else if (slot.blockId > 0) {
+              const def = getBlockDef(slot.blockId);
+              if (def) {
+                icon = getBlockIcon(def.id, Array.isArray(def.tiles) ? def.tiles[2] : def.tiles, Array.isArray(def.tiles) ? def.tiles[4] : def.tiles);
+                name = def.name;
+              }
+            }
             const selected = hud.selected === i;
             return (
               <div
@@ -78,7 +98,7 @@ export function HUD() {
                   zIndex: selected ? 2 : 1,
                 }}
               >
-                {icon && <img src={icon} alt={def?.name} className="h-[36px] w-[36px]" style={{ imageRendering: 'pixelated' }} draggable={false} />}
+                {icon && <img src={icon} alt={name} className="h-[36px] w-[36px]" style={{ imageRendering: 'pixelated' }} draggable={false} />}
                 {slot.count > 1 && (
                   <span
                     className="absolute bottom-0 right-0.5 text-[13px] font-bold text-white"
@@ -103,9 +123,12 @@ function SelectedName() {
   const hud = useGameStore((s) => s.hud);
   const slot = hud.hotbar[hud.selected];
   const blockId = slot?.blockId ?? 0;
-  const def = blockId > 0 ? getBlockDef(blockId) : null;
-  if (!def) return null;
-  return <FadeText key={`${hud.selected}:${blockId}`} text={def.name} />;
+  if (blockId <= 0) return null;
+  const name = isItemId(blockId)
+    ? (getItemDef(blockId)?.name ?? '')
+    : (getBlockDef(blockId)?.name ?? '');
+  if (!name) return null;
+  return <FadeText key={`${hud.selected}:${blockId}`} text={name} />;
 }
 
 function FadeText({ text }: { text: string }) {
@@ -122,5 +145,45 @@ function FadeText({ text }: { text: string }) {
     >
       {text}
     </div>
+  );
+}
+
+/** pixel drumstick for hunger bar */
+function Drumstick({ state }: { state: 'full' | 'half' | 'empty' }) {
+  // 7x7 pixel drumstick (meat top-right, bone bottom-left)
+  const meat = [
+    [0, 1, 1, 1, 0],
+    [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1],
+    [0, 1, 1, 1, 1],
+    [0, 0, 1, 1, 0],
+  ];
+  const cell = 2;
+  return (
+    <svg width={16} height={14} viewBox="0 0 16 14" className="drop-shadow-[1px_1px_0_rgba(0,0,0,0.7)]">
+      {/* bone */}
+      <rect x={1} y={9} width={5} height={2} fill={state === 'empty' ? '#3a3020' : '#e8e2d0'} />
+      <rect x={0} y={10} width={2} height={3} fill={state === 'empty' ? '#3a3020' : '#e8e2d0'} />
+      <rect x={3} y={10} width={2} height={3} fill={state === 'empty' ? '#3a3020' : '#e8e2d0'} />
+      {meat.map((row, y) =>
+        row.map((v, x) =>
+          v === 1 ? (
+            <rect
+              key={`${x}-${y}`}
+              x={(x + 2) * cell}
+              y={y * cell}
+              width={cell}
+              height={cell}
+              fill={
+                state === 'full' ? '#b5652a'
+                  : state === 'half' ? (x >= 2 ? '#b5652a' : '#4a2a10')
+                    : '#4a2a10'
+              }
+            />
+          ) : null
+        )
+      )}
+      {state !== 'empty' && <rect x={6} y={1} width={2} height={2} fill="#e08a4a" />}
+    </svg>
   );
 }

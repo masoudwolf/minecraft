@@ -138,3 +138,50 @@ Stage Summary:
 - PHASE 1 COMPLETE: playable Minecraft-like core loop (mine→collect→build), authentic visuals
 - Known minor items for next rounds: headless FPS ~8 (software GL — likely fine on real GPU; consider worker meshing later), clouds drift wrap jump every 12 blocks, footstep sounds only
 - NEXT (Phase 2 per roadmap): mobs (box models, AI, combat), hunger/food, full inventory + 2x2/3x3 crafting, tools+tiers, torch block-light placements
+
+---
+Task ID: 3 (Phase 2a — Mobs, Combat, Hunger, Items)
+Agent: main (cron round 1)
+Task: QA Phase 1 + build mob framework, passive/hostile mobs, combat, hunger/food, item system
+
+Work Log:
+- QA first: server 200, lint pass, engine loads (121 chunks), no console errors
+- Files created:
+  - src/game/items.ts — non-block item registry (id>=256): raw porkchop/beef/chicken/mutton, leather, feather, stick, coal; 16x16 pixel-art icons (cached dataURLs) + drop-sprite canvases
+  - src/game/entities/mobSkins.ts — procedural mob skins (canvas): pig/cow/sheep/chicken/zombie/creeper/skeleton; each has head(face: eyes/snout/beak/mouth/ribs)+body+limb textures, NearestFilter
+  - src/game/entities/mobs.ts — MobManager + Mob entities:
+    * Box models via part builders (quadruped/humanoid/creeper), per-instance cloned materials (individual hurt tint), part userData tags
+    * Walk animation (diagonal leg pairs, zombie arms forward with sway), head bob, smooth yaw turn
+    * AI: passive idle/walk/flee(on hurt); zombie chase<24 + melee 3dmg/1.1s + knockback; skeleton keep-distance 6-9.5 + strafe + arrow projectiles (gravity, inaccuracy, hit player 3dmg); creeper chase<13 -> fuse 1.5s (white flash + hiss, aborts if player escapes) -> explosion (radius 2.6 destroys blocks except bedrock/water, damages player+mobs by distance, chain reactions)
+    * Spawning: every 1.6s, 16-42 blocks from player; hostile if effective light <6 (night/caves), passive on grass/snow-grass with daylight, herd spawns, caps 12 hostile/10 passive, despawn >64
+    * Sun burning: zombie/skeleton with skyLight==15 && sunLevel>0.82 take 1dmg/s + fire particles
+    * Death: fall-over rotation + red tint 0.45s -> drops (porkchop/beef/mutton/leather/feather/chicken) + particles
+    * Circle shadow blobs under mobs; chicken slow-fall; mobs swim up in water; auto-jump when blocked
+    * Arrows: small box meshes, lookAt velocity, stuck-on-block, 8s life
+- Files updated:
+  - audio.ts: mobAmbient/mobHurt per species, zombieAttack, fuseHiss, boom, bowShoot, eat, burp (distance attenuation)
+  - drops.ts: non-block items render as flat spinning sprites (CanvasTexture, alphaTest)
+  - engine.ts: MobManager integration (setupWorld/dispose/frameUpdate callbacks incl. explosion particles + fire particles), attack-mob priority in mineTick (raycastMob within 3.4, cooldown 0.42, 2dmg hand), eating (RMB with food when hunger<19.6: +hunger, sounds, count--), hunger drain (sprint .085/s walk .012/s idle .0015 jump .05), regen (>=18 hunger: +1hp/2s, -0.4 hunger), starve (0 hunger: 1dmg/3s to 2 hearts), HUD hunger sync
+  - state.ts: hud.hunger, debug.mobs
+  - HUD.tsx: hunger drumstick row (pixel SVG, right side like MC), item icons in hotbar via getItemIcon, held item = flat sprite in hand
+  - DebugOverlay: mobs count line, version 0.2.0
+- FIXED: hurt-flash stuck bug (cancellable timeout -> reflow-restart transition)
+- MobManager.debugSpawn() public QA helper added
+
+QA (agent-browser, verified):
+- Mobs render beautifully: cow (patches+face), pig (snout+eyes), sheep, chicken ✓
+- Zombie killed AFK player at night -> death screen ✓ (hostile AI proof)
+- Cow combat: 3 hits (10->2hp) via aimed attacks, knockback visible ✓
+- Cow killed -> dropped beef(257)x2 + leather(260)x2 -> picked up into hotbar ✓
+- Eating: RMB beef -> hunger 10->13, count-- ✓; beef sprite in hand ✓
+- Creeper: chased -> fused -> EXPLODED: player 20->11hp, terrain crater visible, chain-killed a pig -> porkchop drop ✓
+- 6 zombies burned in daylight (hp 20->15 in ~4s), one chased ✓
+- Skeleton: 2 arrow hits landed (health -6) ✓
+- Natural ambient spawning works (passive herds appeared in day) ✓
+- Hunger bar renders (drumsticks deplete with sprint) ✓
+- No console errors; lint pass; server 200
+
+Stage Summary:
+- PHASE 2a COMPLETE: living world with 7 mob types, combat, hunger/food loop
+- Deferred to next rounds: full inventory screen (E) + crafting 2x2/3x3 + tools/tiers (Phase 2b), spider+enderman, sheep wool color, hold-to-eat animation, mob spawn persistence, clouds slightly darker at night
+- Recommended next (Task 4): inventory UI + crafting system + tools (mining speed multipliers + tool gating), then furnace/torch Phase 3

@@ -117,6 +117,68 @@ class AudioManager {
   resume(): void {
     this.ensure();
   }
+
+  // ── mob sounds ─────────────────────────────────────────────────────────────
+  private withDistance(vol: number, dist: number): number {
+    return vol * Math.max(0.12, 1 - dist / 20);
+  }
+
+  mobAmbient(kind: string, dist = 5): void {
+    const v = this.withDistance(0.16, dist);
+    if (v <= 0.01) return;
+    switch (kind) {
+      case 'oink': this.tone(280 + Math.random() * 80, 0.12, v, 'square', 190); break;
+      case 'moo': this.tone(150 + Math.random() * 30, 0.45, v * 1.2, 'sawtooth', 95); break;
+      case 'baa': this.tone(240, 0.32, v, 'square', 200); setTimeout(() => this.tone(210, 0.25, v * 0.8, 'square', 180), 140); break;
+      case 'cluck': this.tone(520 + Math.random() * 200, 0.07, v, 'square', 700); break;
+      case 'groan': this.tone(95 + Math.random() * 25, 0.65, v * 1.3, 'sawtooth', 68); this.noiseBurst(220, 0.5, v * 0.5, 'lowpass'); break;
+      case 'rattle': this.noiseBurst(1800, 0.14, v * 0.8, 'highpass', 3); setTimeout(() => this.noiseBurst(1400, 0.12, v * 0.6, 'highpass', 3), 110); break;
+      case 'hiss': break; // creepers are silent until fuse
+    }
+  }
+
+  mobHurt(kind: string): void {
+    const v = 0.24;
+    switch (kind) {
+      case 'oink': this.tone(340, 0.1, v, 'square', 240); break;
+      case 'moo': this.tone(170, 0.3, v, 'sawtooth', 110); break;
+      case 'baa': this.tone(260, 0.25, v, 'square', 190); break;
+      case 'cluck': this.tone(680, 0.09, v, 'square', 420); break;
+      case 'groan': this.tone(110, 0.4, v * 1.2, 'sawtooth', 75); break;
+      case 'rattle': this.noiseBurst(2000, 0.18, v, 'highpass', 2.5); break;
+      case 'hiss': this.noiseBurst(900, 0.2, v, 'bandpass', 1.5); break;
+    }
+  }
+
+  zombieAttack(): void {
+    this.noiseBurst(300, 0.18, 0.3, 'lowpass', 0.8);
+    this.tone(130, 0.22, 0.24, 'sawtooth', 85);
+  }
+
+  fuseHiss(): void {
+    this.noiseBurst(2600, 1.4, 0.3, 'highpass', 0.8, 1.4);
+  }
+
+  boom(): void {
+    this.noiseBurst(120, 0.9, 0.6, 'lowpass', 0.5, 0.25);
+    this.tone(70, 0.7, 0.5, 'sine', 28);
+  }
+
+  bowShoot(dist = 5): void {
+    const v = this.withDistance(0.3, dist);
+    this.noiseBurst(1200, 0.1, v, 'bandpass', 2, 0.4);
+    this.tone(400, 0.08, v * 0.5, 'square', 700);
+  }
+
+  eat(): void {
+    this.noiseBurst(500, 0.09, 0.24, 'lowpass', 1);
+    setTimeout(() => this.noiseBurst(450, 0.09, 0.22, 'lowpass', 1), 160);
+    setTimeout(() => this.noiseBurst(520, 0.1, 0.2, 'lowpass', 1), 320);
+  }
+
+  burp(): void {
+    this.tone(140, 0.25, 0.3, 'sawtooth', 70);
+  }
 }
 
 export const audio = new AudioManager();

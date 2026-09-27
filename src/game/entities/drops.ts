@@ -1,6 +1,7 @@
-// ─── Item drop entities (spinning mini-blocks with magnet pickup) ────────────
+// ─── Item drop entities (spinning blocks + flat item sprites) ───────────────
 import * as THREE from 'three';
 import { getBlockDef, isLiquid } from '../blocks';
+import { isItemId, getItemIconCanvas } from '../items';
 import { moveEntity, type AABBEntity } from '../physics';
 
 export interface ItemStack {
@@ -46,8 +47,9 @@ export class DropManager {
   drops: DropEntity[] = [];
   private scene: THREE.Scene;
   private world: { getBlock(x: number, y: number, z: number): number };
-  private geoCache = new Map<number, THREE.BoxGeometry>();
+  private geoCache = new Map<number, THREE.BufferGeometry>();
   private mat: THREE.Material;
+  private itemMatCache = new Map<number, THREE.MeshLambertMaterial>();
 
   constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number }, atlasTexture: THREE.Texture) {
     this.scene = scene;
@@ -66,7 +68,23 @@ export class DropManager {
 
   spawn(blockId: number, x: number, y: number, z: number, count = 1): void {
     if (blockId === 0) return;
-    const mesh = new THREE.Mesh(this.geoFor(blockId), this.mat);
+    let mesh: THREE.Mesh;
+    if (isItemId(blockId)) {
+      // flat sprite for non-block items
+      let mat = this.itemMatCache.get(blockId);
+      if (!mat) {
+        const tex = new THREE.CanvasTexture(getItemIconCanvas(blockId));
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
+        this.itemMatCache.set(blockId, mat);
+      }
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), mat);
+    } else {
+      mesh = new THREE.Mesh(this.geoFor(blockId), this.mat);
+    }
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
     const e: DropEntity = {
@@ -126,9 +144,10 @@ export class DropManager {
         continue;
       }
 
-      // visuals: bob + spin
+      // visuals: bob + spin (items also tilt)
       d.mesh.position.set(d.x, d.y + DROP_SIZE / 2 + Math.sin(d.age * 2.5) * 0.05 + DROP_SIZE * 0.2, d.z);
       d.mesh.rotation.y = d.age * 1.4;
+      if (isItemId(d.stack.blockId)) d.mesh.rotation.y = Math.sin(d.age * 1.4) * 0.6;
     }
   }
 

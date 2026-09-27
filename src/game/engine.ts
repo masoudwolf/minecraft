@@ -6,10 +6,13 @@ import { BLOCK, getBlockDef, isLiquid } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
+import { MobManager } from './entities/mobs';
+import { getItemDef, isItemId } from './items';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
 import { audio, type MaterialSound } from './audio';
 import { getAtlas, getCrackTextures, tileAvgColor } from './textures/atlas';
+import { getItemIconCanvas } from './items';
 import { useGameStore } from './state';
 
 const SAVE_KEY = 'voxelcraft.save';
@@ -29,6 +32,7 @@ export class Game {
   world!: World;
   player!: Player;
   drops!: DropManager;
+  mobs!: MobManager;
   particles!: ParticleSystem;
   sky!: SkySystem;
 
@@ -40,6 +44,10 @@ export class Game {
   private mineProgress = 0;
   private mineTarget: RayHit | null = null;
   private placeCooldown = 0;
+  private attackCooldown = 0;
+  private eatCooldown = 0;
+  private hungerRegenTimer = 0;
+  private starveTimer = 0;
   private swingT = 0;
   private swingActive = false;
   private stepTimer = 0;
@@ -146,12 +154,14 @@ export class Game {
       }
     }
     this.drops?.clear();
+    this.mobs?.clear();
     this.world = new World(seed, save?.edits);
     this.scene.add(this.world.group);
     this.sky = new SkySystem(this.scene, seed);
     this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
+    this.mobs = new MobManager(this.scene, this.world);
     this.player = new Player(this.camera);
 
     // spawn position
@@ -369,6 +379,22 @@ export class Game {
   }
 
   private mineTick(dt: number): void {
+    // mob attack takes priority over mining
+    if (this.mining && this.attackCooldown <= 0) {
+      const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
+      const dir = this.player.forwardVector();
+      const hit = this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      if (hit) {
+        this.attackCooldown = 0.42;
+        this.startSwing();
+        const kx = hit.mob.x - this.player.x;
+        const kz = hit.mob.z - this.player.z;
+        this.mobs.hurtMob(hit.mob, 2, kx, kz);
+        this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
+        this.crackMesh.visible = false;
+        return;
+      }
+    }
     if (!this.mining || !this.target) { this.crackMesh.visible = false; return; }
     // target changed? reset progress
     const t = this.target;
@@ -414,6 +440,22 @@ export class Game {
     if (!this.target || this.placeCooldown > 0) return;
     const slot = this.player.hotbar[this.player.selected];
     if (!slot || slot.blockId === 0 || slot.count <= 0) return;
+    // eating food items
+    if (isItemId(slot.blockId)) {
+      const itemDef = getItemDef(slot.blockId);
+      if (itemDef?.food && this.player.hunger < 19.6 && this.eatCooldown <= 0) {
+        this.eatCooldown = 1.4;
+        this.player.hunger = Math.min(20, this.player.hunger + itemDef.food);
+        audio.eat();
+        window.setTimeout(() => audio.burp(), 700);
+        this.startSwing();
+        slot.count--;
+        if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+        this.syncHUD();
+        this.updateHandMesh();
+      }
+      return;
+    }
     const bx = this.target.x + this.target.nx;
     const by = this.target.y + this.target.ny;
     const bz = this.target.z + this.target.nz;
@@ -505,7 +547,15 @@ export class Game {
       this.handMesh.geometry.dispose();
       this.handMesh = null;
     }
-    if (id > 0) {
+    if (id > 0 && isItemId(id)) {
+      const tex = new THREE.CanvasTexture(getItemIconCanvas(id));
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const geo = new THREE.PlaneGeometry(0.42, 0.42);
+      this.handMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+    } else if (id > 0) {
       const geo = createBlockGeometry(id, 0.42);
       this.handMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: getAtlas().texture }));
     } else {
@@ -596,13 +646,16 @@ export class Game {
 
   // ── HUD sync ───────────────────────────────────────────────────────────────
   private lastHudHealth = -1;
+  private lastHudHunger = -1;
   private lastHotbarHash = '';
   private syncHUD(force = false): void {
     const store = useGameStore.getState();
     const hp = Math.ceil(this.player.health);
-    if (hp !== this.lastHudHealth || force) {
+    const hg = Math.round(this.player.hunger);
+    if (hp !== this.lastHudHealth || hg !== this.lastHudHunger || force) {
       this.lastHudHealth = hp;
-      store.setHud({ health: hp });
+      this.lastHudHunger = hg;
+      store.setHud({ health: hp, hunger: hg });
     }
     const hash = this.player.hotbar.map((s) => s.blockId + ':' + s.count).join(',') + '|' + this.player.selected;
     if (hash !== this.lastHotbarHash || force) {
@@ -709,6 +762,16 @@ export class Game {
     // hurt cooldown decay
     if (p.hurtCooldown > 0) p.hurtCooldown -= step;
 
+    // ── hunger drain ──
+    if (p.sprinting && (forward !== 0 || strafe !== 0)) {
+      p.hunger = Math.max(0, p.hunger - 0.085 * step);
+    } else if (forward !== 0 || strafe !== 0) {
+      p.hunger = Math.max(0, p.hunger - 0.012 * step);
+    } else {
+      p.hunger = Math.max(0, p.hunger - 0.0015 * step);
+    }
+    if (wishJump && p.onGround) p.hunger = Math.max(0, p.hunger - 0.05);
+
     // void damage
     if (p.y < -8) {
       p.damage(4);
@@ -729,21 +792,88 @@ export class Game {
     // camera
     p.applyCamera(this.settings.fov, 8, dt);
 
+    // cooldowns
+    this.placeCooldown -= dt;
+    this.attackCooldown -= dt;
+    this.eatCooldown -= dt;
+
+    // hunger regen / starve
+    this.hungerRegenTimer += dt;
+    if (this.hungerRegenTimer > 2) {
+      this.hungerRegenTimer = 0;
+      if (p.hunger >= 18 && p.health < p.maxHealth) {
+        p.heal(1);
+        p.hunger = Math.max(0, p.hunger - 0.4);
+      }
+    }
+    this.starveTimer += dt;
+    if (this.starveTimer > 3) {
+      this.starveTimer = 0;
+      if (p.hunger <= 0 && p.health > 2) {
+        p.damage(1);
+        audio.hurt();
+      }
+    }
+
     // interaction
     this.updateTarget();
-    this.placeCooldown -= dt;
     this.mineTick(dt);
 
     // drops + particles
     this.drops.update(dt, p.entity, (stack) => {
       const picked = this.tryPickup(stack);
       if (picked) {
-        const def = getBlockDef(stack.blockId);
-        if (def) this.showToast(def.name + ' ×' + stack.count);
+        const name = isItemId(stack.blockId)
+          ? (getItemDef(stack.blockId)?.name ?? 'Item')
+          : (getBlockDef(stack.blockId)?.name ?? 'Block');
+        this.showToast(name + ' ×' + stack.count);
       }
       return picked;
     });
     this.particles.update(dt);
+
+    // mobs
+    if (this.mobs) {
+      const eyeY = p.eyeY();
+      this.mobs.update(dt, {
+        x: p.x, y: p.y, z: p.z,
+        vx: 0, vy: 0, vz: 0,
+        width: 0.6, height: 1.8,
+        onGround: p.onGround, inWater: p.inWater,
+        eyeY: () => eyeY,
+      }, this.sky.sunLevel, {
+        damagePlayer: (amount, fx, fz) => {
+          if (amount <= 0) return;
+          p.damage(amount);
+          audio.hurt();
+          // knockback away from source
+          const kx = p.x - fx;
+          const kz = p.z - fz;
+          const len = Math.hypot(kx, kz) || 1;
+          p.entity.vx += (kx / len) * 6.5;
+          p.entity.vz += (kz / len) * 6.5;
+          p.entity.vy = Math.max(p.entity.vy, 4.2);
+        },
+        spawnDrop: (itemId, dx, dy, dz) => {
+          this.drops.spawn(itemId, dx, dy, dz, 1);
+        },
+        explodeParticles: (ex, ey, ez) => {
+          for (let i = 0; i < 3; i++) {
+            this.particles.burstBlockBreak(ex - 0.5 + i * 0.5, ey, ez, [0.35, 0.33, 0.3]);
+          }
+          this.particles.burstLand(ex, ey, ez, [0.2, 0.2, 0.2], 20);
+        },
+        deathParticles: (dx2, dy2, dz2) => {
+          this.particles.burstLand(dx2, dy2, dz2, [0.85, 0.25, 0.25], 10);
+        },
+        fireParticle: (fx2, fy2, fz2) => {
+          this.particles.spawnParticle(fx2, fy2, fz2, (Math.random() - 0.5) * 0.6, 1.6 + Math.random(), (Math.random() - 0.5) * 0.6, [1, 0.45, 0.1], 0.09, 0.5, -2);
+        },
+        playerX: p.x,
+        playerY: p.y,
+        playerZ: p.z,
+      });
+    }
 
     // sky + fog + lighting uniforms
     this.sky.update(dt, this.camera, this.scene, 60, 130);
@@ -814,6 +944,7 @@ export class Game {
       facing,
       targetBlock: targetName,
       chunks: this.world.chunks.size,
+      mobs: this.mobs ? this.mobs.count : 0,
       time: getTimeLabel(this.sky.time),
       tris: this.renderer.info.render.triangles,
     });
@@ -858,6 +989,7 @@ export class Game {
     }
     this.particles?.dispose();
     this.drops?.clear();
+    this.mobs?.clear();
     this.renderer.dispose();
   }
 }

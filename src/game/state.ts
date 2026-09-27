@@ -11,6 +11,7 @@ export interface DebugInfo {
   facing: string;
   targetBlock: string;
   chunks: number;
+  mobs: number;
   time: string;
   tris: number;
 }
@@ -28,6 +29,7 @@ export interface HUDState {
   hotbar: { blockId: number; count: number }[];
   selected: number;
   health: number;
+  hunger: number;
   underwater: boolean;
   loadingProgress: number;
   loadingLabel: string;
@@ -74,10 +76,10 @@ export const useGameStore = create<GameStore>((set) => ({
   screen: 'menu',
   prevScreen: 'menu',
   hasSave: false,
-  debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'south', targetBlock: '—', chunks: 0, time: '06:00', tris: 0 },
+  debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'north', targetBlock: '—', chunks: 0, mobs: 0, time: '06:00', tris: 0 },
   debugVisible: false,
   settings: DEFAULT_SETTINGS,
-  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, underwater: false, loadingProgress: 0, loadingLabel: '' },
+  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '' },
   toast: null,
 
   setScreen: (s) => set((st) => ({ screen: s, prevScreen: st.screen })),
