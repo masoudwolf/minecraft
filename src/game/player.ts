@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from './physics';
 import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPEED, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_EYE } from './constants';
+import { getArmorDef } from './items';
+import { audio } from './audio';
 import type { GameMode } from './state';
 
 export interface HotbarSlot {
@@ -38,6 +40,8 @@ export class Player {
   hotbar: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
   /** main inventory 27 slots (hotbar is slots 0..8) */
   main: HotbarSlot[] = Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
+  /** equipped armor: [helmet, chest, legs, boots] (null = empty) */
+  armor: (HotbarSlot | null)[] = [null, null, null, null];
   selected = 0;
 
   private camera: THREE.PerspectiveCamera;
@@ -64,6 +68,16 @@ export class Player {
   get vz(): number { return this.entity.vz; }
 
   get isCreative(): boolean { return this.gameMode === 'creative'; }
+
+  /** total armor points across equipped pieces (max 20) */
+  get armorPoints(): number {
+    let pts = 0;
+    for (const piece of this.armor) {
+      if (!piece || piece.blockId <= 0) continue;
+      pts += getArmorDef(piece.blockId)?.points ?? 0;
+    }
+    return Math.min(20, pts);
+  }
 
   eyeY(): number {
     return this.entity.y + (this.sneaking ? PLAYER_EYE - 0.25 : PLAYER_EYE);
@@ -178,7 +192,25 @@ export class Player {
   damage(amount: number): void {
     if (this.isCreative) return; // creative players are invulnerable
     if (this.dead || this.hurtCooldown > 0) return;
-    this.health = Math.max(0, this.health - amount);
+    // armor damage reduction (MC formula: each point = 4% reduction, min 1 dmg)
+    let dmg = amount;
+    if (amount > 0) {
+      const pts = this.armorPoints;
+      if (pts > 0) dmg = Math.max(1, Math.round(amount * (1 - pts * 0.04)));
+      // armor wear: every equipped piece loses 1 durability per hit
+      for (let i = 0; i < 4; i++) {
+        const piece = this.armor[i];
+        if (!piece || piece.blockId <= 0) continue;
+        const def = getArmorDef(piece.blockId);
+        if (!def) continue;
+        piece.dur = (piece.dur ?? def.dur) - 1;
+        if (piece.dur <= 0) {
+          this.armor[i] = null;
+          audio.breakBlock('glass');
+        }
+      }
+    }
+    this.health = Math.max(0, this.health - dmg);
     this.hurtCooldown = 0.5;
     if (this.health <= 0) this.dead = true;
   }

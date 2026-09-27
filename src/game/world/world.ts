@@ -539,10 +539,12 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     attribute float aShade;
     attribute float aSky;
     attribute float aBlock;
+    attribute vec3 aTint;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
     varying float vBlock;
+    varying vec3 vTint;
     varying float vFogDepth;
     uniform float uTime;
     uniform float uWave;
@@ -551,6 +553,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       vShade = aShade;
       vSky = aSky;
       vBlock = aBlock;
+      vTint = aTint;
       vec3 pos = position;
       if (uWave > 0.5) {
         pos.y += sin(uTime * 1.6 + position.x * 0.9 + position.z * 0.7) * 0.045 - 0.05;
@@ -571,6 +574,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     varying float vShade;
     varying float vSky;
     varying float vBlock;
+    varying vec3 vTint;
     varying float vFogDepth;
     void main() {
       vec4 tex = texture2D(uAtlas, vUv);
@@ -578,7 +582,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       float light = max(vBlock, vSky * uSunLevel);
       light = clamp(light, 0.045, 1.0);
       float l = pow(light, 1.15);
-      vec3 col = tex.rgb * vShade * l;
+      vec3 col = tex.rgb * vTint * vShade * l;
       float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
       col = mix(col, uFogColor, fogF);
       gl_FragColor = vec4(col, tex.a);

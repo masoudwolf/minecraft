@@ -20,6 +20,8 @@ export interface ItemDef {
   food?: number;
   /** tool stats (tools only) */
   tool?: ToolDef;
+  /** armor stats (armor only) */
+  armor?: ArmorDef;
   /** draw 16x16 pixel-art icon; returns canvas */
   icon: (ctx: CanvasRenderingContext2D) => void;
 }
@@ -68,7 +70,100 @@ export const ITEM = {
   STRING: 298,
   SPIDER_EYE: 299,
   ENDER_PEARL: 300,
+  // armor 301..316 (4 tiers x 4 slots)
+  LEATHER_HELMET: 301,
+  LEATHER_CHESTPLATE: 302,
+  LEATHER_LEGGINGS: 303,
+  LEATHER_BOOTS: 304,
+  IRON_HELMET: 305,
+  IRON_CHESTPLATE: 306,
+  IRON_LEGGINGS: 307,
+  IRON_BOOTS: 308,
+  GOLD_HELMET: 309,
+  GOLD_CHESTPLATE: 310,
+  GOLD_LEGGINGS: 311,
+  GOLD_BOOTS: 312,
+  DIAMOND_HELMET: 313,
+  DIAMOND_CHESTPLATE: 314,
+  DIAMOND_LEGGINGS: 315,
+  DIAMOND_BOOTS: 316,
 } as const;
+
+// ─── armor ───────────────────────────────────────────────────────────────────
+export type ArmorSlot = 'helmet' | 'chest' | 'legs' | 'boots';
+
+export interface ArmorDef {
+  slot: ArmorSlot;
+  /** armor points (MC values: half-shield units, max 20 across the set) */
+  points: number;
+  /** durability (uses) */
+  dur: number;
+}
+
+/** slot index for player.armor[] storage */
+export const ARMOR_SLOT_INDEX: Record<ArmorSlot, number> = { helmet: 0, chest: 1, legs: 2, boots: 3 };
+
+/** armor stats per tier: [helmet, chest, legs, boots] points + durability (MC) */
+const ARMOR_TIER_STATS: Record<string, { points: [number, number, number, number]; dur: number }> = {
+  leather: { points: [1, 3, 2, 1], dur: 55 },
+  iron: { points: [2, 6, 5, 2], dur: 165 },
+  gold: { points: [2, 5, 3, 1], dur: 77 },
+  diamond: { points: [3, 8, 6, 3], dur: 363 },
+};
+
+const ARMOR_IDS: Record<string, Record<ArmorSlot, number>> = {
+  leather: { helmet: ITEM.LEATHER_HELMET, chest: ITEM.LEATHER_CHESTPLATE, legs: ITEM.LEATHER_LEGGINGS, boots: ITEM.LEATHER_BOOTS },
+  iron: { helmet: ITEM.IRON_HELMET, chest: ITEM.IRON_CHESTPLATE, legs: ITEM.IRON_LEGGINGS, boots: ITEM.IRON_BOOTS },
+  gold: { helmet: ITEM.GOLD_HELMET, chest: ITEM.GOLD_CHESTPLATE, legs: ITEM.GOLD_LEGGINGS, boots: ITEM.GOLD_BOOTS },
+  diamond: { helmet: ITEM.DIAMOND_HELMET, chest: ITEM.DIAMOND_CHESTPLATE, legs: ITEM.DIAMOND_LEGGINGS, boots: ITEM.DIAMOND_BOOTS },
+};
+
+const ARMOR_LABEL: Record<string, string> = { leather: 'Leather', iron: 'Iron', gold: 'Golden', diamond: 'Diamond' };
+const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { helmet: 'Helmet', chest: 'Chestplate', legs: 'Leggings', boots: 'Boots' };
+
+/** armor pieces overlay on the tier palette (leather uses its own browns) */
+const ARMOR_TIER_COLORS: Record<string, [string, string, string]> = {
+  leather: ['#a5662c', '#7c4a1e', '#c4833f'],
+};
+
+function drawHelmet(ctx: CanvasRenderingContext2D, tier: string): void {
+  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+  px(ctx, 3, 3, main, 10, 2);
+  px(ctx, 3, 5, main, 2, 3); px(ctx, 11, 5, main, 2, 3);
+  px(ctx, 4, 5, light, 8, 1);
+  px(ctx, 5, 6, light, 2, 1);
+  px(ctx, 3, 8, dark, 2, 1); px(ctx, 11, 8, dark, 2, 1);
+  px(ctx, 4, 3, dark, 8, 1);
+}
+
+function drawChestplate(ctx: CanvasRenderingContext2D, tier: string): void {
+  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+  // shoulders
+  px(ctx, 2, 2, main, 3, 3); px(ctx, 11, 2, main, 3, 3);
+  // torso
+  px(ctx, 4, 3, main, 8, 9);
+  px(ctx, 5, 4, light, 6, 2);
+  px(ctx, 4, 11, dark, 8, 1);
+  px(ctx, 7, 5, dark, 2, 6); // center seam
+  px(ctx, 3, 4, dark, 1, 1); px(ctx, 12, 4, dark, 1, 1);
+}
+
+function drawLeggings(ctx: CanvasRenderingContext2D, tier: string): void {
+  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+  px(ctx, 3, 2, main, 10, 3); // waistband
+  px(ctx, 4, 3, light, 8, 1);
+  px(ctx, 3, 5, main, 4, 9); px(ctx, 9, 5, main, 4, 9); // legs
+  px(ctx, 3, 13, dark, 4, 1); px(ctx, 9, 13, dark, 4, 1);
+  px(ctx, 7, 2, dark, 2, 1);
+}
+
+function drawBoots(ctx: CanvasRenderingContext2D, tier: string): void {
+  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+  px(ctx, 2, 6, main, 4, 6); px(ctx, 10, 6, main, 4, 6); // boot shafts
+  px(ctx, 1, 11, main, 5, 3); px(ctx, 10, 11, main, 5, 3); // feet
+  px(ctx, 2, 7, light, 2, 2); px(ctx, 10, 7, light, 2, 2);
+  px(ctx, 1, 13, dark, 5, 1); px(ctx, 10, 13, dark, 5, 1);
+}
 
 // ─── tier stats (MC values) ───────────────────────────────────────────────────
 const TIER_STATS = {
@@ -124,6 +219,11 @@ const TIER_COLORS: Record<TierName, [string, string, string]> = {
 
 const HANDLE = '#6b4d2a';
 const HANDLE_DARK = '#55402a';
+
+// metal armor tiers reuse the tool tier palette (leather already set above)
+ARMOR_TIER_COLORS.iron = TIER_COLORS.iron;
+ARMOR_TIER_COLORS.gold = TIER_COLORS.gold;
+ARMOR_TIER_COLORS.diamond = TIER_COLORS.diamond;
 
 /** diagonal stick handle from bottom-left to (hx,hy), 2px thick */
 function drawHandle(ctx: CanvasRenderingContext2D, hx: number, hy: number, len: number): void {
@@ -414,6 +514,27 @@ for (const [key, id] of Object.entries(TOOL_IDS)) {
   };
 }
 
+// register armor (16 pieces)
+const ARMOR_PAINTER: Record<ArmorSlot, (ctx: CanvasRenderingContext2D, tier: string) => void> = {
+  helmet: drawHelmet, chest: drawChestplate, legs: drawLeggings, boots: drawBoots,
+};
+for (const [tier, slots] of Object.entries(ARMOR_IDS)) {
+  for (const slot of Object.keys(slots) as ArmorSlot[]) {
+    const id = slots[slot];
+    const stats = ARMOR_TIER_STATS[tier];
+    ITEMS[id] = {
+      id,
+      name: `${ARMOR_LABEL[tier]} ${ARMOR_SLOT_LABEL[slot]}`,
+      armor: {
+        slot,
+        points: stats.points[ARMOR_SLOT_INDEX[slot]],
+        dur: stats.dur,
+      },
+      icon: (ctx) => ARMOR_PAINTER[slot](ctx, tier),
+    };
+  }
+}
+
 // ─── queries ──────────────────────────────────────────────────────────────────
 export function getItemDef(id: number): ItemDef | undefined {
   return ITEMS[id];
@@ -427,9 +548,20 @@ export function getToolDef(id: number): ToolDef | undefined {
 export function isToolItem(id: number): boolean {
   return !!ITEMS[id]?.tool;
 }
+export function getArmorDef(id: number): ArmorDef | undefined {
+  return ITEMS[id]?.armor;
+}
+export function isArmorItem(id: number): boolean {
+  return !!ITEMS[id]?.armor;
+}
+/** storage slot 0..3 for an armor piece, or -1 */
+export function armorSlotIndex(id: number): number {
+  const def = ITEMS[id]?.armor;
+  return def ? ARMOR_SLOT_INDEX[def.slot] : -1;
+}
 /** max stack size for an item or block id */
 export function maxStack(id: number): number {
-  return isToolItem(id) ? 1 : 64;
+  return isToolItem(id) || isArmorItem(id) ? 1 : 64;
 }
 
 // ─── mining model ─────────────────────────────────────────────────────────────

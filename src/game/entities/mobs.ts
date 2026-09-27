@@ -59,6 +59,8 @@ interface Mob extends AABBEntity {
   teleportCd: number;
   /** enderman water damage tick */
   waterHurtT: number;
+  /** sheep wool color variant ('' = default white) */
+  variant: string;
   dead: boolean;
   deathT: number;
   wanderX: number;
@@ -71,6 +73,8 @@ export interface SavedMob {
   x: number; y: number; z: number;
   health: number;
   yaw: number;
+  /** sheep wool color variant (white/light_gray/gray/brown/black) */
+  variant?: string;
 }
 
 interface Arrow {
@@ -334,6 +338,8 @@ export interface MobCallbacks {
   playerZ: number;
   /** creative players are ignored by hostile AI (like MC) */
   playerCreative: boolean;
+  /** explosions chain-ignite TNT blocks in the blast (engine primes them) */
+  igniteTnt?: (x: number, y: number, z: number) => void;
 }
 
 export class MobManager {
@@ -357,9 +363,9 @@ export class MobManager {
     return this.mobs.length;
   }
 
-  /** QA/testing helper: force-spawn a mob at position */
-  debugSpawn(type: MobType, x: number, y: number, z: number): Mob | null {
-    return this.spawn(type, x, y, z);
+  /** QA/testing helper: force-spawn a mob at position (variant for sheep) */
+  debugSpawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
+    return this.spawn(type, x, y, z, variant);
   }
 
   clear(): void {
@@ -393,6 +399,7 @@ export class MobManager {
         x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2),
         health: Math.max(1, Math.round(m.health)),
         yaw: +m.yaw.toFixed(2),
+        ...(m.variant ? { variant: m.variant } : {}),
       });
       if (out.length >= 28) break;
     }
@@ -404,7 +411,7 @@ export class MobManager {
     for (const s of list) {
       if (!(s.type in MOB_DEFS)) continue;
       if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z)) continue;
-      const m = this.spawn(s.type as MobType, s.x, s.y, s.z);
+      const m = this.spawn(s.type as MobType, s.x, s.y, s.z, s.variant ?? '');
       if (m) {
         m.health = Math.max(1, Math.min(m.def.health, Math.round(s.health)));
         m.yaw = Number.isFinite(s.yaw) ? s.yaw : m.yaw;
@@ -414,9 +421,10 @@ export class MobManager {
     this.spawnTimer = 6;
   }
 
-  private spawn(type: MobType, x: number, y: number, z: number): Mob | null {
+  private spawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
     const def = MOB_DEFS[type];
-    const skins = getMobSkins(type);
+    const skinKey = variant && type === 'sheep' ? `sheep:${variant}` : type;
+    const skins = getMobSkins(skinKey);
     const parts = def.builder(skins);
     // per-instance material clones so hurt tint is individual
     const cloned = parts.materials.map((mm) => mm.clone());
@@ -447,6 +455,7 @@ export class MobManager {
       burnTimer: 0, burning: false,
       fuse: -1, dead: false, deathT: 0,
       provoked: false, teleportCd: 0, waterHurtT: 0,
+      variant: type === 'sheep' ? (variant || 'white') : '',
       wanderX: x, wanderZ: z,
     };
     mob.targetYaw = mob.yaw;
@@ -497,7 +506,7 @@ export class MobManager {
       // spawn small herd for passive
       const herd = 1 + Math.floor(Math.random() * 3);
       for (let i = 0; i < herd; i++) {
-        this.spawn(type, x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3);
+        this.spawn(type, x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3, type === 'sheep' ? pickSheepVariant() : '');
       }
     }
   }
@@ -584,6 +593,11 @@ export class MobManager {
           if (d > R) continue;
           const id = this.world.getBlock(bx, by, bz);
           if (id !== 0 && id !== BLOCK.BEDROCK && id !== BLOCK.WATER) {
+            // chain reaction: TNT in the blast primes instead of vanishing
+            if (id === BLOCK.TNT) {
+              cb.igniteTnt?.(bx, by, bz);
+              continue;
+            }
             this.world.setBlock(bx, by, bz, 0);
           }
         }
@@ -639,8 +653,10 @@ export class MobManager {
         if (m.deathT <= 0) {
           for (const drop of m.def.drops) {
             const n = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+            // sheep drop wool matching their color variant
+            const dropId = m.type === 'sheep' && drop.id === BLOCK.WOOL ? sheepWoolId(m.variant) : drop.id;
             for (let d = 0; d < n; d++) {
-              cb.spawnDrop(drop.id, m.x, m.y + 0.4, m.z);
+              cb.spawnDrop(dropId, m.x, m.y + 0.4, m.z);
             }
           }
           cb.spawnXP(m.x, m.y + 0.4, m.z, m.def.hostile ? 5 : 1 + Math.floor(Math.random() * 3));
@@ -1068,6 +1084,35 @@ export class MobManager {
 
 function tint(mats: THREE.MeshLambertMaterial[], r: number, g: number, b: number): void {
   for (const m of mats) m.color.setRGB(r, g, b);
+}
+
+// ─── sheep color variants (MC-ish distribution) ─────────────────────────────
+const SHEEP_VARIANTS: { name: string; weight: number }[] = [
+  { name: 'white', weight: 0.82 },
+  { name: 'light_gray', weight: 0.05 },
+  { name: 'gray', weight: 0.05 },
+  { name: 'brown', weight: 0.05 },
+  { name: 'black', weight: 0.03 },
+];
+
+function pickSheepVariant(): string {
+  const r = Math.random();
+  let acc = 0;
+  for (const v of SHEEP_VARIANTS) {
+    acc += v.weight;
+    if (r < acc) return v.name;
+  }
+  return 'white';
+}
+
+function sheepWoolId(variant: string): number {
+  switch (variant) {
+    case 'light_gray': return BLOCK.WOOL_LIGHT_GRAY;
+    case 'gray': return BLOCK.WOOL_GRAY;
+    case 'brown': return BLOCK.WOOL_BROWN;
+    case 'black': return BLOCK.WOOL_BLACK;
+    default: return BLOCK.WOOL;
+  }
 }
 
 /** idle<->walk transitions for hostile mobs far from player */

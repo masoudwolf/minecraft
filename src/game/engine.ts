@@ -4,13 +4,13 @@ import { World } from './world/world';
 import { Player, type HotbarSlot } from './player';
 import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
-import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
+import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
 import { createPlayerModel, animatePlayerModel, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
-import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, ITEM } from './items';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, ITEM } from './items';
 import { matchRecipe, freshDur } from './crafting';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
@@ -26,7 +26,7 @@ const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration sourc
 interface SaveData {
   seed: number;
   time: number;
-  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; selected: number; level?: number; xp?: number };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number };
   edits: Record<string, Record<number, number>>;
   blockEntities?: Record<string, unknown>;
   spawn?: { x: number; y: number; z: number };
@@ -35,6 +35,16 @@ interface SaveData {
   flying?: boolean;
   /** persisted live mobs (Phase 5) */
   mobs?: SavedMob[];
+}
+
+/** primed TNT entity (ignited block with fuse) */
+interface PrimedTnt {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  fuse: number;
+  t: number;
+  mesh: THREE.Mesh;
+  overlay: THREE.Mesh;
 }
 
 export class Game {
@@ -106,6 +116,10 @@ export class Game {
   private cactusTimer = 0;
   private plantScanTimer = 0;
   private lastXpSync = '';
+  /** primed TNT entities (fuse burning) */
+  private primedTnt: PrimedTnt[] = [];
+  /** camera shake timer (explosions) */
+  private shakeT = 0;
 
   private highlight: THREE.LineSegments;
   private crackMesh: THREE.Mesh;
@@ -163,6 +177,10 @@ export class Game {
       this.applySkyFog();
       if (this.sky) this.sky.cloudsEnabled = this.settings.clouds;
     });
+    // restore persisted F5 camera mode
+    if (this.settings.cameraMode === 1 || this.settings.cameraMode === 2) {
+      this.cameraMode = this.settings.cameraMode;
+    }
 
     // achievement popup bridge
     this.achievements.setCallback((a: AchievementDef) => {
@@ -327,6 +345,7 @@ export class Game {
     }
     this.drops?.clear();
     this.mobs?.clear();
+    this.clearPrimedTnt();
     this.world = new World(seed, save?.edits);
     this.scene.add(this.world.group);
     this.sky = new SkySystem(this.scene, seed);
@@ -364,6 +383,9 @@ export class Game {
       this.player.main = save.player.main && save.player.main.length === 27
         ? save.player.main
         : Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
+      this.player.armor = save.player.armor && save.player.armor.length === 4
+        ? save.player.armor
+        : [null, null, null, null];
       this.player.selected = save.player.selected;
       this.player.fallStartY = save.player.y;
       this.player.level = save.player.level ?? 0;
@@ -453,6 +475,7 @@ export class Game {
         health: this.player.health,
         hotbar: this.player.hotbar,
         main: this.player.main,
+        armor: this.player.armor,
         selected: this.player.selected,
         level: this.player.level,
         xp: this.player.xp,
@@ -511,6 +534,7 @@ export class Game {
       if (st.screen === 'playing') {
         e.preventDefault(); // don't reload the page mid-game
         this.cameraMode = ((this.cameraMode + 1) % 3) as 0 | 1 | 2;
+        useGameStore.getState().updateSettings({ cameraMode: this.cameraMode }); // persist F5 preference
         audio.click();
       }
       return;
@@ -779,6 +803,17 @@ export class Game {
       const cont = containerOf(targetId);
       if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
       if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
+      // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
+      if (targetId === BLOCK.TNT) {
+        const held = this.player.hotbar[this.player.selected];
+        const holdingBlock = held && held.count > 0 && !isItemId(held.blockId);
+        if (!holdingBlock) {
+          this.igniteTNT(this.target.x, this.target.y, this.target.z);
+          this.placeCooldown = 0.3;
+          this.startSwing();
+          return;
+        }
+      }
     }
     const slot = this.player.hotbar[this.player.selected];
     if (!slot || slot.blockId === 0 || slot.count <= 0) return;
@@ -870,6 +905,121 @@ export class Game {
       if (isWaterId(this.world.getBlock(x + dx, y + dy, z + dz))) return true;
     }
     return false;
+  }
+
+  // ── TNT ─────────────────────────────────────────────────────────────────────
+  /** replace a TNT block with a primed entity (fuse seconds, MC = 4s) */
+  igniteTNT(x: number, y: number, z: number, fuse = 3): void {
+    if (this.world.getBlock(x, y, z) !== BLOCK.TNT) return;
+    this.world.setBlock(x, y, z, BLOCK.AIR);
+    const mesh = new THREE.Mesh(createBlockGeometry(BLOCK.TNT, 0.98), new THREE.MeshLambertMaterial({ map: getAtlas().texture }));
+    const overlay = new THREE.Mesh(
+      new THREE.BoxGeometry(1.04, 1.04, 1.04),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })
+    );
+    mesh.add(overlay);
+    mesh.position.set(x + 0.5, y + 0.49, z + 0.5);
+    this.scene.add(mesh);
+    this.primedTnt.push({ x: x + 0.5, y, z: z + 0.5, vx: 0, vy: 4.6, vz: 0, fuse, t: 0, mesh, overlay });
+    audio.fuseHiss();
+  }
+
+  private clearPrimedTnt(): void {
+    for (const t of this.primedTnt) {
+      this.scene.remove(t.mesh);
+      t.mesh.geometry.dispose();
+      t.overlay.geometry.dispose();
+    }
+    this.primedTnt = [];
+  }
+
+  private updatePrimedTnt(dt: number): void {
+    for (let i = this.primedTnt.length - 1; i >= 0; i--) {
+      const t = this.primedTnt[i];
+      t.t += dt;
+      t.fuse -= dt;
+      // physics (small AABB, bounces settle on ground)
+      const e = { x: t.x, y: t.y, z: t.z, vx: t.vx, vy: t.vy, vz: t.vz, width: 0.98, height: 0.98, onGround: false, inWater: false };
+      e.vy -= 24 * dt;
+      moveEntity(this.world, e, dt);
+      t.x = e.x; t.y = e.y; t.z = e.z;
+      t.vx = e.vx * Math.pow(0.6, dt);
+      t.vz = e.vz * Math.pow(0.6, dt);
+      t.vy = e.vy;
+      t.mesh.position.set(t.x, t.y + 0.49, t.z);
+      // white flash accelerates as the fuse burns down
+      const flash = Math.sin(t.t * 10) > 0 ? 0.55 : 0;
+      (t.overlay.material as THREE.MeshBasicMaterial).opacity = t.fuse < 0.6 ? (Math.sin(t.t * 40) > 0 ? 0.85 : 0) : flash;
+      // smoke trail
+      if (Math.random() < dt * 14) {
+        this.particles.spawnParticle(t.x, t.y + 1.02, t.z, (Math.random() - 0.5) * 0.3, 0.6 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3, [0.85, 0.85, 0.85], 0.07, 0.6, -0.5);
+      }
+      if (t.fuse <= 0) {
+        this.scene.remove(t.mesh);
+        t.mesh.geometry.dispose();
+        t.overlay.geometry.dispose();
+        this.primedTnt.splice(i, 1);
+        this.explodeAt(t.x, t.y + 0.49, t.z, 3.8);
+      }
+    }
+  }
+
+  /** explosion: destroys blocks (30% drops), chain-ignites TNT, damages player + mobs */
+  private explodeAt(x: number, y: number, z: number, radius: number): void {
+    audio.boom();
+    for (let bx = Math.floor(x - radius); bx <= Math.floor(x + radius); bx++)
+      for (let by = Math.floor(y - radius); by <= Math.floor(y + radius); by++)
+        for (let bz = Math.floor(z - radius); bz <= Math.floor(z + radius); bz++) {
+          const d = Math.hypot(bx + 0.5 - x, by + 0.5 - y, bz + 0.5 - z);
+          if (d > radius) continue;
+          const id = this.world.getBlock(bx, by, bz);
+          if (id === BLOCK.AIR || id === BLOCK.BEDROCK || isWaterId(id)) continue;
+          // chain reaction: other TNT blocks prime with a short fuse
+          if (id === BLOCK.TNT) {
+            this.igniteTNT(bx, by, bz, 0.2 + Math.random() * 0.7);
+            continue;
+          }
+          const def = getBlockDef(id);
+          this.world.setBlock(bx, by, bz, BLOCK.AIR);
+          if (def) {
+            const dropId = def.drop === undefined ? id : def.drop;
+            if (dropId && Math.random() < 0.3) this.drops.spawn(dropId, bx + 0.5, by + 0.4, bz + 0.5, 1);
+          }
+          // containers spill everything they held
+          if (containerOf(id)) {
+            for (const item of this.blockEnts.destroy(bx, by, bz)) {
+              this.drops.spawn(item.id, bx + 0.5, by + 0.5, bz + 0.5, item.count);
+            }
+          }
+        }
+    // damage mobs (chain)
+    if (this.mobs) {
+      for (const m of [...this.mobs.mobs]) {
+        if (m.dead) continue;
+        const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+        if (d < radius * 2) {
+          this.mobs.hurtMob(m, Math.max(1, Math.round(16 * (1 - d / (radius * 2)))), m.x - x, m.z - z, this.mobCb ?? undefined);
+        }
+      }
+    }
+    // damage + knockback the player (creative immune inside damage())
+    const p = this.player;
+    const pd = Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z);
+    if (pd < radius * 2 && !p.isCreative) {
+      p.damage(Math.max(1, Math.round(18 * (1 - pd / (radius * 2)))));
+      audio.hurt();
+      const kx = p.x - x, kz = p.z - z;
+      const len = Math.hypot(kx, kz) || 1;
+      p.entity.vx += (kx / len) * 8;
+      p.entity.vz += (kz / len) * 8;
+      p.entity.vy = Math.max(p.entity.vy, 5);
+    }
+    // visuals: debris bursts + dust ring + camera shake
+    for (let i = 0; i < 3; i++) {
+      this.particles.burstBlockBreak(x - 0.6 + i * 0.6, y, z, [0.35, 0.33, 0.3]);
+    }
+    this.particles.burstLand(x, y, z, [0.2, 0.2, 0.2], 26);
+    this.shakeT = 0.5;
   }
 
   /** right-click on chest / furnace */
@@ -1032,11 +1182,12 @@ export class Game {
     this.syncInventory(true);
   }
 
-  setInvHover(hover: { area: 'hotbar' | 'main' | 'craft' | 'container'; idx: number } | null): void {
+  setInvHover(hover: { area: 'hotbar' | 'main' | 'craft' | 'container' | 'armor'; idx: number } | null): void {
     this.invHover = hover;
   }
 
-  private invHotbarSwap(area: 'hotbar' | 'main' | 'craft' | 'container', idx: number, hotbarIdx: number): void {
+  private invHotbarSwap(area: 'hotbar' | 'main' | 'craft' | 'container' | 'armor', idx: number, hotbarIdx: number): void {
+    if (area === 'armor') return; // armor slots don't hotbar-swap
     if (area === 'container') {
       if (!this.containerKey) return;
       const [xs, ys, zs] = this.containerKey.split(',').map(Number);
@@ -1059,10 +1210,11 @@ export class Game {
     this.updateHandMesh();
   }
 
-  invClick(area: 'hotbar' | 'main' | 'craft' | 'out' | 'container', idx: number, button: 'left' | 'right', shift: boolean): void {
+  invClick(area: 'hotbar' | 'main' | 'craft' | 'out' | 'container' | 'armor', idx: number, button: 'left' | 'right', shift: boolean): void {
     const st = useGameStore.getState();
     if (!st.inv.open) return;
     if (area === 'out') { this.takeCraftOutput(shift); return; }
+    if (area === 'armor') { this.armorClick(idx); return; }
     if (area === 'container') {
       const st2 = useGameStore.getState();
       if (st2.inv.container === 'furnace' && idx === 2) {
@@ -1187,9 +1339,42 @@ export class Game {
     }
   }
 
+  /** armor slot click: place only the matching piece; empty cursor takes the piece out */
+  private armorClick(idx: number): void {
+    if (idx < 0 || idx >= 4) return;
+    const slots = this.player.armor;
+    const cur = this.cursor;
+    const piece = slots[idx];
+    if (!cur) {
+      if (!piece) return;
+      this.cursor = { ...piece };
+      slots[idx] = null;
+    } else {
+      if (armorSlotIndex(cur.blockId) !== idx) {
+        this.showToast('Wrong armor slot');
+        return;
+      }
+      slots[idx] = { ...cur };
+      this.cursor = piece ? { ...piece } : null;
+    }
+    audio.pop();
+    this.syncInventory(true);
+    this.syncHUD(true);
+  }
+
   private shiftMove(area: 'hotbar' | 'main' | 'craft', list: HotbarSlot[], idx: number): void {
     const slot = list[idx];
     if (isEmptySlot(slot)) return;
+    // auto-equip armor pieces (MC behavior; swap with whatever is worn)
+    const aIdx = armorSlotIndex(slot.blockId);
+    if (aIdx >= 0 && area !== 'craft') {
+      const old = this.player.armor[aIdx];
+      this.player.armor[aIdx] = { ...slot };
+      list[idx] = old ? { ...old } : emptySlot();
+      audio.pop();
+      this.syncHUD(true);
+      return;
+    }
     let left: number;
     if (area === 'hotbar') {
       left = addToSlots(this.player.main, slot.blockId, slot.count, slot.dur);
@@ -1291,12 +1476,13 @@ export class Game {
       const be = this.blockEnts.get(+xs, +ys, +zs);
       if (be) containerSlots = be.kind === 'chest' ? be.slots : [be.input, be.fuel, be.output];
     }
-    const hash = JSON.stringify([this.player.hotbar, this.player.main, grid, this.craftOut, this.cursor, containerSlots, this.furnaceRatios()]);
+    const hash = JSON.stringify([this.player.hotbar, this.player.main, this.player.armor, grid, this.craftOut, this.cursor, containerSlots, this.furnaceRatios()]);
     if (hash === this.lastInvHash && !force) return;
     this.lastInvHash = hash;
     st.setInv({
       hotbar: cloneSlots(this.player.hotbar),
       main: cloneSlots(this.player.main),
+      armor: this.player.armor.map((s) => (s ? { ...s } : null)),
       craft: cloneSlots(grid),
       craftOut: this.craftOut ? { ...this.craftOut } : null,
       cursor: this.cursor ? { ...this.cursor } : null,
@@ -1552,6 +1738,11 @@ export class Game {
       this.lastXpSync = xpHash;
       store.setHud({ xpLevel: this.player.level, xpProgress: Math.max(0, Math.min(1, this.player.xp / this.xpToNext(this.player.level))) });
     }
+    // armor bar
+    const armorPts = this.player.armorPoints;
+    if (store.hud.armor !== armorPts || force) {
+      store.setHud({ armor: armorPts });
+    }
   }
 
   private xpToNext(level: number): number {
@@ -1724,6 +1915,14 @@ export class Game {
     // camera
     p.applyCamera(this.settings.fov, 8, dt);
     this.updateCameraPerspective(dt);
+    // explosion camera shake
+    if (this.shakeT > 0) {
+      this.shakeT -= dt;
+      const s = Math.max(0, this.shakeT) * 0.55;
+      this.camera.position.x += (Math.random() - 0.5) * s;
+      this.camera.position.y += (Math.random() - 0.5) * s;
+      this.camera.position.z += (Math.random() - 0.5) * s;
+    }
 
     // cooldowns
     this.placeCooldown -= dt;
@@ -1754,6 +1953,8 @@ export class Game {
 
     // block entities (furnace smelting etc.)
     this.blockEnts.tick(dt);
+    // primed TNT fuses + explosions
+    this.updatePrimedTnt(dt);
     // fluid simulation + plant growth
     this.world.tickFluids(dt);
     // ambient plant growth: sample random columns near the player and tick canes/cacti
@@ -1852,6 +2053,7 @@ export class Game {
         playerY: p.y,
         playerZ: p.z,
         playerCreative: p.isCreative,
+        igniteTnt: (tx, ty, tz) => this.igniteTNT(tx, ty, tz, 0.25 + Math.random() * 0.7),
       };
       this.mobs.update(dt, {
         x: p.x, y: p.y, z: p.z,
@@ -1994,6 +2196,7 @@ export class Game {
     this.raf = 0;
     this.unbindEvents();
     this.storeUnsub();
+    this.clearPrimedTnt();
     if (this.world) {
       for (const key of Array.from(this.world.chunks.keys())) {
         const [cx, cz] = key.split(',').map(Number);

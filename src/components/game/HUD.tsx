@@ -35,6 +35,14 @@ export function HUD() {
       {/* hurt flash */}
       <div ref={hurtFlash} className="absolute inset-0 bg-red-700 opacity-0 transition-opacity duration-200" style={{ boxShadow: 'inset 0 0 120px rgba(120,0,0,0.9)' }} />
 
+      {/* low-health pulsing vignette (survival, ≤3 hearts) */}
+      {hud.gameMode === 'survival' && hud.health > 0 && hud.health <= 6 && (
+        <div
+          className="absolute inset-0 animate-pulse"
+          style={{ background: 'radial-gradient(ellipse at center, transparent 42%, rgba(140,0,0,0.42) 100%)' }}
+        />
+      )}
+
       {/* crosshair */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 mix-blend-difference">
         <div className="relative h-[18px] w-[18px]">
@@ -84,14 +92,25 @@ export function HUD() {
           </div>
         )}
 
-        {/* status bars row: hearts left, hunger right (like MC) — survival only */}
+        {/* status bars row: armor+hearts left, hunger right (like MC) — survival only */}
         {hud.gameMode === 'survival' && (
           <div className="flex w-[366px] items-end justify-between pb-0.5">
-            <div className="flex gap-[1px]">
-              {Array.from({ length: 10 }, (_, i) => {
-                const hp = hud.health - i * 2;
-                return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
-              })}
+            <div className="flex flex-col gap-[1px]">
+              {/* armor bar (only when wearing armor, MC style) */}
+              {hud.armor > 0 && (
+                <div className="mb-[1px] flex gap-[1px]">
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const a = hud.armor - i * 2;
+                    return <ArmorIcon key={i} state={a >= 2 ? 'full' : a === 1 ? 'half' : 'empty'} />;
+                  })}
+                </div>
+              )}
+              <div className="flex gap-[1px]">
+                {Array.from({ length: 10 }, (_, i) => {
+                  const hp = hud.health - i * 2;
+                  return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
+                })}
+              </div>
             </div>
             <div className="flex flex-row-reverse gap-[1px]">
               {Array.from({ length: 10 }, (_, i) => {
@@ -227,6 +246,25 @@ function AdvancementToast({ adv }: { adv: { title: string; desc: string; icon: s
         <span className="text-[10px]" style={{ color: '#bbb' }}>{adv.desc}</span>
       </div>
     </div>
+  );
+}
+
+/** pixel chestplate for armor bar (like MC armor row) */
+function ArmorIcon({ state }: { state: 'full' | 'half' | 'empty' }) {
+  const fill = state === 'empty' ? '#3a3a3a' : '#d8d8d8';
+  const fillDark = state === 'empty' ? '#2a2a2a' : '#8a8a8a';
+  return (
+    <svg width={15} height={14} viewBox="0 0 15 14" className="drop-shadow-[1px_1px_0_rgba(0,0,0,0.7)]">
+      {/* shoulders */}
+      <rect x={1} y={1} width={4} height={4} fill={fill} />
+      <rect x={10} y={1} width={4} height={4} fill={fill} />
+      {/* torso */}
+      <rect x={4} y={2} width={7} height={11} fill={fill} />
+      {/* shading */}
+      <rect x={4} y={2} width={7} height={2} fill={state === 'empty' ? '#333333' : '#f4f4f4'} />
+      <rect x={4} y={12} width={7} height={1} fill={fillDark} />
+      <rect x={7} y={4} width={1} height={9} fill={fillDark} />
+    </svg>
   );
 }
 

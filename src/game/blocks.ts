@@ -83,6 +83,10 @@ export const BLOCK = {
   LILY_PAD: 48,
   JUNGLE_LOG: 49,
   JUNGLE_LEAVES: 50,
+  WOOL_LIGHT_GRAY: 51,
+  WOOL_GRAY: 52,
+  WOOL_BROWN: 53,
+  WOOL_BLACK: 54,
 } as const;
 
 export const FLOW_MAX = 7;
@@ -116,6 +120,7 @@ export const TILE = {
   flower_red: 43, flower_yellow: 44, tall_grass: 45, cactus_side: 46, cactus_top: 47,
   wool: 48, bed_top: 49, bed_side: 50,
   sugarcane: 51, dead_bush: 52, lily_pad: 53, jungle_log_side: 54, jungle_leaves: 55,
+  wool_light_gray: 56, wool_gray: 57, wool_brown: 58, wool_black: 59,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -177,6 +182,12 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.LILY_PAD]: { id: BLOCK.LILY_PAD, name: 'Lily Pad', tiles: TILE.lily_pad, solid: false, opaque: false, cutout: true, model: 'lily', flatIcon: true, hardness: 0.05, sound: 'grass' },
   [BLOCK.JUNGLE_LOG]: { id: BLOCK.JUNGLE_LOG, name: 'Jungle Log', tiles: logTiles(TILE.jungle_log_side, TILE.log_top), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
   [BLOCK.JUNGLE_LEAVES]: { id: BLOCK.JUNGLE_LEAVES, name: 'Jungle Leaves', tiles: TILE.jungle_leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
+
+  // ── phase 6: colored wool (sheep variants) ──
+  [BLOCK.WOOL_LIGHT_GRAY]: { id: BLOCK.WOOL_LIGHT_GRAY, name: 'Light Gray Wool', tiles: TILE.wool_light_gray, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
+  [BLOCK.WOOL_GRAY]: { id: BLOCK.WOOL_GRAY, name: 'Gray Wool', tiles: TILE.wool_gray, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
+  [BLOCK.WOOL_BROWN]: { id: BLOCK.WOOL_BROWN, name: 'Brown Wool', tiles: TILE.wool_brown, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
+  [BLOCK.WOOL_BLACK]: { id: BLOCK.WOOL_BLACK, name: 'Black Wool', tiles: TILE.wool_black, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
 };
 
 /** flowing water defs share appearance with source water */

@@ -405,14 +405,15 @@ function drawCactusTop(ctx: Ctx, tx: number, ty: number, rnd: () => number): voi
   for (let i = 0; i < 5; i++) px(ctx, tx + 2 + Math.floor(rnd() * 12), ty + 2 + Math.floor(rnd() * 12), '#d8e8c0');
 }
 
-function drawWool(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
-  noiseFill(ctx, tx, ty, 16, 16, ['#e8e8e8', '#dcdcdc', '#f4f4f4', '#d0d0d0', '#eeeeee'], rnd);
-  // soft curls
+function drawWool(ctx: Ctx, tx: number, ty: number, rnd: () => number, palette?: string[]): void {
+  const cols = palette ?? ['#e8e8e8', '#dcdcdc', '#f4f4f4', '#d0d0d0', '#eeeeee'];
+  noiseFill(ctx, tx, ty, 16, 16, cols, rnd);
+  // soft curls (bright + dark relative to base)
   for (let i = 0; i < 12; i++) {
     const x = Math.floor(rnd() * 14), y = Math.floor(rnd() * 14);
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.fillRect(tx + x, ty + y, 2, 1);
-    ctx.fillStyle = 'rgba(160,160,160,0.35)';
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.fillRect(tx + x, ty + y + 1, 2, 1);
   }
 }
@@ -572,6 +573,10 @@ export function getAtlas(): AtlasData {
       for (let x = 0; x < 16; x++)
         if (rnd() > 0.15) px(ctx, p[0] + x, p[1] + y, pick(rnd, JLEAF));
   }
+  p = T(56); drawWool(ctx, p[0], p[1], rnd, ['#c8c8c8', '#bcbcbc', '#d2d2d2', '#b2b2b2', '#cfcfcf']);   // light gray wool
+  p = T(57); drawWool(ctx, p[0], p[1], rnd, ['#8a8a8a', '#7e7e7e', '#969696', '#727272', '#909090']);   // gray wool
+  p = T(58); drawWool(ctx, p[0], p[1], rnd, ['#8a6a4a', '#7c5e40', '#9a7a56', '#6a5034', '#92724e']);   // brown wool
+  p = T(59); drawWool(ctx, p[0], p[1], rnd, ['#3a3a3a', '#303030', '#444444', '#282828', '#3e3e3e']);   // black wool
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;

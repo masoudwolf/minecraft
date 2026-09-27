@@ -61,10 +61,15 @@ export function getMobSkins(type: string): MobSkins {
   const cached = skinCache.get(type);
   if (cached) return cached;
   let skins: MobSkins;
+  // sheep color variants: "sheep:white" | "sheep:light_gray" | ... (default white)
+  if (type.startsWith('sheep')) {
+    const color = type.split(':')[1] ?? 'white';
+    skins = buildSheep(color);
+  } else
   switch (type) {
     case 'pig': skins = buildPig(); break;
     case 'cow': skins = buildCow(); break;
-    case 'sheep': skins = buildSheep(); break;
+    case 'sheep': skins = buildSheep('white'); break;
     case 'chicken': skins = buildChicken(); break;
     case 'zombie': skins = buildZombie(); break;
     case 'creeper': skins = buildCreeper(); break;
@@ -139,15 +144,23 @@ function buildCow(): MobSkins {
   return { head: tex(head), body: tex(body), limb: tex(limb) };
 }
 
-// ── SHEEP ────────────────────────────────────────────────────────────────────
-function buildSheep(): MobSkins {
+// ── SHEEP (color variants: white, light_gray, gray, brown, black) ───────────
+const SHEEP_WOOL_PALETTES: Record<string, string[]> = {
+  white: ['#f0f0f0', '#e8e8e8', '#f8f8f8', '#e0e0e0'],
+  light_gray: ['#c8c8c8', '#bcbcbc', '#d2d2d2', '#b2b2b2'],
+  gray: ['#8a8a8a', '#7e7e7e', '#969696', '#727272'],
+  brown: ['#8a6a4a', '#7c5e40', '#9a7a56', '#6a5034'],
+  black: ['#3a3a3a', '#303030', '#444444', '#2a2a2a'],
+};
+
+function buildSheep(color = 'white'): MobSkins {
   const rnd = seeded(303);
-  const wool = ['#f0f0f0', '#e8e8e8', '#f8f8f8', '#e0e0e0'];
+  const wool = SHEEP_WOOL_PALETTES[color] ?? SHEEP_WOOL_PALETTES.white;
   const head = makeCanvas(16, 16);
   let ctx = head.getContext('2d')!;
   noiseFill(ctx, 0, 0, 16, 16, wool, rnd);
   // wool tuft on top
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = wool[2];
   ctx.fillRect(1, 1, 14, 4);
   // face (pinkish skin)
   ctx.fillStyle = '#d8b8a0';

@@ -4,12 +4,12 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
-import { getToolDef, isItemId } from '@/game/items';
+import { getToolDef, getArmorDef, isItemId } from '@/game/items';
 import { creativePalette } from '@/game/creativeItems';
 import type { InvSlot } from '@/game/inventory';
 import { slotIconUrl, slotName } from './slotIcon';
 
-type Area = 'hotbar' | 'main' | 'craft' | 'out' | 'container';
+type Area = 'hotbar' | 'main' | 'craft' | 'out' | 'container' | 'armor';
 
 const PANEL_BG = '#c6c6c6';
 const SLOT_BG = '#8b8b8b';
@@ -25,8 +25,10 @@ function Slot({
   const [hovered, setHovered] = useState(false);
   const icon = slot ? slotIconUrl(slot.blockId) : null;
   const tool = slot && isItemId(slot.blockId) ? getToolDef(slot.blockId) : undefined;
-  const durRatio = tool && slot && slot.dur !== undefined ? slot.dur / tool.dur : 1;
-  const showDur = !!tool && !!slot && slot.dur !== undefined && slot.dur < tool.dur;
+  const armor = slot && isItemId(slot.blockId) ? getArmorDef(slot.blockId) : undefined;
+  const maxDur = tool?.dur ?? armor?.dur;
+  const durRatio = slot && slot.dur !== undefined && maxDur ? slot.dur / maxDur : 1;
+  const showDur = !!slot && slot.dur !== undefined && !!maxDur && slot.dur < maxDur;
 
   return (
     <div
@@ -146,6 +148,7 @@ export function InventoryScreen() {
       else if (a === 'main') id = inv.main[i]?.blockId ?? 0;
       else if (a === 'craft') id = inv.craft[i]?.blockId ?? 0;
       else if (a === 'container') id = inv.containerSlots[i]?.blockId ?? 0;
+      else if (a === 'armor') id = inv.armor[i]?.blockId ?? 0;
       else if (a === 'out') id = inv.craftOut?.blockId ?? 0;
       setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y, name: slotName(id) } : null);
     } else {
@@ -295,8 +298,17 @@ export function InventoryScreen() {
               )}
             </div>
 
-            {/* player figure (2x2 mode only, fills space like MC) */}
-            {!inv.table && <PlayerFigure />}
+            {/* player figure + armor column (2x2 mode only, fills space like MC) */}
+            {!inv.table && (
+              <div className="ml-4 flex items-center gap-3">
+                <div className="flex flex-col gap-[2px]">
+                  {([0, 1, 2, 3] as const).map((i) => (
+                    <Slot key={i} slot={inv.armor[i] ?? null} area="armor" idx={i} onHover={onHover} />
+                  ))}
+                </div>
+                <PlayerFigure />
+              </div>
+            )}
           </div>
         )}
 

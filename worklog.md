@@ -421,3 +421,47 @@ Stage Summary:
 - PHASE 5 COMPLETE: 9 mob types total (spider w/ wall-climb + day-neutral AI, enderman w/ stare-provocation + teleport + water-burn), mobs persist in world saves across sessions, F5 3-mode camera with animated Steve player model, sprint dust, XP level-up fanfare, string→wool crafting, world rename, zombie flesh drops
 - Known minor: restored mob can pop inside an obstacle (falls/lands next tick — rare, positions are exact saved ones); enderman 2.75 height needs 3-block clearance in teleport scan (correct); headless FPS ~7-8 (software GL, real GPU fine)
 - NEXT (Phase 6 candidates per roadmap): biome-specific grass tints (jungle/swamp), achievements for new mobs ("Monster Hunter" covers them — add spider/enderman-specific ones), sheep wool color variants, mob spawn caps per-type tuning, held-item swing polish, enchanting placeholder→real, spiders/enderman in creative peaceful mode (hostiles already ignore creative player), sound for creeper fuse panic music, F5 cameraMode persisted in settings, mobile touch controls
+
+---
+Task ID: 9 (Phase 6 — Biome Tints, TNT, Armor System, Sheep Variants, Settings-Load Bugfix)
+Agent: main (status-assess round)
+Task: Status assessment + agent-browser QA + Phase 6: biome grass/foliage tints, functional TNT (ignite/fuse/explosion/chain), full armor system (16 pieces, 4 slots, HUD bar, damage reduction, save v7), sheep color variants + colored wool, F5 cameraMode persistence, low-health vignette
+
+Work Log:
+- QA round 0 (pre-existing build): lint pass, dev.log 200s only, menu→world verified, eval-driven mine→drop(stack {blockId:6})→placement (torch count 3→2) ✓; AFK player organically killed by night mobs → death screen → respawn at bed spawn ✓ (hostile AI + death flow regression pass). Verdict: Phase 1-5 STABLE → proceeded to Phase 6.
+- BUGFIX (pre-existing, caught this round): state.ts store initialized `settings: DEFAULT_SETTINGS` — `loadSettings()` was defined but NEVER CALLED, so ALL persisted settings (renderDistance, fov, sensitivity, volume, clouds, showFps) silently reset on every page reload since Phase 1. Fixed: `settings: loadSettings()`.
+- Biome tints (mesher.ts + world.ts shader):
+  - new `aTint` vec3 vertex attribute (MeshBuffers.tints, default white); fragment: `col = tex.rgb * vTint * vShade * l`
+  - BIOME_TINTS per biome: jungle [0.58,1,0.36] vivid yellow-green, swamp [0.6,0.76,0.5] murky, forest [0.86,1,0.84], snowy/mountains/desert subtle, plains white
+  - applied to: GRASS top face (+Y), TALL_GRASS cross (flowers stay untinted), OAK LEAVES all faces; per-column cache per chunk build
+- TNT (engine.ts + blocks.ts):
+  - PrimedTnt entities: block mesh (createBlockGeometry) + white flashing overlay (sin flash accelerates near detonation), AABB physics via moveEntity, initial vy 4.6 pop-up (MC), smoke trail particles, 3s fuse
+  - ignite paths: (1) RMB on TNT with empty hand / non-block item (sneak bypasses → places on top); (2) chain reaction — explosion in blast radius primes nearby TNT w/ 0.2-0.9s random fuse (both engine explodeAt AND creeper explode via new optional MobCallbacks.igniteTnt)
+  - explodeAt(x,y,z,R=3.8): destroys blocks except bedrock/water, 30% drop rate, containers spill, damages mobs (falloff 16) + player (falloff 18 + knockback), debris/dust bursts, camera shake (shakeT 0.5)
+- Armor system (items.ts, crafting.ts, player.ts, engine.ts, state.ts, HUD.tsx, InventoryScreen.tsx):
+  - 16 items 301-316: leather/iron/gold/diamond × helmet/chestplate/leggings/boots w/ pixel-art painters (leather browns, metals reuse TIER_COLORS — TDZ-safe late binding); ArmorDef {slot, points (MC: L 1/3/2/1, I 2/6/5/2, G 2/5/3/1, D 3/8/6/3), dur (55/165/77/363)}
+  - 16 shaped recipes (MC patterns, mirror-matched); helmet/boots are 3x2 (2x2 grid correctly rejects); freshDur covers armor; maxStack(armor)=1
+  - player.armor[4] (null|HotbarSlot), armorPoints getter, damage(): pts×4% reduction (min 1 dmg) + every piece −1 dur per hit (breaks at 0 w/ glass sound)
+  - Inventory: 'armor' area in invClick/setInvHover/invHotbarSwap(guarded); armorClick enforces matching slot (wrong slot → toast, cursor untouched); shift-click auto-equips w/ swap-back; armor durability bars in slots; syncInventory pushes armor (hash-guarded)
+  - HUD: pixel chestplate ArmorIcon row (10 icons, half states) above hearts, only when armorPoints > 0, survival only; save v7: player.armor[] w/ per-piece dur
+- Sheep color variants (mobSkins.ts, mobs.ts, blocks.ts, atlas.ts):
+  - buildSheep(color) palettes: white/light_gray/gray/brown/black; getMobSkins('sheep:<color>') cache; natural spawns pick MC-ish distribution (82/5/5/5/3)
+  - SavedMob +variant; restore respawns same color; debugSpawn accepts variant
+  - +4 wool blocks 51-54 (light gray/gray/brown/black) + atlas tiles 56-59 (drawWool palette param); sheep drop wool matching variant (sheepWoolId map)
+- Polish: F5 cameraMode persisted via updateSettings({cameraMode}) and restored in constructor (relies on the loadSettings fix); low-health red pulsing vignette (radial gradient, animate-pulse) when survival hp ≤ 6
+- QA harness notes: `world.chunks` is a Map (use .size); `e.target` recomputed by live loop — read within same eval tick; player.damage is a no-op in creative (switch gameMode for damage tests)
+
+QA (agent-browser + eval-driven, all verified):
+- Tints: aTint attribute present on opaque+cutout meshes; jungle chunks show 116-976 tinted vertices, plains chunks 0 (correct); visual: jungle hills render vivid yellow-green w/ tinted tall grass ✓
+- Armor: shift-click equip (hotbar→armor, slots cleared) ✓; armorPoints 14 = 2+6+6 ✓; wrong-slot click rejected (cursor kept) ✓; matching-slot click swaps w/ old piece to cursor ✓; damage(10) w/ 14 pts → exactly 4 (2 hits: 20→16→12) + all pieces −1 dur/hit (165→164→163) ✓; armor bar renders above hearts ✓; armor persisted through save→quit→world re-entry ✓
+- Crafting: headless matchRecipe — iron helmet→305, diamond chestplate→314, gold leggings→311, leather boots→304, 2x2 helmet rejected ✓
+- TNT: RMB place (count 2→1, player-AABB rejection when standing in cell) ✓; RMB ignite w/ empty hand → primed=1, block→AIR ✓; detonation → crater, 23 drops, player 20→5 hp (exact falloff math), knockback ✓; chain reaction: 3 TNT row — first fuse ignited adjacent pair w/ short fuses, all 3 detonated ✓; creeper-blast chain via igniteTnt callback (code path, creeper explode loop) ✓; primed flash overlay + smoke trail render ✓
+- Sheep: debugSpawn all 5 variants → variant field set ✓; black sheep killed → dropped WOOL_BLACK (54) ✓; colored wool blocks placeable + in creative palette ✓
+- F5/settings: cameraMode persisted to localStorage on F5 (mode 2 confirmed), restored after reload ONLY AFTER the loadSettings fix (0 before = bug proven) ✓
+- New world flow: "Phase 6 Survival" (seed 12345) created via UI → plains spawn w/ forest edge, flowers, sugarcane, water rendering w/ tints ✓; achievements screen 2/12 aggregate across worlds ✓
+- Worlds DB loss during round: 4 pre-existing QA worlds (Legacy Survival, Migrated×2, New World) were deleted mid-round by a LINGERING SECOND BROWSER TAB from the previous cron round (interleaved autosave PUTs + deleteWorld pattern; NOT an app bug — 85s+ idle on every screen produced zero deletes; sole deleteWorld call site is behind the 2-click confirm dialog). Mitigated: `agent-browser close --all`, fresh session, recreated test worlds. NOTE for future rounds: always close stale sessions before QA.
+
+Stage Summary:
+- PHASE 6 COMPLETE: biome-tinted world (jungle/swamp/forest differentiation), fully functional TNT (place→ignite→fuse→explosion→chain reactions→camera shake), complete armor progression (leather→diamond w/ crafting, equipping, HUD bar, damage reduction, durability, persistence), sheep color variants + colored wool blocks, F5 persistence + fixed the settings-never-load bug
+- Known minor: armor not rendered on 3rd-person Steve model (visual only); TNT explosion drops 30% flat (MC uses blast-resistance curve); sheep variant chosen at spawn not persisted for naturally-despawned mobs (irrelevant); legacy settings bug means pre-fix users' saved settings were already lost (nothing to migrate)
+- NEXT (Phase 7 candidates): armor on player model in 3rd person, weather (rain/snow + thunder), boats/minecarts, villager farms or simple villages, mushroom biome + mooshroom, skeleton horse trap?, enchanting table real implementation, mob spawn caps per-type tuning, sprint FOV polish, biome-specific water color, beacons/potions stretch

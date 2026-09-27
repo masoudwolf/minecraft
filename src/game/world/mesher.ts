@@ -48,11 +48,12 @@ interface MeshBuffers {
   shades: number[];
   skies: number[];
   blocks: number[];
+  tints: number[];
   indices: number[];
 }
 
 function newBuffers(): MeshBuffers {
-  return { positions: [], uvs: [], shades: [], skies: [], blocks: [], indices: [] };
+  return { positions: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], indices: [] };
 }
 
 function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
@@ -62,10 +63,24 @@ function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
   geo.setAttribute('aShade', new THREE.Float32BufferAttribute(b.shades, 1));
   geo.setAttribute('aSky', new THREE.Float32BufferAttribute(b.skies, 1));
   geo.setAttribute('aBlock', new THREE.Float32BufferAttribute(b.blocks, 1));
+  geo.setAttribute('aTint', new THREE.Float32BufferAttribute(b.tints, 3));
   geo.setIndex(b.indices);
   geo.computeBoundingSphere();
   return geo;
 }
+
+// ─── biome tints (grass tops, tall grass, oak leaves) ────────────────────────
+import type { Biome } from './terrain';
+const BIOME_TINTS: Record<Biome, [number, number, number]> = {
+  plains: [1, 1, 1],
+  forest: [0.86, 1.0, 0.84],
+  jungle: [0.58, 1.0, 0.36],
+  swamp: [0.6, 0.76, 0.5],
+  desert: [0.88, 0.9, 0.5],
+  snowy: [0.84, 0.94, 0.9],
+  mountains: [0.85, 0.95, 0.88],
+};
+const TINT_WHITE: [number, number, number] = [1, 1, 1];
 
 export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, materials: { opaque: THREE.ShaderMaterial; cutout: THREE.ShaderMaterial; water: THREE.ShaderMaterial }): void {
   disposeChunkMesh(chunk, group);
@@ -79,6 +94,20 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
   const z0 = chunk.cz * CHUNK_SIZE;
 
   const getB = (wx: number, wy: number, wz: number): number => world.getBlock(wx, wy, wz);
+  /** biome tint for this column (cached per chunk build) */
+  const tintCache = new Map<number, [number, number, number]>();
+  const biomeTint = (wx: number, wz: number): [number, number, number] => {
+    const key = (wx & 0xffff) << 16 | (wz & 0xffff);
+    const cached = tintCache.get(key);
+    if (cached) return cached;
+    const t = BIOME_TINTS[world.terrain.biomeAt(wx, wz)] ?? TINT_WHITE;
+    tintCache.set(key, t);
+    return t;
+  };
+
+  const pushTint = (buf: MeshBuffers, t: [number, number, number]): void => {
+    buf.tints.push(t[0], t[1], t[2]);
+  };
 
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -101,6 +130,8 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           const l = world.getLightForMesh(wx, y, wz);
           const sky = (l >> 4) / 15;
           const blk = (l & 15) / 15;
+          // only tall grass is biome-tinted; flowers keep their colors
+          const tint = id === BLOCK.TALL_GRASS ? biomeTint(wx, wz) : TINT_WHITE;
           const quads: [number, number, number][][] = [
             [[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]],
             [[1, 0, 0], [0, 0, 1], [0, 1, 1], [1, 1, 0]],
@@ -117,6 +148,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               cutout.shades.push(0.95);
               cutout.skies.push(sky);
               cutout.blocks.push(blk);
+              pushTint(cutout, tint);
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -213,6 +245,9 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           const tileIdx = Array.isArray(tiles) ? tiles[f] : tiles;
           const [u0, v0, u1, v1] = tileUV(tileIdx);
 
+          // biome tint: grass top face + oak leaves (others white)
+          const tint = (id === BLOCK.GRASS && f === 2) || id === BLOCK.LEAVES ? biomeTint(wx, wz) : TINT_WHITE;
+
           // AO axes
           const axis = face.dir[0] !== 0 ? 0 : face.dir[1] !== 0 ? 1 : 2;
           const [ua, va] = TANGENT_AXES[axis];
@@ -277,6 +312,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             target.shades.push(shade * aoLevels[c]);
             target.skies.push(skyLevels[c]);
             target.blocks.push(blockLevels[c]);
+            pushTint(target, tint);
           }
 
           // flip quad diagonal for better AO interpolation

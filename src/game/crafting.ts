@@ -1,6 +1,6 @@
 // ─── Crafting: recipe registry + shaped/shapeless matcher ────────────────────
 import { BLOCK } from './blocks';
-import { ITEM, isToolItem, getToolDef } from './items';
+import { ITEM, isToolItem, isArmorItem, getToolDef, getArmorDef } from './items';
 
 export interface CraftResult {
   id: number;
@@ -30,6 +30,7 @@ const S = ITEM.STICK;
 const I = ITEM.IRON_INGOT;
 const G = ITEM.GOLD_INGOT;
 const D = ITEM.DIAMOND;
+const L = ITEM.LEATHER;
 const W = BLOCK.WOOL;
 
 function shaped(w: number, h: number, cells: number[], id: number, count = 1): ShapedRecipe {
@@ -51,6 +52,19 @@ function shovel(M: number, id: number): ShapedRecipe {
 }
 function sword(M: number, id: number): ShapedRecipe {
   return shaped(1, 3, [M, M, S], id);
+}
+// armor recipe helpers: material M (MC patterns)
+function helmet(M: number, id: number): ShapedRecipe {
+  return shaped(3, 2, [M, M, M, M, 0, M], id);
+}
+function chestplate(M: number, id: number): ShapedRecipe {
+  return shaped(3, 3, [M, 0, M, M, M, M, M, M, M], id);
+}
+function leggings(M: number, id: number): ShapedRecipe {
+  return shaped(3, 3, [M, M, M, M, 0, M, M, 0, M], id);
+}
+function boots(M: number, id: number): ShapedRecipe {
+  return shaped(3, 2, [M, 0, M, M, 0, M], id);
 }
 
 export const RECIPES: Recipe[] = [
@@ -89,6 +103,23 @@ export const RECIPES: Recipe[] = [
   axe(D, ITEM.DIAMOND_AXE),
   shovel(D, ITEM.DIAMOND_SHOVEL),
   sword(D, ITEM.DIAMOND_SWORD),
+  // ── armor (leather / iron / gold / diamond) ──
+  helmet(L, ITEM.LEATHER_HELMET),
+  chestplate(L, ITEM.LEATHER_CHESTPLATE),
+  leggings(L, ITEM.LEATHER_LEGGINGS),
+  boots(L, ITEM.LEATHER_BOOTS),
+  helmet(I, ITEM.IRON_HELMET),
+  chestplate(I, ITEM.IRON_CHESTPLATE),
+  leggings(I, ITEM.IRON_LEGGINGS),
+  boots(I, ITEM.IRON_BOOTS),
+  helmet(G, ITEM.GOLD_HELMET),
+  chestplate(G, ITEM.GOLD_CHESTPLATE),
+  leggings(G, ITEM.GOLD_LEGGINGS),
+  boots(G, ITEM.GOLD_BOOTS),
+  helmet(D, ITEM.DIAMOND_HELMET),
+  chestplate(D, ITEM.DIAMOND_CHESTPLATE),
+  leggings(D, ITEM.DIAMOND_LEGGINGS),
+  boots(D, ITEM.DIAMOND_BOOTS),
 ];
 
 /** grid: row-major ids (0 = empty), size 2 or 3. Returns null when no match. */
@@ -155,8 +186,9 @@ export function needsTable(recipe: Recipe): boolean {
   return recipe.kind === 'shaped' ? recipe.w > 2 || recipe.h > 2 : recipe.ids.length > 4;
 }
 
-/** full durability for a fresh tool (0 when not a tool) */
+/** full durability for a fresh tool or armor piece (0 when neither) */
 export function freshDur(id: number): number | undefined {
-  if (!isToolItem(id)) return undefined;
-  return getToolDef(id)?.dur ?? 0;
+  if (isToolItem(id)) return getToolDef(id)?.dur ?? 0;
+  if (isArmorItem(id)) return getArmorDef(id)?.dur ?? 0;
+  return undefined;
 }
