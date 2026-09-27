@@ -70,7 +70,37 @@ export const BLOCK = {
   CACTUS: 36,
   WOOL: 37,
   BED: 38,
+  // flowing water levels 1..7 (39..45); WATER(10) = source (level 0)
+  WATER_FLOW1: 39,
+  WATER_FLOW2: 40,
+  WATER_FLOW3: 41,
+  WATER_FLOW4: 42,
+  WATER_FLOW5: 43,
+  WATER_FLOW6: 44,
+  WATER_FLOW7: 45,
+  SUGARCANE: 46,
+  DEAD_BUSH: 47,
+  LILY_PAD: 48,
+  JUNGLE_LOG: 49,
+  JUNGLE_LEAVES: 50,
 } as const;
+
+export const FLOW_MAX = 7;
+
+/** is this id any kind of water (source or flowing)? */
+export function isWaterId(id: number): boolean {
+  return id === BLOCK.WATER || (id >= BLOCK.WATER_FLOW1 && id <= BLOCK.WATER_FLOW7);
+}
+/** 0 for source, 1..7 for flowing */
+export function waterLevel(id: number): number {
+  if (id === BLOCK.WATER) return 0;
+  if (id >= BLOCK.WATER_FLOW1 && id <= BLOCK.WATER_FLOW7) return id - BLOCK.WATER_FLOW1 + 1;
+  return -1;
+}
+/** block id for a flowing level 1..7 */
+export function flowId(level: number): number {
+  return BLOCK.WATER_FLOW1 + Math.max(1, Math.min(FLOW_MAX, level)) - 1;
+}
 
 // Atlas tile indices — filled by textures/atlas.ts (same order)
 export const TILE = {
@@ -85,6 +115,7 @@ export const TILE = {
   torch: 38, furnace_front_on: 39, chest_front: 40, chest_side: 41, chest_top: 42,
   flower_red: 43, flower_yellow: 44, tall_grass: 45, cactus_side: 46, cactus_top: 47,
   wool: 48, bed_top: 49, bed_side: 50,
+  sugarcane: 51, dead_bush: 52, lily_pad: 53, jungle_log_side: 54, jungle_leaves: 55,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -138,7 +169,25 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.CACTUS]: { id: BLOCK.CACTUS, name: 'Cactus', tiles: t(TILE.cactus_side, TILE.cactus_side, TILE.cactus_top, TILE.cactus_top, TILE.cactus_side, TILE.cactus_side), solid: true, opaque: true, hardness: 0.6, sound: 'wool' },
   [BLOCK.WOOL]: { id: BLOCK.WOOL, name: 'Wool', tiles: TILE.wool, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
   [BLOCK.BED]: { id: BLOCK.BED, name: 'Bed', tiles: t(TILE.bed_side, TILE.bed_side, TILE.bed_top, TILE.planks, TILE.bed_side, TILE.bed_side), solid: true, opaque: false, height: 0.5625, flatIcon: true, needsGround: true, hardness: 0.4, sound: 'wood' },
+
+  // ── phase 3b ──
+  ...flowDefs(),
+  [BLOCK.SUGARCANE]: { id: BLOCK.SUGARCANE, name: 'Sugarcane', tiles: TILE.sugarcane, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, hardness: 0.05, drop: BLOCK.SUGARCANE, sound: 'grass' },
+  [BLOCK.DEAD_BUSH]: { id: BLOCK.DEAD_BUSH, name: 'Dead Bush', tiles: TILE.dead_bush, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, drop: null, sound: 'grass' },
+  [BLOCK.LILY_PAD]: { id: BLOCK.LILY_PAD, name: 'Lily Pad', tiles: TILE.lily_pad, solid: false, opaque: false, cutout: true, model: 'lily', flatIcon: true, hardness: 0.05, sound: 'grass' },
+  [BLOCK.JUNGLE_LOG]: { id: BLOCK.JUNGLE_LOG, name: 'Jungle Log', tiles: logTiles(TILE.jungle_log_side, TILE.log_top), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.JUNGLE_LEAVES]: { id: BLOCK.JUNGLE_LEAVES, name: 'Jungle Leaves', tiles: TILE.jungle_leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
 };
+
+/** flowing water defs share appearance with source water */
+function flowDefs(): Record<number, BlockDef> {
+  const defs: Record<number, BlockDef> = {};
+  for (let lvl = 1; lvl <= FLOW_MAX; lvl++) {
+    const id = BLOCK.WATER_FLOW1 + lvl - 1;
+    defs[id] = { id, name: 'Water', tiles: TILE.water, solid: false, opaque: false, liquid: true, hardness: 100, sound: 'dirt' };
+  }
+  return defs;
+}
 
 export function getBlockDef(id: number): BlockDef | undefined {
   return BLOCKS[id];
@@ -163,7 +212,17 @@ export function isTranslucent(id: number): boolean {
 }
 /** does this block type cull the face of a neighbor of the same type (water-water) */
 export function sameCull(id: number): boolean {
-  return id === BLOCK.WATER;
+  return isWaterId(id);
+}
+/** can flowing water enter & replace this cell? */
+export function waterReplaceable(id: number): boolean {
+  if (id === BLOCK.AIR) return true;
+  const d = BLOCKS[id];
+  if (!d) return true;
+  // wash away decorations: flowers, tall grass, dead bush, torches, sugarcane, lily pads
+  if (d.needsGround && !d.solid) return true;
+  if (id === BLOCK.SUGARCANE || id === BLOCK.LILY_PAD) return true;
+  return false;
 }
 /** effective collision/render height of a block cell (1 = full cube) */
 export function blockHeight(id: number): number {

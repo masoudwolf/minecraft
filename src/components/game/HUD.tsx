@@ -10,6 +10,7 @@ import { Heart } from './ui';
 export function HUD() {
   const hud = useGameStore((s) => s.hud);
   const toast = useGameStore((s) => s.toast);
+  const advancement = useGameStore((s) => s.advancement);
   const prevHealth = useRef(20);
   const hurtFlash = useRef<HTMLDivElement>(null);
 
@@ -52,8 +53,35 @@ export function HUD() {
         </div>
       )}
 
+      {/* achievement advancement popup (top-right, MC style) */}
+      {advancement && <AdvancementToast key={advancement.title} adv={advancement} />}
+
       {/* bottom bars */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
+        {/* XP bar (MC green, above status bars) */}
+        <div className="relative mb-0.5 h-[7px] w-[366px]" style={{ background: 'rgba(0,0,0,0.55)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.9)' }}>
+          <div
+            className="h-full"
+            style={{
+              width: `${hud.xpProgress * 100}%`,
+              background: 'linear-gradient(180deg,#a4ff5e 0%,#7fdc38 45%,#5cb521 100%)',
+              boxShadow: '0 0 4px rgba(140,255,80,0.55)',
+            }}
+          />
+          {hud.xpLevel > 0 && (
+            <span
+              className="absolute -top-[15px] left-1/2 -translate-x-1/2 text-[13px] font-bold"
+              style={{
+                fontFamily: 'var(--font-mc)',
+                color: '#80ff20',
+                textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000',
+              }}
+            >
+              {hud.xpLevel}
+            </span>
+          )}
+        </div>
+
         {/* status bars row: hearts left, hunger right (like MC) */}
         <div className="flex w-[366px] items-end justify-between pb-0.5">
           <div className="flex gap-[1px]">
@@ -144,6 +172,40 @@ function FadeText({ text }: { text: string }) {
       style={{ fontFamily: 'var(--font-mc)', textShadow: '2px 2px 0 rgba(0,0,0,0.8)' }}
     >
       {text}
+    </div>
+  );
+}
+
+/** MC-style advancement popup — dark box, yellow title, slide-in from right */
+function AdvancementToast({ adv }: { adv: { title: string; desc: string; icon: string } }) {
+  const [phase, setPhase] = useState<'in' | 'show' | 'out'>('in');
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase('show'), 20);
+    const t2 = setTimeout(() => setPhase('out'), 4200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+  const x = phase === 'in' ? 'translate-x-[120%]' : phase === 'out' ? 'translate-x-[120%]' : 'translate-x-0';
+  return (
+    <div
+      className={`absolute right-3 top-3 flex items-center gap-3 border-2 py-2 pl-2 pr-5 transition-transform duration-300 ease-out ${x}`}
+      style={{
+        background: 'linear-gradient(180deg,#212121 0%,#2d2d2d 100%)',
+        borderColor: '#555',
+        boxShadow: '0 0 0 2px #000, 0 4px 14px rgba(0,0,0,0.55)',
+        fontFamily: 'var(--font-mc)',
+      }}
+    >
+      <div
+        className="flex h-[40px] w-[40px] items-center justify-center border-2"
+        style={{ background: '#1a1a1a', borderColor: '#666' }}
+      >
+        <img src={adv.icon} alt="" className="h-[32px] w-[32px]" style={{ imageRendering: 'pixelated' }} draggable={false} />
+      </div>
+      <div className="flex flex-col">
+        <span className="text-[13px] font-bold" style={{ color: '#ffff55', textShadow: '2px 2px 0 #3a3a00' }}>Achievement Get!</span>
+        <span className="text-[13px] text-white" style={{ textShadow: '2px 2px 0 rgba(0,0,0,0.8)' }}>{adv.title}</span>
+        <span className="text-[10px]" style={{ color: '#bbb' }}>{adv.desc}</span>
+      </div>
     </div>
   );
 }

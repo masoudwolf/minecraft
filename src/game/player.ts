@@ -19,6 +19,10 @@ export class Player {
   hunger = 20;
   dead = false;
 
+  // experience (level + progress within level)
+  level = 0;
+  xp = 0;
+
   sprinting = false;
   sneaking = false;
   fallStartY = 0;

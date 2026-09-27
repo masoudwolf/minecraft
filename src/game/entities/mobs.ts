@@ -1,7 +1,7 @@
 // ─── Mobs: box-model entities, AI, spawning, combat ──────────────────────────
 import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from '../physics';
-import { BLOCK } from '../blocks';
+import { BLOCK, isWaterId } from '../blocks';
 import { getMobSkins } from './mobSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
@@ -229,6 +229,7 @@ function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz:
 export interface MobCallbacks {
   damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
   spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
+  spawnXP: (x: number, y: number, z: number, value: number) => void;
   explodeParticles: (x: number, y: number, z: number) => void;
   deathParticles: (x: number, y: number, z: number) => void;
   fireParticle: (x: number, y: number, z: number) => void;
@@ -333,7 +334,7 @@ export class MobManager {
     let sy = -1;
     for (let y = 95; y > 2; y--) {
       const id = this.world.getBlock(cx, y, cz);
-      if (id !== 0 && id !== BLOCK.WATER) {
+      if (id !== 0 && !isWaterId(id)) {
         sy = y;
         break;
       }
@@ -343,7 +344,7 @@ export class MobManager {
     const above2 = this.world.getBlock(cx, sy + 2, cz);
     if (above !== 0 || above2 !== 0) return;
     const groundId = this.world.getBlock(cx, sy, cz);
-    if (groundId === BLOCK.WATER) return;
+    if (isWaterId(groundId)) return;
 
     const l = this.world.getLight(cx, sy + 1, cz);
     if (l < 0) return;
@@ -369,8 +370,8 @@ export class MobManager {
     }
   }
 
-  hurtMob(mob: Mob, dmg: number, kx: number, kz: number): void {
-    if (mob.dead) return;
+  hurtMob(mob: Mob, dmg: number, kx: number, kz: number): boolean {
+    if (mob.dead) return false;
     mob.health -= dmg;
     mob.hurtT = 0.4;
     const len = Math.hypot(kx, kz) || 1;
@@ -390,7 +391,9 @@ export class MobManager {
       mob.dead = true;
       mob.deathT = 0.45;
       if (mob.type === 'creeper' && mob.fuse >= 0) mob.fuse = -1;
+      return true;
     }
+    return false;
   }
 
   /** creeper explosion */
@@ -462,6 +465,7 @@ export class MobManager {
               cb.spawnDrop(drop.id, m.x, m.y + 0.4, m.z);
             }
           }
+          cb.spawnXP(m.x, m.y + 0.4, m.z, m.def.hostile ? 5 : 1 + Math.floor(Math.random() * 3));
           cb.deathParticles(m.x, m.y + m.height / 2, m.z);
           this.scene.remove(m.group);
           this.scene.remove(m.parts.shadow);

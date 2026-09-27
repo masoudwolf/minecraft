@@ -1,6 +1,6 @@
 // ─── Chunk mesher: face culling + ambient occlusion + smooth lighting ────────
 import * as THREE from 'three';
-import { BLOCK, getBlockDef, isOpaque, isLiquid } from '../blocks';
+import { BLOCK, getBlockDef, isOpaque, isWaterId, waterLevel } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import { tileUV } from '../textures/atlas';
 import type { World, Chunk } from './world';
@@ -90,7 +90,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
 
         const wx = x0 + lx;
         const wz = z0 + lz;
-        const isWater = id === BLOCK.WATER;
+        const isWater = isWaterId(id);
         const isCutout = !!def.cutout;
         const target = isWater ? water : isCutout ? cutout : opaque;
 
@@ -157,9 +157,35 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           continue;
         }
 
-        // water top surface lowered
+        // ── special model: lily pad (flat horizontal quad near cell bottom) ──
+        if (def.model === 'lily') {
+          const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const [u0, v0, u1, v1] = tileUV(tile);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const hY = 0.0625;
+          const quad: [number, number, number][] = [[0, hY, 1], [1, hY, 1], [1, hY, 0], [0, hY, 0]];
+          const basePos = cutout.positions.length / 3;
+          for (let c = 0; c < 4; c++) {
+            const cr = quad[c];
+            cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+            const uvc = UV_CORNERS[c];
+            cutout.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
+            cutout.shades.push(0.96);
+            cutout.skies.push(sky);
+            cutout.blocks.push(blk);
+          }
+          cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+          continue;
+        }
+
+        // water surface height: source 0.875, flowing levels get thinner
         const aboveId = getB(wx, y + 1, wz);
-        const waterTop = isWater && aboveId !== BLOCK.WATER;
+        let waterTopH = 1;
+        if (isWater && !isWaterId(aboveId)) {
+          waterTopH = id === BLOCK.WATER ? 0.875 : Math.max(0.12, 0.875 - waterLevel(id) * 0.105);
+        }
         // partial-height blocks (bed)
         const hTop = def.height ?? 1;
 
@@ -172,7 +198,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
 
           // face visibility
           if (isWater) {
-            if (nId === BLOCK.WATER) continue;
+            if (nId === id) continue; // same-level water culls
             if (isOpaque(nId)) continue;
           } else if (isCutout) {
             if (nId === id) continue; // same cutout type culls
@@ -200,7 +226,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             const corner = face.corners[c];
             // world-space sample cell (the air cell in front of the face)
             let cy = y + corner[1];
-            if (isWater && waterTop && corner[1] === 1) cy = y + 0.875;
+            if (isWater && waterTopH !== 1 && corner[1] === 1) cy = y + waterTopH;
             else if (corner[1] === 1 && hTop !== 1) cy = y + hTop;
 
             target.positions.push(lx + corner[0], cy, lz + corner[2]);

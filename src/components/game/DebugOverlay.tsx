@@ -8,7 +8,7 @@ export function DebugOverlay() {
   const showFps = useGameStore((s) => s.settings.showFps);
 
   const lines = [
-    `VoxelCraft 0.4.0 — ${debug.fps} fps`,
+    `VoxelCraft 0.5.0 — ${debug.fps} fps`,
     `XYZ: ${debug.x.toFixed(2)} / ${debug.y.toFixed(2)} / ${debug.z.toFixed(2)}`,
     `Chunk: ${debug.chunkX} ${debug.chunkZ}  (${debug.chunks} loaded)`,
     `Biome: minecraft:${debug.biome}`,

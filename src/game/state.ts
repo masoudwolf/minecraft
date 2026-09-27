@@ -34,6 +34,9 @@ export interface HUDState {
   underwater: boolean;
   loadingProgress: number;
   loadingLabel: string;
+  /** XP bar above hotbar */
+  xpLevel: number;
+  xpProgress: number; // 0..1
 }
 
 /** snapshot pushed by engine for the inventory screen */
@@ -62,6 +65,8 @@ interface GameStore {
   hud: HUDState;
   toast: string | null;
   inv: InvUIState;
+  /** MC-style advancement popup (top-right) */
+  advancement: { title: string; desc: string; icon: string } | null;
 
   setScreen: (s: Screen) => void;
   setHasSave: (v: boolean) => void;
@@ -71,6 +76,7 @@ interface GameStore {
   setHud: (h: Partial<HUDState>) => void;
   setToast: (t: string | null) => void;
   setInv: (inv: Partial<InvUIState>) => void;
+  setAdvancement: (a: { title: string; desc: string; icon: string } | null) => void;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -98,9 +104,10 @@ export const useGameStore = create<GameStore>((set) => ({
   debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'north', targetBlock: '—', chunks: 0, mobs: 0, time: '06:00', tris: 0 },
   debugVisible: false,
   settings: DEFAULT_SETTINGS,
-  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '' },
+  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0 },
   toast: null,
   inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null },
+  advancement: null,
 
   setScreen: (s) => set((st) => ({ screen: s, prevScreen: st.screen })),
   setHasSave: (v) => set({ hasSave: v }),
@@ -114,6 +121,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setHud: (h) => set((st) => ({ hud: { ...st.hud, ...h } })),
   setToast: (t) => set({ toast: t }),
   setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
+  setAdvancement: (a) => set({ advancement: a }),
 }));
 
 export function saveSettings(s: Settings): void {

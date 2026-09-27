@@ -51,7 +51,7 @@ export function MainMenu() {
 
       {/* footer */}
       <div className="absolute bottom-3 left-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
-        VoxelCraft 0.4.0 — Phase 3: Furnaces, Chests & Torches
+        VoxelCraft 0.5.0 — Phase 3b: Water, Biomes & XP
       </div>
       <div className="absolute bottom-3 right-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
         Fan project — not affiliated with Mojang

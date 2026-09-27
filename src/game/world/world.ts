@@ -1,6 +1,6 @@
 // ─── Chunk + World + Voxel lighting engine (sky & block light BFS) ───────────
 import * as THREE from 'three';
-import { BLOCK, isOpaque, getBlockDef } from '../blocks';
+import { BLOCK, getBlockDef, isOpaque, isWaterId, waterLevel, flowId, waterReplaceable, FLOW_MAX } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex, chunkKey, CHUNK_AREA } from '../constants';
 import { TerrainGenerator } from './terrain';
 import { buildChunkMesh, disposeChunkMesh, ChunkMeshes } from './mesher';
@@ -57,6 +57,10 @@ export class World {
   private blockAddQ = new LightQueue();
   private blockRemQ = new LightQueue();
   version = 0; // bumped on block edits (for save tracking)
+  /** fluid update queue: key "x,y,z" -> due time (seconds, accumulating clock) */
+  private fluidQ = new Map<string, number>();
+  private fluidNow = 0;
+  static readonly FLUID_DELAY = 0.28; // seconds between fluid updates per cell
 
   constructor(seed: number, savedEdits?: Record<string, Record<number, number>>) {
     this.terrain = new TerrainGenerator(seed);
@@ -89,6 +93,17 @@ export class World {
       const edits = this.edits.get(key);
       if (edits) for (const [idx, id] of edits) chunk.data[idx] = id;
       chunk.hasData = true;
+      // resume any saved flowing water / plants (fluid queue is transient)
+      if (edits) {
+        for (const [idx, id] of edits) {
+          if (isWaterId(id) || id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) {
+            const lx = idx % CHUNK_SIZE;
+            const lz = Math.floor(idx / CHUNK_SIZE) % CHUNK_SIZE;
+            const y = Math.floor(idx / (CHUNK_SIZE * CHUNK_SIZE));
+            this.scheduleFluidTick(cx * CHUNK_SIZE + lx, y, cz * CHUNK_SIZE + lz, 0.5 + Math.random() * 0.5);
+          }
+        }
+      }
       this.computeInitialSkyLight(chunk);
       this.seedLightBorders(chunk);
       this.processLightQueues(200000);
@@ -113,6 +128,118 @@ export class World {
     const chunk = this.chunks.get(chunkKey(cx, cz));
     if (!chunk || !chunk.hasData) return BLOCK.AIR;
     return chunk.data[blockIndex(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE)];
+  }
+
+  /** schedule a fluid update at cell (called on edits near water) */
+  scheduleFluidTick(wx: number, wy: number, wz: number, delay = World.FLUID_DELAY): void {
+    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+    const key = wx + ',' + wy + ',' + wz;
+    if (!this.fluidQ.has(key)) this.fluidQ.set(key, this.fluidNow + delay);
+  }
+
+  /** schedule fluid updates around an edited cell (self + 6 neighbors) */
+  wakeFluidsAround(wx: number, wy: number, wz: number): void {
+    this.scheduleFluidTick(wx, wy, wz);
+    for (const [dx, dy, dz] of NEIGHBORS) this.scheduleFluidTick(wx + dx, wy + dy, wz + dz);
+  }
+
+  /** process due fluid cells; budget caps work per call */
+  tickFluids(dt: number, budget = 120): void {
+    if (this.fluidQ.size === 0) return;
+    this.fluidNow += dt;
+    const due: [number, number, number][] = [];
+    for (const [key, t] of this.fluidQ) {
+      if (t <= this.fluidNow) {
+        const [x, y, z] = key.split(',').map(Number);
+        due.push([x, y, z]);
+        this.fluidQ.delete(key);
+        if (due.length >= budget) break;
+      }
+    }
+    for (const [x, y, z] of due) this.fluidTickCell(x, y, z);
+  }
+
+  get fluidQueueSize(): number { return this.fluidQ.size; }
+
+  /** one fluid update for a single cell */
+  private fluidTickCell(x: number, y: number, z: number): void {
+    const id = this.getBlock(x, y, z);
+    if (isWaterId(id)) {
+      this.tickWater(x, y, z, id);
+      return;
+    }
+    // plant growth rides the same scheduler: sugarcane / cactus grow here
+    if (id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) this.tickPlant(x, y, z, id);
+  }
+
+  private tickWater(x: number, y: number, z: number, id: number): void {
+    const level = waterLevel(id);
+    const belowId = this.getBlock(x, y - 1, z);
+    const belowFlowable = belowId === BLOCK.AIR || waterReplaceable(belowId);
+
+    // ── infinite water: flowing cell beside 2+ sources becomes a source ──
+    if (level > 0) {
+      let srcNeighbors = 0;
+      if (this.getBlock(x + 1, y, z) === BLOCK.WATER) srcNeighbors++;
+      if (this.getBlock(x - 1, y, z) === BLOCK.WATER) srcNeighbors++;
+      if (this.getBlock(x, y, z + 1) === BLOCK.WATER) srcNeighbors++;
+      if (this.getBlock(x, y, z - 1) === BLOCK.WATER) srcNeighbors++;
+      if (srcNeighbors >= 2) {
+        this.setBlock(x, y, z, BLOCK.WATER);
+        return;
+      }
+    }
+
+    if (level > 0) {
+      // ── recede/recompute level: fed from above (falling = level 1) or nearest neighbor+1 ──
+      let best = 99;
+      if (isWaterId(this.getBlock(x, y + 1, z))) best = 0; // falling column targets level 1
+      const horiz: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const [dx, dz] of horiz) {
+        const nId = this.getBlock(x + dx, y, z + dz);
+        if (isWaterId(nId)) best = Math.min(best, waterLevel(nId));
+      }
+      const want = best + 1;
+      if (want > FLOW_MAX) { this.setBlock(x, y, z, BLOCK.AIR); return; }
+      if (want !== level) { this.setBlock(x, y, z, flowId(want)); return; }
+    }
+
+    // ── flow down first (falling column keeps level 1) ──
+    if (belowFlowable) {
+      if (!isWaterId(belowId) || waterLevel(belowId) > 1) {
+        this.setBlock(x, y - 1, z, flowId(1));
+      }
+      this.scheduleFluidTick(x, y - 1, z);
+      return; // falling water doesn't spread sideways mid-air (MC-like)
+    }
+
+    // ── spread horizontally when resting on solid ground / water ──
+    if (level >= FLOW_MAX) return;
+    const horiz: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dz] of horiz) {
+      const nx = x + dx, nz = z + dz;
+      const nId = this.getBlock(nx, y, nz);
+      if (isWaterId(nId)) {
+        const nl = waterLevel(nId);
+        if (nId !== BLOCK.WATER && nl > level + 1) {
+          this.setBlock(nx, y, nz, flowId(level + 1));
+          this.scheduleFluidTick(nx, y, nz);
+        }
+      } else if (waterReplaceable(nId)) {
+        this.setBlock(nx, y, nz, flowId(level + 1));
+        this.scheduleFluidTick(nx, y, nz);
+      }
+    }
+  }
+
+  /** grow sugarcane / cactus upward (max 3 tall) */
+  private tickPlant(x: number, y: number, z: number, id: number): void {
+    if (Math.random() > 0.18) return; // slow growth
+    let base = y;
+    while (base > 0 && this.getBlock(x, base - 1, z) === id) base--;
+    if (y - base >= 2) return; // max 3 tall
+    if (this.getBlock(x, y + 1, z) !== BLOCK.AIR) return;
+    this.setBlock(x, y + 1, z, id);
   }
 
   setBlock(wx: number, wy: number, wz: number, id: number): void {
@@ -140,6 +267,9 @@ export class World {
     if (lx === CHUNK_SIZE - 1) this.markDirty(cx + 1, cz);
     if (lz === 0) this.markDirty(cx, cz - 1);
     if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cz + 1);
+
+    // ── fluid wake: edited cell + neighbors re-tick (water flows in/out) ──
+    this.wakeFluidsAround(wx, wy, wz);
 
     // ── light updates ──
     const oldDef = getBlockDef(old);
@@ -224,8 +354,8 @@ export class World {
         for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
           const id = chunk.data[blockIndex(lx, y, lz)];
           if (isOpaque(id)) level = 0;
-          else if (id === BLOCK.WATER) level = Math.max(0, level - 2);
-          else if (id === BLOCK.LEAVES || id === BLOCK.SPRUCE_LEAVES) level = Math.max(0, level - 1);
+          else if (isWaterId(id)) level = Math.max(0, level - 2);
+          else if (id === BLOCK.LEAVES || id === BLOCK.SPRUCE_LEAVES || id === BLOCK.JUNGLE_LEAVES) level = Math.max(0, level - 1);
           const emit = getBlockDef(id)?.lightEmit ?? 0;
           const idx = blockIndex(lx, y, lz);
           chunk.light[idx] = (level << 4) | emit;
@@ -326,8 +456,8 @@ export class World {
         const nSky = nl >> 4;
         let target = n.level - 1;
         if (dy === -1 && n.level === 15) target = 15;
-        if (nbId === BLOCK.WATER) target = Math.max(0, target - 2);
-        if (nbId === BLOCK.LEAVES || nbId === BLOCK.SPRUCE_LEAVES) target = Math.max(0, target - 1);
+        if (isWaterId(nbId)) target = Math.max(0, target - 2);
+        if (nbId === BLOCK.LEAVES || nbId === BLOCK.SPRUCE_LEAVES || nbId === BLOCK.JUNGLE_LEAVES) target = Math.max(0, target - 1);
         if (nSky < target) {
           this.setLightRaw(nx, ny, nz, (nl & 0x0f) | (target << 4));
           this.skyAddQ.push({ x: nx, y: ny, z: nz, level: target });
@@ -387,7 +517,7 @@ export class World {
   surfaceY(wx: number, wz: number): number {
     for (let y = WORLD_HEIGHT - 1; y > 0; y--) {
       const id = this.getBlock(wx, y, wz);
-      if (id !== BLOCK.AIR && id !== BLOCK.WATER) return y;
+      if (id !== BLOCK.AIR && !isWaterId(id)) return y;
     }
     return 1;
   }

@@ -2,19 +2,21 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager } from './entities/mobs';
-import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem } from './items';
+import { XPOrbManager } from './entities/xp';
+import { AchievementManager, type AchievementDef } from './achievements';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, ITEM } from './items';
 import { matchRecipe, freshDur } from './crafting';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
 import { audio, type MaterialSound } from './audio';
-import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas } from './textures/atlas';
+import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL } from './textures/atlas';
 import { getItemIconCanvas } from './items';
 import { useGameStore } from './state';
 
@@ -23,10 +25,11 @@ const SAVE_KEY = 'voxelcraft.save';
 interface SaveData {
   seed: number;
   time: number;
-  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; selected: number };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; selected: number; level?: number; xp?: number };
   edits: Record<string, Record<number, number>>;
   blockEntities?: Record<string, unknown>;
   spawn?: { x: number; y: number; z: number };
+  achievements?: string[];
 }
 
 export class Game {
@@ -38,9 +41,11 @@ export class Game {
   player!: Player;
   drops!: DropManager;
   mobs!: MobManager;
+  xpOrbs!: XPOrbManager;
   particles!: ParticleSystem;
   sky!: SkySystem;
   blockEnts!: BlockEntityManager;
+  achievements = new AchievementManager();
   spawnPoint: { x: number; y: number; z: number } | null = null;
 
   private raf = 0;
@@ -82,6 +87,8 @@ export class Game {
   private furnaceSyncTimer = 0;
   private torchFxTimer = 0;
   private cactusTimer = 0;
+  private plantScanTimer = 0;
+  private lastXpSync = '';
 
   private highlight: THREE.LineSegments;
   private crackMesh: THREE.Mesh;
@@ -140,6 +147,18 @@ export class Game {
       this.sky.cloudsEnabled = this.settings.clouds;
     });
 
+    // achievement popup bridge
+    this.achievements.setCallback((a: AchievementDef) => {
+      audio.achievement();
+      const store = useGameStore.getState();
+      store.setAdvancement({ title: a.title, desc: a.desc, icon: getTileIconURL(a.iconTile) });
+      window.setTimeout(() => {
+        if (useGameStore.getState().advancement?.title === a.title) {
+          useGameStore.getState().setAdvancement(null);
+        }
+      }, 4500);
+    });
+
     this.bindEvents();
 
     // QA/debug handle (used by automated testing)
@@ -182,6 +201,7 @@ export class Game {
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
+    this.xpOrbs = new XPOrbManager(this.scene, this.world);
     this.blockEnts = new BlockEntityManager(this.world);
     this.player = new Player(this.camera);
     this.spawnPoint = save?.spawn ?? null;
@@ -210,6 +230,9 @@ export class Game {
         : Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
       this.player.selected = save.player.selected;
       this.player.fallStartY = save.player.y;
+      this.player.level = save.player.level ?? 0;
+      this.player.xp = save.player.xp ?? 0;
+      if (save.achievements) this.achievements.restore(save.achievements);
     } else {
       this.player.entity.x = sx + 0.5;
       this.player.entity.y = sy + 1.2;
@@ -289,10 +312,13 @@ export class Game {
         hotbar: this.player.hotbar,
         main: this.player.main,
         selected: this.player.selected,
+        level: this.player.level,
+        xp: this.player.xp,
       },
       edits,
       blockEntities: this.blockEnts.serialize(),
       spawn: this.spawnPoint ?? undefined,
+      achievements: this.achievements.serialize(),
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(save));
@@ -434,7 +460,8 @@ export class Game {
         this.startSwing();
         const kx = hit.mob.x - this.player.x;
         const kz = hit.mob.z - this.player.z;
-        this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz);
+        const killed = this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz);
+        if (killed && hit.mob.def.hostile) this.achievements.unlock('monsterHunter');
         this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
         this.damageTool(heldTool && heldTool.type !== 'sword' ? 2 : 1);
         this.crackMesh.visible = false;
@@ -471,6 +498,12 @@ export class Game {
       if (harvest && dropId && dropId > 0) {
         this.drops.spawn(dropId, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
       }
+      // XP from ores
+      const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
+      if (oreXp > 0) {
+        const n = 1 + Math.floor(Math.random() * oreXp);
+        for (let i = 0; i < n; i++) this.xpOrbs.spawn(t.x + 0.5, t.y + 0.4, t.z + 0.5, oreXp);
+      }
       this.damageTool(1);
       // container: spill contents
       if (containerOf(t.id)) {
@@ -479,18 +512,23 @@ export class Game {
         }
       }
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
-      // pop unsupported ground-needs blocks sitting on top (torch, flowers, bed)
-      const aboveId = this.world.getBlock(t.x, t.y + 1, t.z);
-      const aboveDef = getBlockDef(aboveId);
-      if (aboveDef?.needsGround) {
-        const aDrop = aboveDef.drop === undefined ? aboveId : aboveDef.drop;
-        if (aDrop) this.drops.spawn(aDrop, t.x + 0.5, t.y + 1.3, t.z + 0.5, 1);
+      // pop unsupported blocks above (torch, flowers, bed) + plant stacks (sugarcane/cactus)
+      let py = t.y + 1;
+      let guard = 0;
+      while (py < WORLD_HEIGHT && guard++ < 96) {
+        const aboveId = this.world.getBlock(t.x, py, t.z);
+        const aboveDef = getBlockDef(aboveId);
+        const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
+        if (!aboveDef?.needsGround && !isStack) break;
+        const aDrop = aboveDef && aboveDef.drop !== undefined ? aboveDef.drop : aboveId;
+        if (aDrop) this.drops.spawn(aDrop, t.x + 0.5, py + 0.3, t.z + 0.5, 1);
         if (containerOf(aboveId)) {
-          for (const item of this.blockEnts.destroy(t.x, t.y + 1, t.z)) {
-            this.drops.spawn(item.id, t.x + 0.5, t.y + 1.5, t.z + 0.5, item.count);
+          for (const item of this.blockEnts.destroy(t.x, py, t.z)) {
+            this.drops.spawn(item.id, t.x + 0.5, py + 0.5, t.z + 0.5, item.count);
           }
         }
-        this.world.setBlock(t.x, t.y + 1, t.z, BLOCK.AIR);
+        this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+        py++;
       }
       this.mineProgress = 0;
       this.mineTarget = null;
@@ -536,11 +574,41 @@ export class Game {
     const by = this.target.y + this.target.ny;
     const bz = this.target.z + this.target.nz;
     if (by < 0 || by >= WORLD_HEIGHT) return;
-    const existing = this.world.getBlock(bx, by, bz);
+    let existing = this.world.getBlock(bx, by, bz);
+    // lily pads ride the water surface: walk up out of the water column
+    if (slot.blockId === BLOCK.LILY_PAD) {
+      let ly = by;
+      let guard = 0;
+      while (ly < WORLD_HEIGHT - 1 && isLiquid(this.world.getBlock(bx, ly, bz)) && guard++ < 32) ly++;
+      const cur = this.world.getBlock(bx, ly, bz);
+      const belowCell = this.world.getBlock(bx, ly - 1, bz);
+      if (cur !== BLOCK.AIR || belowCell !== BLOCK.WATER) {
+        this.showToast('Lily pads need still water');
+        return;
+      }
+      this.world.setBlock(bx, ly, bz, BLOCK.LILY_PAD);
+      audio.place('grass');
+      this.placeCooldown = 0.22;
+      this.startSwing();
+      slot.count--;
+      if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+      this.syncHUD();
+      this.updateHandMesh();
+      return;
+    }
     if (existing !== BLOCK.AIR && !isLiquid(existing)) return;
     // don't place inside player
     if (aabbIntersectsBlock(this.player.entity, bx, by, bz)) return;
     const def = getBlockDef(slot.blockId);
+    // sugarcane: needs sand/grass/dirt below (with adjacent water) or another cane
+    if (slot.blockId === BLOCK.SUGARCANE) {
+      const below = this.world.getBlock(bx, by - 1, bz);
+      const belowOk = below === BLOCK.SUGARCANE || ((below === BLOCK.SAND || below === BLOCK.GRASS || below === BLOCK.DIRT) && this.hasAdjacentWater(bx, by - 1, bz));
+      if (!belowOk) {
+        this.showToast('Needs sand or grass beside water');
+        return;
+      }
+    }
     // ground-support requirement (torch, flowers, bed)
     if (def?.needsGround) {
       const below = this.world.getBlock(bx, by - 1, bz);
@@ -553,6 +621,9 @@ export class Game {
     this.world.setBlock(bx, by, bz, slot.blockId);
     // attach block entity for containers
     if (def?.container) this.blockEnts.getOrCreate(bx, by, bz);
+    // achievements
+    if (slot.blockId === BLOCK.FURNACE) this.achievements.unlock('hotTopic');
+    if (slot.blockId === BLOCK.TORCH) this.achievements.unlock('lightItUp');
     audio.place((def?.sound ?? 'stone') as MaterialSound);
     this.placeCooldown = 0.22;
     this.startSwing();
@@ -560,6 +631,15 @@ export class Game {
     if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
     this.syncHUD();
     this.updateHandMesh();
+  }
+
+  /** any water block orthogonally adjacent to this cell (at same or one-below level)? */
+  private hasAdjacentWater(x: number, y: number, z: number): boolean {
+    const dirs: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [1, -1, 0], [-1, -1, 0], [0, -1, 1], [0, -1, -1]];
+    for (const [dx, dy, dz] of dirs) {
+      if (isWaterId(this.world.getBlock(x + dx, y + dy, z + dz))) return true;
+    }
+    return false;
   }
 
   /** right-click on chest / furnace */
@@ -587,6 +667,7 @@ export class Game {
     if (night) {
       this.sky.time = DAY_LENGTH * 0.24; // just before sunrise
       this.showToast('Spawn point set · Slept until morning');
+      this.achievements.unlock('sleepTight');
     } else {
       this.showToast('Spawn point set (you can only sleep at night)');
     }
@@ -628,6 +709,12 @@ export class Game {
       audio.pop();
       this.syncHUD();
       this.syncInventory();
+      // achievements on pickup
+      if (stack.blockId === BLOCK.LOG || stack.blockId === BLOCK.SPRUCE_LOG || stack.blockId === BLOCK.JUNGLE_LOG) this.achievements.unlock('getWood');
+      if (stack.blockId === ITEM.IRON_INGOT) this.achievements.unlock('acquireHardware');
+      if (stack.blockId === ITEM.DIAMOND) this.achievements.unlock('diamonds');
+      if (stack.blockId === ITEM.LEATHER) this.achievements.unlock('cowTipper');
+      if (stack.blockId === ITEM.STEAK) this.achievements.unlock('ironBelly');
     }
     if (leftover === stack.count) return false;
     stack.count = leftover;
@@ -889,9 +976,11 @@ export class Game {
       const out = this.craftOut;
       if (!this.cursor) {
         this.cursor = { ...out };
+        this.onCrafted(out.blockId);
         consume();
       } else if (this.cursor.blockId === out.blockId && !isToolItem(out.blockId) && this.cursor.count + out.count <= maxStack(out.blockId)) {
         this.cursor.count += out.count;
+        this.onCrafted(out.blockId);
         consume();
       } else return;
     } else {
@@ -900,6 +989,7 @@ export class Game {
         const size = this.invTable ? 3 : 2;
         const res = matchRecipe(grid.map((s) => (isEmptySlot(s) ? 0 : s.blockId)), size);
         if (!res) break;
+        this.onCrafted(res.id);
         const left = this.addToInventory(res.id, res.count, freshDur(res.id));
         if (left > 0) {
           const p = this.player.entity;
@@ -912,6 +1002,13 @@ export class Game {
     this.updateCraftOut();
     this.syncInventory(true);
     this.syncHUD(true);
+  }
+
+  /** achievements for key craft milestones */
+  private onCrafted(id: number): void {
+    if (id === BLOCK.CRAFTING_TABLE) this.achievements.unlock('benchmarking');
+    if (id === ITEM.WOOD_PICKAXE) this.achievements.unlock('timeToMine');
+    if (id === ITEM.STONE_PICKAXE) this.achievements.unlock('gettingUpgrade');
   }
 
   /** consume durability from held tool; breaks it at 0 */
@@ -1143,6 +1240,31 @@ export class Game {
         selected: this.player.selected,
       });
     }
+    // XP bar
+    const xpHash = this.player.level + ':' + this.player.xp.toFixed(2);
+    if (xpHash !== this.lastXpSync || force) {
+      this.lastXpSync = xpHash;
+      store.setHud({ xpLevel: this.player.level, xpProgress: Math.max(0, Math.min(1, this.player.xp / this.xpToNext(this.player.level))) });
+    }
+  }
+
+  private xpToNext(level: number): number {
+    return 7 + level * 3;
+  }
+
+  /** absorb XP: handles level-ups (MC-lite curve: 7 + 3/level) */
+  private addXP(value: number): void {
+    audio.orb();
+    let xp = this.player.xp + value;
+    let level = this.player.level;
+    while (xp >= this.xpToNext(level)) {
+      xp -= this.xpToNext(level);
+      level++;
+      audio.pop();
+    }
+    this.player.xp = xp;
+    this.player.level = level;
+    this.syncHUD();
   }
 
   // ── main loop ──────────────────────────────────────────────────────────────
@@ -1267,6 +1389,9 @@ export class Game {
 
     // death
     if (p.dead) {
+      // lose XP on death (MC drops it — simplified: reset)
+      p.level = 0;
+      p.xp = 0;
       useGameStore.getState().setScreen('dead');
       if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     }
@@ -1307,6 +1432,21 @@ export class Game {
 
     // block entities (furnace smelting etc.)
     this.blockEnts.tick(dt);
+    // fluid simulation + plant growth
+    this.world.tickFluids(dt);
+    // ambient plant growth: sample random columns near the player and tick canes/cacti
+    this.plantScanTimer += dt;
+    if (this.plantScanTimer > 2) {
+      this.plantScanTimer = 0;
+      const px2 = this.player.x, py2 = this.player.y, pz2 = this.player.z;
+      for (let i = 0; i < 24; i++) {
+        const sx = Math.floor(px2 + (Math.random() - 0.5) * 64);
+        const sz = Math.floor(pz2 + (Math.random() - 0.5) * 64);
+        const sy = Math.floor(py2) + Math.floor((Math.random() - 0.3) * 8);
+        const id = this.world.getBlock(sx, sy, sz);
+        if (id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) this.world.scheduleFluidTick(sx, sy, sz, 0.5);
+      }
+    }
     this.furnaceSyncTimer += dt;
     if (this.furnaceSyncTimer > 0.3) {
       this.furnaceSyncTimer = 0;
@@ -1337,6 +1477,9 @@ export class Game {
     });
     this.particles.update(dt);
 
+    // XP orbs
+    this.xpOrbs.update(dt, p.entity, (value) => this.addXP(value));
+
     // mobs
     if (this.mobs) {
       const eyeY = p.eyeY();
@@ -1361,6 +1504,9 @@ export class Game {
         },
         spawnDrop: (itemId, dx, dy, dz) => {
           this.drops.spawn(itemId, dx, dy, dz, 1);
+        },
+        spawnXP: (dx, dy, dz, value) => {
+          this.xpOrbs.spawn(dx, dy, dz, value);
         },
         explodeParticles: (ex, ey, ez) => {
           for (let i = 0; i < 3; i++) {
@@ -1397,7 +1543,7 @@ export class Game {
 
     // underwater check for HUD
     const camBlock = this.world.getBlock(Math.floor(this.camera.position.x), Math.floor(this.camera.position.y), Math.floor(this.camera.position.z));
-    const underwater = camBlock === BLOCK.WATER;
+    const underwater = isLiquid(camBlock);
     const st = useGameStore.getState();
     if (st.hud.underwater !== underwater) st.setHud({ underwater });
 

@@ -101,6 +101,17 @@ class AudioManager {
     this.tone(620, 0.07, 0.18, 'square', 980);
   }
 
+  /** XP orb absorb — rising chirp */
+  orb(): void {
+    this.tone(880 + Math.random() * 240, 0.09, 0.14, 'sine', 1500);
+  }
+
+  /** achievement unlock — bright two-note fanfare */
+  achievement(): void {
+    this.tone(660, 0.12, 0.2, 'square', 660);
+    window.setTimeout(() => this.tone(990, 0.22, 0.2, 'square', 990), 110);
+  }
+
   hurt(): void {
     this.tone(240, 0.18, 0.3, 'sawtooth', 110);
     this.noiseBurst(300, 0.15, 0.2, 'lowpass');

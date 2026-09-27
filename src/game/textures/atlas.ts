@@ -51,6 +51,7 @@ const SNOW = ['#f4fbfb', '#e8f2f2', '#ffffff', '#dfeaea', '#eef6f6'];
 const WATER_C = [['#3059c4', 210], ['#3a68d8', 210], ['#2a52b8', 210], ['#4577e0', 205]] as [string, number][];
 const LEAF = ['#3d6b22', '#457a28', '#356019', '#4d852e', '#2f5515'];
 const SLEAF = ['#2e5b30', '#27502a', '#356b38', '#1f4521'];
+const JLEAF = ['#4fa827', '#459623', '#5cba2f', '#3a821c', '#6bcb3c'];
 const OBSID = ['#141221', '#2a2440', '#0c0a14', '#3a3260', '#1a1628'];
 
 function drawOre(ctx: Ctx, tileX: number, tileY: number, colors: string[], rnd: () => number): void {
@@ -323,6 +324,62 @@ function drawTallGrassTile(ctx: Ctx, tx: number, ty: number, rnd: () => number):
   }
 }
 
+function drawSugarcaneTile(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  // 3 vertical stalks with joints
+  const stalks = [3, 7, 11];
+  for (const sx of stalks) {
+    const c = pick(rnd, ['#9fca5c', '#8fbc4c', '#a9d468']);
+    for (let y = 0; y < 16; y++) {
+      px(ctx, tx + sx, ty + 15 - y, y % 5 === 4 ? '#7ca23b' : c);
+      if (sx < 15 && rnd() < 0.7) px(ctx, tx + sx + 1, ty + 15 - y, y % 5 === 4 ? '#6f9433' : '#94c052');
+    }
+    // leaf blade
+    const ly = 2 + Math.floor(rnd() * 4);
+    for (let k = 0; k < 4; k++) px(ctx, tx + sx - 1 - k, ty + ly + k, '#7ca23b');
+  }
+}
+
+function drawDeadBushTile(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  const browns = ['#96702f', '#7d5c26', '#a87f38', '#6b4e1f'];
+  // central trunk + branches
+  for (let y = 15; y >= 7; y--) px(ctx, tx + 7, ty + y, pick(rnd, browns));
+  const branches: [number, number, number][][] = [
+    [[7, 10], [5, 8], [4, 6], [3, 5]],
+    [[7, 10], [9, 8], [11, 6], [12, 4]],
+    [[7, 9], [6, 6], [5, 4]],
+    [[7, 9], [8, 7], [10, 5]],
+  ];
+  for (const b of branches) {
+    for (const [bx, by] of b) {
+      px(ctx, tx + bx, ty + by, pick(rnd, browns));
+      if (rnd() < 0.5) px(ctx, tx + bx + (bx < 7 ? -1 : 1), ty + by, pick(rnd, browns));
+    }
+  }
+}
+
+function drawLilyPadTile(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  const greens = ['#1f7a2d', '#268c36', '#186a24', '#2f9c40'];
+  // circular pad (notched like MC)
+  const cx0 = 7.5, cy0 = 7.5, R = 6.5;
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const dx = x - cx0, dy = y - cy0;
+      if (dx * dx + dy * dy <= R * R) px(ctx, tx + x, ty + y, pick(rnd, greens));
+    }
+  // notch (pac-man wedge toward top-right)
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const dx = x - cx0, dy = y - cy0;
+      if (dx >= 0 && dy <= 0 && dx + (-dy) < 5) ctx.clearRect(tx + x, ty + y, 1, 1);
+    }
+  // veins
+  for (let k = 2; k < 7; k++) px(ctx, tx + 7 + Math.floor(k * 0.6), ty + 8 - k, '#156020');
+  px(ctx, tx + 6, ty + 8, '#156020'); px(ctx, tx + 9, ty + 8, '#156020');
+}
+
 function drawCactusSide(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
   noiseFill(ctx, tx, ty, 16, 16, ['#0f7a1e', '#0c6a19', '#128a24', '#0a5c15', '#159630'], rnd);
   // ribs
@@ -504,6 +561,17 @@ export function getAtlas(): AtlasData {
   p = T(48); drawWool(ctx, p[0], p[1], rnd);                                                            // wool
   p = T(49); drawBedTop(ctx, p[0], p[1], rnd);                                                          // bed top
   p = T(50); drawBedSide(ctx, p[0], p[1], rnd);                                                         // bed side
+  p = T(51); drawSugarcaneTile(ctx, p[0], p[1], rnd);                                                   // sugarcane
+  p = T(52); drawDeadBushTile(ctx, p[0], p[1], rnd);                                                    // dead bush
+  p = T(53); drawLilyPadTile(ctx, p[0], p[1], rnd);                                                     // lily pad
+  p = T(54); drawLogSide(ctx, p[0], p[1], ['#7d6538', '#6e5930', '#8a7243', '#5f4d28'], rnd);           // jungle log side
+  p = T(55);                                                                                            // jungle leaves
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    for (let y = 0; y < 16; y++)
+      for (let x = 0; x < 16; x++)
+        if (rnd() > 0.15) px(ctx, p[0] + x, p[1] + y, pick(rnd, JLEAF));
+  }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
