@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Game, setEngine } from '@/game/engine';
 import { useGameStore } from '@/game/state';
 import { MainMenu } from './MainMenu';
+import { WorldSelectScreen, CreateWorldScreen } from './WorldMenu';
+import { AchievementsScreen } from './AchievementsScreen';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen } from './Overlays';
@@ -13,6 +15,7 @@ import { InventoryScreen } from './InventoryScreen';
 export default function GameRoot() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screen = useGameStore((s) => s.screen);
+  const prevScreen = useGameStore((s) => s.prevScreen);
   const invOpen = useGameStore((s) => s.inv.open);
   const debugVisible = useGameStore((s) => s.debugVisible);
 
@@ -20,9 +23,8 @@ export default function GameRoot() {
     if (!canvasRef.current) return;
     const game = new Game(canvasRef.current);
     setEngine(game);
-    try {
-      useGameStore.getState().setHasSave(!!localStorage.getItem('voxelcraft.save'));
-    } catch { /* ignore */ }
+    void game.migrateLocalSave(); // legacy localStorage save → DB world (one-time)
+    void game.fetchWorlds();
     return () => {
       game.dispose();
       setEngine(null);
@@ -42,6 +44,9 @@ export default function GameRoot() {
       )}
       {screen === 'playing' && invOpen && <InventoryScreen />}
       {screen === 'menu' && <MainMenu />}
+      {screen === 'worlds' && <WorldSelectScreen />}
+      {screen === 'createWorld' && <CreateWorldScreen />}
+      {screen === 'achievements' && <AchievementsScreen source={prevScreen === 'paused' ? 'game' : 'menu'} />}
       {screen === 'loading' && <LoadingScreen />}
       {screen === 'paused' && <PauseMenu />}
       {screen === 'settings' && <SettingsScreen />}

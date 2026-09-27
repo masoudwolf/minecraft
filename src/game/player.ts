@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from './physics';
 import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPEED, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_EYE } from './constants';
+import type { GameMode } from './state';
 
 export interface HotbarSlot {
   blockId: number; // 0 = empty
@@ -13,6 +14,10 @@ export class Player {
   entity: AABBEntity;
   yaw = 0;
   pitch = 0;
+
+  gameMode: GameMode = 'survival';
+  /** creative flight (double-tap space) */
+  flying = false;
 
   health = 20;
   maxHealth = 20;
@@ -58,6 +63,8 @@ export class Player {
   get vx(): number { return this.entity.vx; }
   get vz(): number { return this.entity.vz; }
 
+  get isCreative(): boolean { return this.gameMode === 'creative'; }
+
   eyeY(): number {
     return this.entity.y + (this.sneaking ? PLAYER_EYE - 0.25 : PLAYER_EYE);
   }
@@ -96,7 +103,7 @@ export class Player {
     wishSneak: boolean
   ): void {
     const e = this.entity;
-    this.sneaking = wishSneak && e.onGround;
+    this.sneaking = wishSneak && e.onGround && !this.flying;
     const speed = this.sprinting ? SPRINT_SPEED : this.sneaking ? SNEAK_SPEED : WALK_SPEED;
 
     const sin = Math.sin(this.yaw);
@@ -105,6 +112,22 @@ export class Player {
     let wz = -input.strafe * sin - input.forward * cos;
     const len = Math.hypot(wx, wz);
     if (len > 0) { wx /= len; wz /= len; }
+
+    // ── creative flight: no gravity, vertical thrust, damped glide ──
+    if (this.flying && this.isCreative) {
+      const flySpeed = this.sprinting ? SPRINT_SPEED * 2.1 : WALK_SPEED * 1.35;
+      const accel = Math.min(1, dt * 8);
+      e.vx += (wx * flySpeed - e.vx) * accel;
+      e.vz += (wz * flySpeed - e.vz) * accel;
+      if (wishJump) e.vy += (flySpeed * 0.9 - e.vy) * accel;
+      else if (wishSneak) e.vy += (-flySpeed * 0.9 - e.vy) * accel;
+      else e.vy += (0 - e.vy) * accel;
+      moveEntity(world, e, dt);
+      // landing cancels flight (MC behavior) — but only when actually descending
+      // onto ground; freshly-toggled flight while standing has vy > 0 and must rise
+      if (e.onGround && e.vy <= 0) this.flying = false;
+      return;
+    }
 
     if (e.inWater) {
       const accel = Math.min(1, dt * 6);
@@ -129,8 +152,8 @@ export class Player {
     const wasOnGround = e.onGround;
     moveEntity(world, e, dt);
 
-    // fall damage
-    if (!e.inWater) {
+    // fall damage (creative immune)
+    if (!e.inWater && !this.isCreative) {
       if (!wasOnGround && e.onGround) {
         const fallDist = this.fallStartY - e.y;
         if (fallDist > 3.5) {
@@ -153,6 +176,7 @@ export class Player {
   }
 
   damage(amount: number): void {
+    if (this.isCreative) return; // creative players are invulnerable
     if (this.dead || this.hurtCooldown > 0) return;
     this.health = Math.max(0, this.health - amount);
     this.hurtCooldown = 0.5;
@@ -169,6 +193,7 @@ export class Player {
     this.health = this.maxHealth;
     this.hunger = 20;
     this.dead = false;
+    this.flying = false;
     this.fallStartY = y;
   }
 }

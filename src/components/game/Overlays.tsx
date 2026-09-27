@@ -7,25 +7,35 @@ import { audio } from '@/game/audio';
 import { McButton, useMenuBackground } from './ui';
 
 export function PauseMenu() {
+  const hud = useGameStore((s) => s.hud);
+  const currentWorldName = useGameStore((s) => s.currentWorldName);
   return (
     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60">
-      <h2 className="mb-8 text-2xl md:text-3xl text-white" style={{ fontFamily: 'var(--font-mc)', textShadow: '3px 3px 0 rgba(0,0,0,0.8)' }}>
+      <h2 className="mb-1 text-2xl md:text-3xl text-white" style={{ fontFamily: 'var(--font-mc)', textShadow: '3px 3px 0 rgba(0,0,0,0.8)' }}>
         Game Paused
       </h2>
+      {currentWorldName && (
+        <div className="mb-6 text-[11px] text-[#a8a8a8]" style={{ fontFamily: 'var(--font-mc)' }}>
+          {currentWorldName} · {hud.gameMode === 'creative' ? 'Creative' : 'Survival'}
+        </div>
+      )}
       <div className="flex flex-col items-center gap-3">
         <McButton variant="primary" onClick={() => { audio.click(); getEngine()?.requestLock(); useGameStore.getState().setScreen('playing'); }}>
           Back to Game
+        </McButton>
+        <McButton onClick={() => { audio.click(); getEngine()?.saveGame(); useGameStore.getState().setScreen('achievements'); }}>
+          Achievements
         </McButton>
         <McButton onClick={() => { audio.click(); getEngine()?.saveGame(); useGameStore.getState().setScreen('settings'); }}>
           Settings…
         </McButton>
         <McButton onClick={() => { audio.click(); getEngine()?.quitToMenu(); }}>
-          Save & Quit to Title
+          Save &amp; Quit to Title
         </McButton>
       </div>
       <div className="mt-10 max-w-md text-center text-[11px] leading-5 text-[#bbb]" style={{ fontFamily: 'var(--font-mc)' }}>
         WASD move · SPACE jump · CTRL sprint · SHIFT sneak<br />
-        LMB mine · RMB place · MMB pick · Q drop · 1-9 hotbar · F3 debug
+        {hud.gameMode === 'creative' ? 'Double-SPACE fly · instant mine · infinite blocks' : 'LMB mine · RMB place · MMB pick · Q drop · 1-9 hotbar'} · F3 debug
       </div>
     </div>
   );

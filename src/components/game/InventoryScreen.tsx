@@ -1,10 +1,11 @@
 'use client';
 
-// ─── Inventory screen (E): 2x2 crafting, table 3x3, chest 27, furnace smelting ─
+// ─── Inventory screen (E): creative palette, 2x2 crafting, table 3x3, chest 27, furnace ─
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
 import { getToolDef, isItemId } from '@/game/items';
+import { creativePalette } from '@/game/creativeItems';
 import type { InvSlot } from '@/game/inventory';
 import { slotIconUrl, slotName } from './slotIcon';
 
@@ -119,7 +120,8 @@ function Flame({ level }: { level: number }) {
 export function InventoryScreen() {
   const inv = useGameStore((s) => s.inv);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
-  const [hoverInfo, setHoverInfo] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ id: number; x: number; y: number; name: string } | null>(null);
+  const [palette] = useState(() => creativePalette());
 
   useEffect(() => {
     const onMove = (e: MouseEvent): void => {
@@ -145,19 +147,21 @@ export function InventoryScreen() {
       else if (a === 'craft') id = inv.craft[i]?.blockId ?? 0;
       else if (a === 'container') id = inv.containerSlots[i]?.blockId ?? 0;
       else if (a === 'out') id = inv.craftOut?.blockId ?? 0;
-      setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y } : null);
+      setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y, name: slotName(id) } : null);
     } else {
       setHoverInfo(null);
     }
   };
 
-  const title = inv.container === 'chest'
-    ? 'Chest'
-    : inv.container === 'furnace'
-      ? 'Furnace'
-      : inv.table
-        ? 'Crafting Table'
-        : 'Crafting';
+  const title = inv.creative
+    ? 'Creative Inventory'
+    : inv.container === 'chest'
+      ? 'Chest'
+      : inv.container === 'furnace'
+        ? 'Furnace'
+        : inv.table
+          ? 'Crafting Table'
+          : 'Crafting';
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
@@ -182,7 +186,59 @@ export function InventoryScreen() {
         </div>
 
         {/* ── mode-specific top section ── */}
-        {inv.container === 'none' && (
+        {inv.creative && (
+          <div className="mb-4">
+            <div
+              className="mc-scrollbar max-h-[250px] overflow-y-auto"
+              style={{ boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+            >
+              <div className="grid gap-[2px] bg-[#8b8b8b] p-[2px]" style={{ gridTemplateColumns: 'repeat(9, 44px)' }}>
+                {palette.map((entry) => (
+                  <div
+                    key={`${entry.isItem ? 'i' : 'b'}${entry.id}`}
+                    className="relative flex h-[44px] w-[44px] cursor-pointer items-center justify-center"
+                    style={{ background: SLOT_BG }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      getEngine()?.creativePick(entry.id);
+                    }}
+                    onMouseEnter={(e) => setHoverInfo({ id: entry.id, x: e.clientX, y: e.clientY, name: entry.name })}
+                    onMouseLeave={() => setHoverInfo(null)}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
+                    {slotIconUrl(entry.id) && (
+                      <img
+                        src={slotIconUrl(entry.id)!}
+                        alt={entry.name}
+                        className="h-[36px] w-[36px]"
+                        style={{ imageRendering: 'pixelated' }}
+                        draggable={false}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* destroy item slot */}
+            <div className="mt-3 flex items-center gap-3">
+              <div
+                className="relative flex h-[44px] w-[44px] cursor-pointer items-center justify-center"
+                style={{ background: '#8b5a5a', boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+                title="Destroy item"
+                onMouseDown={(e) => { e.preventDefault(); getEngine()?.creativeDelete(); }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden>
+                  <path d="M4 4 L20 20 M20 4 L4 20" stroke="#fff" strokeWidth="3" style={{ filter: 'drop-shadow(1px 1px 0 rgba(0,0,0,0.6))' }} />
+                </svg>
+              </div>
+              <span className="text-[11px]" style={{ fontFamily: 'var(--font-mc)', color: '#5a5a5a' }}>
+                Click an item to grab a stack · X slot destroys
+              </span>
+            </div>
+          </div>
+        )}
+
+        {!inv.creative && inv.container === 'none' && (
           <div className="mb-4 flex items-center gap-4">
             <div
               className="grid gap-[2px]"
@@ -313,7 +369,9 @@ export function InventoryScreen() {
 
         {/* hint */}
         <div className="mt-3 text-center text-[11px]" style={{ fontFamily: 'var(--font-mc)', color: '#5a5a5a' }}>
-          Click: move · Right-click: split/place one · Shift-click: quick move · 1-9: swap · E: close
+          {inv.creative
+            ? 'Click: grab stack · Click slot: place · E: close'
+            : 'Click: move · Right-click: split/place one · Shift-click: quick move · 1-9: swap · E: close'}
         </div>
       </div>
 
@@ -354,7 +412,7 @@ export function InventoryScreen() {
             boxShadow: '0 0 0 1px rgba(255,255,255,0.12)',
           }}
         >
-          {slotName(hoverInfo.id)}
+          {hoverInfo.name || slotName(hoverInfo.id)}
         </div>
       )}
     </div>

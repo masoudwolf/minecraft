@@ -314,3 +314,65 @@ Stage Summary:
 - PHASE 3b COMPLETE: dynamic water (flow/decay/falling/infinite sources/save-resume), 2 new biomes (jungle+swamp), 5 new blocks w/ textures (sugarcane/dead bush/lily pad/jungle log/leaves), plant growth, XP orbs+bar+levels, 12 achievements w/ MC-style toasts
 - Known minor: fluid tick queue not serialized (re-scanned from edits on load — equivalent); water washes torches silently (no pop sound); lily pad requires SOURCE water below (flowing water rejected); treeAt hash change alters tree placement vs pre-3b saves' unexplored chunks (cosmetic)
 - NEXT (Phase 4 per roadmap): creative mode (fly/instant break/infinite blocks), DB saves via API+Prisma (multi-world), achievements screen, then optional: mob spawn persistence, spiders/enderman, enchanter placeholder
+
+---
+Task ID: 7 (Phase 4 — Creative Mode, DB Multi-World Saves, Achievements Screen)
+Agent: main (status-assess round)
+Task: Status assessment + agent-browser QA + Phase 4: creative mode (fly/instant break/infinite blocks/creative palette), Prisma+API multi-world save system, achievements screen, UI polish
+
+Work Log:
+- QA round 0 (pre-existing build): dev.log clean, lint pass, menu→world render verified, setBlock/remesh eval OK, 0 console errors → proceeded to Phase 4 per roadmap
+- DB layer:
+  - prisma/schema.prisma: +World model {id, name, gameMode, seed, time, data(JSON string=full SaveData), achievements(JSON array), createdAt, updatedAt}; db:push OK
+  - src/app/api/worlds/route.ts: GET list (ordered by updatedAt, includes achievements), POST create {name, gameMode, seed?, time?, data?} (seed random default, text-safe clamp)
+  - src/app/api/worlds/[id]/route.ts: GET full record, PUT partial update {name?, gameMode?, seed?, time?, data?, achievements?}, DELETE
+- Engine (src/game/engine.ts):
+  - createWorld(name, gameMode, seed?) → POST /api/worlds → setupWorld → preloadSpawn → enterPlaying → immediate baseline saveGame; offline fallback plays local-only world
+  - loadWorld(id) → GET → JSON.parse data → setupWorld(seed, save, gameMode) → play; failure toast + back to menu
+  - fetchWorlds() refreshes zustand worlds list (parses achievements column safely); deleteWorld(id)
+  - migrateLocalSave(): one-time legacy localStorage save → DB world; singleton promise + 'voxelcraft.migrated' localStorage flag (prevents duplicate migration on StrictMode double-mount and re-saves)
+  - saveGame(): save format v5 (+gameMode, flying); localStorage mirror kept as offline fallback + fire-and-forget PUT to /api/worlds/{id} with time+data+achievements; 'Cloud save failed' toast once on error
+  - quitToMenu() saves then fetchWorlds()
+  - setupWorld(seed, save|null, gameMode) — gameMode applied to player; save?.player null-safe (worlds created with empty data no longer crash)
+  - resume() public method (Back to Game / QA)
+  - hadLock + lockHeldAt pointer-lock logic: auto-pause only when a real >500ms lock session ends (headless flash-lock cycles no longer pause the game)
+  - creativePick(id) (cursor = 64-stack, tools 1 w/ freshDur), creativeDelete() (void slot)
+  - mob callbacks now pass playerCreative
+- Creative mode:
+  - player.ts: gameMode, flying fields; isCreative getter; damage() immune in creative; fall damage skipped; respawn resets flying
+  - Flight: double-tap Space toggles; Space/Shift ascend/descend; Ctrl sprint-fly (2.1x); damped glide; landing (onGround && vy<=0) cancels flight — fresh toggle from ground rises because vy>0
+  - mineTick: creative branch = instant break w/ particles+sound, NO drops/XP/tool wear, pops unsupported stacks above
+  - placeBlock: infinite placement (no count decrement) in creative
+  - physicsStep: hunger drain skipped in creative; void damage guarded (creative just clamps); cactus damage skipped
+  - frameUpdate: creative vitals pinned to full (health/hunger)
+  - damagePlayer callback: hostile damage+knockback fully skipped in creative
+  - mobs.ts: MobCallbacks.playerCreative — hostile AI treats creative player as invisible (wander instead of chase)
+  - creativeItems.ts: palette registry — all placeable blocks (no AIR/flow ids), then materials/food, then tools; cached
+- UI:
+  - state.ts: Screen + 'worlds' | 'createWorld' | 'achievements'; GameMode, WorldMeta; HUDState.gameMode/flying; InvUIState.creative; worlds/currentWorldId/currentWorldName store fields
+  - InventoryScreen.tsx: creative palette section (9-col grid, max-h scroll, mc-scrollbar, hover tooltips w/ names, X destroy slot, hint line); title switches to "Creative Inventory"
+  - WorldMenu.tsx: WorldSelectScreen (MC-style list w/ deterministic WorldThumb pattern from seed, mode badge, seed/trophy/date meta, select+dblclick play, delete confirm dialog) + CreateWorldScreen (name input, Game Mode toggle w/ description, optional seed text/number → deterministic hashString)
+  - AchievementsScreen.tsx: 12 achievements, locked shows "?" + hidden desc, unlocked shows icon (getTileIconURL) + gold border; source='game' = live engine unlocked set; source='menu' = aggregate union across all DB worlds; progress bar
+  - MainMenu.tsx: Singleplayer / Achievements / Settings… buttons (v0.6.0 footer)
+  - Overlays.tsx PauseMenu: world name + mode line, Achievements button, creative-specific hint line
+  - HUD.tsx: hearts/hunger/XP bar hidden in creative; creative indicator pill ("double-tap Space to fly" / "✈ Flying — Space/Shift…")
+  - DebugOverlay: +Mode line (mode/flying), v0.6.0
+  - globals.css: .mc-scrollbar (chunky bevel scrollbar), .mc-input (MC text field)
+- GameRoot.tsx: routes worlds/createWorld/achievements screens; mounts migrateLocalSave + fetchWorlds on start; achievements source picked from prevScreen
+
+QA (agent-browser + eval-driven, all verified):
+- World select lists DB worlds w/ metadata; Create New World (Creative) → world live (mode=creative, HUD hides hearts/hunger/XP, shows creative pill) ✓
+- Creative palette renders all ~55 blocks+items w/ icons; pick → cursor 64-stack ✓; place into hotbar ✓; X destroy ✓
+- Instant break: target broke in 1 tick, no drops, no tool wear ✓
+- Infinite placement: stone placed, count stays 64 ✓; WATER source placed via palette → 93 flowing cells spread by fluid sim, count stays 64 ✓
+- Flight: double-tap toggle ✓, rise 43→52.9 @vy5.25 ✓, hover (vy=0, no gravity) ✓, Shift descend ✓, landing auto-cancels ✓
+- DB round-trip: quit→title→Play Selected World → same world restored (seed/player/mode/time) ✓; autosave PUTs all 200 ✓
+- Survival regression: hearts/hunger/XP render, torch placed (count 4→3), lightItUp unlocked, mining progress 0.5@1s (not instant) ✓
+- Achievements: menu aggregate shows 1/12 w/ progress bar after quit ✓; in-game screen reads live engine set ✓
+- Delete flow: confirm dialog → world gone from UI+DB ✓
+- Fixed during round: (1) worlds/route.ts missing (404) — recreated; (2) TDZ crash in moveInput flying branch (wx/wz before init) — froze the whole game loop whenever flight enabled, root cause of all "pauses"; (3) flight cancel-on-toggle from ground (onGround && vy<=0 guard); (4) store-subscriber crash (sky undefined pre-setupWorld setting cloudsEnabled) breaking createWorld; (5) setupWorld crash on empty save data (save?.player guard); (6) duplicate Migrated Worlds (migration singleton + permanent flag); (7) spurious headless pauses (500ms lock-session rule)
+
+Stage Summary:
+- PHASE 4 COMPLETE: full creative mode (fly/instant mine/infinite/water+palette/invulnerable/peaceful hostiles), DB-backed multi-world system (Prisma+API, autosave, world select/create/delete/migration), achievements screen (in-game + cross-world aggregate), MC-authentic menu flow
+- Known minor: localStorage mirror still written (offline fallback — harmless); text-seed hashing deterministic but different from MC; creative flight speed values are tuned approximations; delete confirm lacks world-icon
+- NEXT (Phase 5 per roadmap): gamepad/sprint-fov polish optional; bigger candidates: spiders + enderman mobs, mob spawn persistence in saves, enchanting placeholder→real, sprint particles, biome-specific colors (jungle grass tint), held-item block swing on place, achievements-GUI from pause verified E2E, sound for XP level-up, world rename, chest/furnace placement sounds, F5 third-person camera

@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -29,4 +26,19 @@ model Post {
   authorId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─── VOXELCRAFT: persistent worlds (multi-world save system) ─────────────────
+model World {
+  id           String   @id @default(cuid())
+  name         String
+  gameMode     String   @default("survival") // "survival" | "creative"
+  seed         Int
+  time         Float    @default(6000) // time of day (sky.time)
+  data         String   @default("{}") // full SaveData JSON (player, edits, blockEntities, spawn, achievements)
+  achievements String   @default("[]") // JSON array of unlocked achievement ids (aggregated for menu)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([updatedAt])
 }

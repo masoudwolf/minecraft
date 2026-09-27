@@ -168,6 +168,31 @@ img { image-rendering: pixelated; }
   50% { transform: rotate(-18deg) scale(1.08); }
 }
 
+/* chunky Minecraft-style scrollbar for inventory / world lists */
+.mc-scrollbar::-webkit-scrollbar { width: 12px; }
+.mc-scrollbar::-webkit-scrollbar-track { background: #000; border: 2px solid #000; }
+.mc-scrollbar::-webkit-scrollbar-thumb {
+  background: #c6c6c6;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(0,0,0,0.35);
+}
+.mc-scrollbar { scrollbar-width: auto; scrollbar-color: #c6c6c6 #000; }
+
+/* MC-style text input */
+.mc-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: #000;
+  border: 2px solid #a0a0a0;
+  color: #e0e0e0;
+  font-family: var(--font-mc);
+  font-size: 14px;
+  outline: none;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.8);
+}
+.mc-input:focus { border-color: #fff; }
+.mc-input::placeholder { color: #6a6a6a; }
+
 /* hide scrollbars on game overlays but keep scroll */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }

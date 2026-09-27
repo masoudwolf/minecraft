@@ -236,6 +236,8 @@ export interface MobCallbacks {
   playerX: number;
   playerY: number;
   playerZ: number;
+  /** creative players are ignored by hostile AI (like MC) */
+  playerCreative: boolean;
 }
 
 export class MobManager {
@@ -494,7 +496,10 @@ export class MobManager {
       let moveSpeed = 0;
       let wantX = 0, wantZ = 0;
 
-      if (!m.def.hostile) {
+      // creative players are invisible to hostile AI: treat hostiles as passive wanderers
+      const hostileActive = m.def.hostile && !cb.playerCreative;
+
+      if (!hostileActive) {
         // passive
         if (m.state === 'flee') {
           const dx = m.x - player.x;

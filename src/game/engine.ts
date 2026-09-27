@@ -18,9 +18,9 @@ import { SkySystem, getTimeLabel } from './sky';
 import { audio, type MaterialSound } from './audio';
 import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL } from './textures/atlas';
 import { getItemIconCanvas } from './items';
-import { useGameStore } from './state';
+import { useGameStore, type GameMode, type WorldMeta } from './state';
 
-const SAVE_KEY = 'voxelcraft.save';
+const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration source)
 
 interface SaveData {
   seed: number;
@@ -30,6 +30,8 @@ interface SaveData {
   blockEntities?: Record<string, unknown>;
   spawn?: { x: number; y: number; z: number };
   achievements?: string[];
+  gameMode?: GameMode;
+  flying?: boolean;
 }
 
 export class Game {
@@ -47,6 +49,11 @@ export class Game {
   blockEnts!: BlockEntityManager;
   achievements = new AchievementManager();
   spawnPoint: { x: number; y: number; z: number } | null = null;
+  /** DB world id currently being played (null = legacy local game) */
+  currentWorldId: string | null = null;
+  currentWorldName = '';
+  /** transient: save failed notice shown once */
+  private saveWarned = false;
 
   private raf = 0;
   private lastTime = 0;
@@ -144,7 +151,7 @@ export class Game {
       this.settings = state.settings;
       audio.setVolume(this.settings.volume);
       this.applySkyFog();
-      this.sky.cloudsEnabled = this.settings.clouds;
+      if (this.sky) this.sky.cloudsEnabled = this.settings.clouds;
     });
 
     // achievement popup bridge
@@ -166,25 +173,122 @@ export class Game {
   }
 
   // ── game start / save / load ───────────────────────────────────────────────
+  /** legacy entry: create a fresh DB world with defaults */
   async newGame(): Promise<void> {
-    const seed = Math.floor(Math.random() * 2147483647);
-    this.setupWorld(seed, null);
-    await this.preloadSpawn();
-    localStorage.removeItem(SAVE_KEY);
-    useGameStore.getState().setHasSave(false);
-    this.enterPlaying();
+    await this.createWorld('New World', 'survival');
   }
 
-  async continueGame(): Promise<void> {
-    const raw = localStorage.getItem(SAVE_KEY);
-    const save: SaveData | null = raw ? JSON.parse(raw) : null;
-    if (!save) { await this.newGame(); return; }
-    this.setupWorld(save.seed, save);
-    await this.preloadSpawn();
-    this.enterPlaying();
+  /** create a persistent world in the DB, then play it */
+  async createWorld(name: string, gameMode: GameMode, seed?: number): Promise<void> {
+    const store = useGameStore.getState();
+    try {
+      const res = await fetch('/api/worlds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, gameMode, seed }),
+      });
+      if (!res.ok) throw new Error('create failed');
+      const { world } = (await res.json()) as { world: { id: string; name: string; seed: number } };
+      this.currentWorldId = world.id;
+      this.currentWorldName = world.name;
+      store.setCurrentWorld(world.id, world.name);
+      this.setupWorld(world.seed, null, gameMode);
+      await this.preloadSpawn();
+      this.enterPlaying();
+      this.saveGame(); // persist spawn baseline immediately
+    } catch (err) {
+      console.error('createWorld failed', err);
+      // offline fallback: play a local-only world
+      const s = seed ?? Math.floor(Math.random() * 2147483647);
+      this.currentWorldId = null;
+      this.currentWorldName = name;
+      store.setCurrentWorld(null, name);
+      this.setupWorld(s, null, gameMode);
+      await this.preloadSpawn();
+      this.enterPlaying();
+    }
   }
 
-  private setupWorld(seed: number, save: SaveData | null): void {
+  /** load a DB world and play it */
+  async loadWorld(id: string): Promise<void> {
+    const store = useGameStore.getState();
+    try {
+      const res = await fetch(`/api/worlds/${id}`);
+      if (!res.ok) throw new Error('load failed');
+      const { world } = (await res.json()) as { world: { id: string; name: string; gameMode: GameMode; seed: number; time: number; data: string } };
+      let save: SaveData | null = null;
+      try { save = JSON.parse(world.data) as SaveData; } catch { save = null; }
+      if (save) save.gameMode = world.gameMode;
+      this.currentWorldId = world.id;
+      this.currentWorldName = world.name;
+      store.setCurrentWorld(world.id, world.name);
+      this.setupWorld(world.seed, save, world.gameMode);
+      if (save) this.sky.time = save.time ?? this.sky.time;
+      await this.preloadSpawn();
+      this.enterPlaying();
+    } catch (err) {
+      console.error('loadWorld failed', err);
+      this.showToast('Failed to load world');
+      useGameStore.getState().setScreen('menu');
+    }
+  }
+
+  /** one-time migration: legacy localStorage save → DB world (singleton-guarded) */
+  private migratePromise: Promise<void> | null = null;
+  async migrateLocalSave(): Promise<void> {
+    if (this.migratePromise) return this.migratePromise;
+    this.migratePromise = (async (): Promise<void> => {
+      try {
+        const MIGRATED_FLAG = 'voxelcraft.migrated';
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw || localStorage.getItem(MIGRATED_FLAG)) return;
+        localStorage.setItem(MIGRATED_FLAG, '1'); // set first — prevents duplicate worlds on race/retry
+        const save = JSON.parse(raw) as SaveData & { gameMode?: GameMode };
+        const res = await fetch('/api/worlds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Migrated World',
+            gameMode: save.gameMode ?? 'survival',
+            seed: save.seed,
+            time: save.time,
+            data: raw,
+          }),
+        });
+        if (!res.ok) return;
+        localStorage.removeItem(SAVE_KEY);
+        console.log('[voxelcraft] migrated local save → DB world');
+      } catch { /* non-fatal */ }
+    })();
+    return this.migratePromise;
+  }
+
+  /** refresh the world list in the store */
+  async fetchWorlds(): Promise<void> {
+    try {
+      const res = await fetch('/api/worlds');
+      if (!res.ok) return;
+      const { worlds } = (await res.json()) as { worlds: (WorldMeta & { achievements: string | string[] })[] };
+      useGameStore.getState().setWorlds(worlds.map((w) => ({
+        id: w.id,
+        name: w.name,
+        gameMode: w.gameMode,
+        seed: w.seed,
+        updatedAt: w.updatedAt,
+        achievements: Array.isArray(w.achievements) ? w.achievements : safeParseArray(w.achievements),
+      })));
+    } catch { /* offline */ }
+  }
+
+  async deleteWorld(id: string): Promise<void> {
+    console.warn('[voxelcraft] deleteWorld called', id, new Error().stack);
+    try {
+      await fetch(`/api/worlds/${id}`, { method: 'DELETE' });
+      await this.fetchWorlds();
+    } catch { /* ignore */ }
+  }
+
+  private setupWorld(seed: number, save: SaveData | null, gameMode: GameMode = 'survival'): void {
     // clear previous world if any
     if (this.world) {
       for (const key of Array.from(this.world.chunks.keys())) {
@@ -204,6 +308,8 @@ export class Game {
     this.xpOrbs = new XPOrbManager(this.scene, this.world);
     this.blockEnts = new BlockEntityManager(this.world);
     this.player = new Player(this.camera);
+    this.player.gameMode = save?.gameMode ?? gameMode;
+    this.player.flying = save?.flying ?? false;
     this.spawnPoint = save?.spawn ?? null;
     if (save?.blockEntities) this.blockEnts.load(save.blockEntities);
 
@@ -217,7 +323,7 @@ export class Game {
       this.world.ensureChunk(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE));
       sy = this.world.surfaceY(sx, sz);
     }
-    if (save) {
+    if (save?.player) {
       this.player.entity.x = save.player.x;
       this.player.entity.y = save.player.y;
       this.player.entity.z = save.player.z;
@@ -294,6 +400,12 @@ export class Game {
     }
   }
 
+  /** resume from pause (Back to Game / QA) */
+  resume(): void {
+    useGameStore.getState().setScreen('playing');
+    this.requestLock();
+  }
+
   saveGame(): void {
     if (!this.world || !this.player) return;
     const edits: Record<string, Record<number, number>> = {};
@@ -319,21 +431,48 @@ export class Game {
       blockEntities: this.blockEnts.serialize(),
       spawn: this.spawnPoint ?? undefined,
       achievements: this.achievements.serialize(),
+      gameMode: this.player.gameMode,
+      flying: this.player.flying,
     };
+    const json = JSON.stringify(save);
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+      localStorage.setItem(SAVE_KEY, json); // legacy mirror (offline fallback)
       useGameStore.getState().setHasSave(true);
     } catch { /* quota */ }
+    // canonical store: DB (fire-and-forget, throttled by callers)
+    if (this.currentWorldId) {
+      void fetch(`/api/worlds/${this.currentWorldId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          time: save.time,
+          data: json,
+          achievements: JSON.stringify(this.achievements.serialize()),
+        }),
+      }).then(() => {
+        this.saveWarned = false;
+        useGameStore.getState().setHasSave(true);
+      }).catch(() => {
+        if (!this.saveWarned) {
+          this.saveWarned = true;
+          this.showToast('Cloud save failed — kept local copy');
+        }
+      });
+    }
   }
 
   quitToMenu(): void {
     this.saveGame();
     this.running = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
-    useGameStore.getState().setScreen('menu');
+    const store = useGameStore.getState();
+    store.setScreen('menu');
+    void this.fetchWorlds();
   }
 
   // ── input ──────────────────────────────────────────────────────────────────
+  private lastSpaceTap = 0;
+
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
     const st = useGameStore.getState();
@@ -353,6 +492,19 @@ export class Game {
       if (n >= 1 && n <= 9) { this.player.selected = n - 1; this.syncHUD(); this.updateHandMesh(); }
     }
     if (e.code === 'KeyQ') this.dropSelected();
+    // creative: double-tap space toggles flight
+    if (e.code === 'Space' && this.player.isCreative) {
+      const now = performance.now();
+      if (now - this.lastSpaceTap < 280) {
+        this.player.flying = !this.player.flying;
+        if (this.player.flying) this.player.entity.vy = 0;
+        audio.click();
+        this.syncHUD(true);
+        this.lastSpaceTap = 0;
+      } else {
+        this.lastSpaceTap = now;
+      }
+    }
     if (e.code === 'Space') e.preventDefault();
   };
 
@@ -391,12 +543,24 @@ export class Game {
     this.updateHandMesh();
   };
 
+  private hadLock = false;
+  private lockHeldAt = 0;
   private onPointerLockChange = (): void => {
+    const locked = document.pointerLockElement === this.canvas;
+    if (locked) { this.hadLock = true; this.lockHeldAt = performance.now(); return; }
+    // unlocked: pause only if a real lock session just ended (>500ms).
+    // flash-engage/disengage cycles (headless, alt-tab quirks) must not pause the game.
     if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
-    if (document.pointerLockElement !== this.canvas && useGameStore.getState().screen === 'playing' && !this.player?.dead) {
+    if (
+      this.hadLock &&
+      performance.now() - this.lockHeldAt > 500 &&
+      useGameStore.getState().screen === 'playing' &&
+      !this.player?.dead
+    ) {
       useGameStore.getState().setScreen('paused');
       this.saveGame();
     }
+    this.hadLock = false;
   };
 
   private onResize = (): void => {
@@ -469,8 +633,33 @@ export class Game {
       }
     }
     if (!this.mining || !this.target) { this.crackMesh.visible = false; return; }
-    // target changed? reset progress
     const t = this.target;
+    // ── creative: instant break, no drops, no XP, no tool wear ──
+    if (this.player.isCreative) {
+      const cdef = getBlockDef(t.id);
+      if (!cdef) return;
+      const col = tileAvgColor(Array.isArray(cdef.tiles) ? cdef.tiles[2] : cdef.tiles);
+      this.particles.burstBlockBreak(t.x, t.y, t.z, col);
+      audio.breakBlock((cdef.sound ?? 'stone') as MaterialSound);
+      if (containerOf(t.id)) this.blockEnts.destroy(t.x, t.y, t.z);
+      this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+      // pop unsupported blocks above (torch, flowers, bed) + plant stacks
+      let py = t.y + 1;
+      let guard = 0;
+      while (py < WORLD_HEIGHT && guard++ < 96) {
+        const aboveId = this.world.getBlock(t.x, py, t.z);
+        const aboveDef = getBlockDef(aboveId);
+        const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
+        if (!aboveDef?.needsGround && !isStack) break;
+        if (containerOf(aboveId)) this.blockEnts.destroy(t.x, py, t.z);
+        this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+        py++;
+      }
+      this.startSwing();
+      this.crackMesh.visible = false;
+      return;
+    }
+    // target changed? reset progress
     if (!this.mineTarget || this.mineTarget.x !== t.x || this.mineTarget.y !== t.y || this.mineTarget.z !== t.z) {
       this.mineTarget = t;
       this.mineProgress = 0;
@@ -627,8 +816,10 @@ export class Game {
     audio.place((def?.sound ?? 'stone') as MaterialSound);
     this.placeCooldown = 0.22;
     this.startSwing();
-    slot.count--;
-    if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+    if (!this.player.isCreative) {
+      slot.count--;
+      if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+    }
     this.syncHUD();
     this.updateHandMesh();
   }
@@ -747,9 +938,11 @@ export class Game {
     this.mining = false;
     this.mineProgress = 0;
     this.keys.clear();
+    // creative mode: E opens the creative palette (no crafting grid)
+    const creative = this.player.isCreative && !table;
     this.invTable = table;
-    this.updateCraftOut();
-    st.setInv({ open: true, table });
+    if (!creative) this.updateCraftOut();
+    st.setInv({ open: true, table, creative });
     this.syncInventory(true);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
@@ -775,10 +968,29 @@ export class Game {
     this.craftOut = null;
     this.invHover = null;
     this.containerKey = null;
-    st.setInv({ open: false, cursor: null, craftOut: null, craft: [], container: 'none', containerSlots: [], furnace: null });
+    st.setInv({ open: false, cursor: null, craftOut: null, craft: [], container: 'none', containerSlots: [], furnace: null, creative: false });
     this.syncHUD(true);
     this.updateHandMesh(true);
     this.requestLock();
+  }
+
+  /** creative palette: grab a full stack of this block/item into the cursor */
+  creativePick(id: number): void {
+    if (!this.player.isCreative) return;
+    const stack = isItemId(id)
+      ? { blockId: id, count: getToolDef(id) ? 1 : 64, dur: freshDur(id) }
+      : { blockId: id, count: 64 };
+    this.cursor = stack;
+    audio.click();
+    this.syncInventory(true);
+  }
+
+  /** creative palette: destroy the cursor stack (void slot) */
+  creativeDelete(): void {
+    if (!this.cursor) return;
+    this.cursor = null;
+    audio.pop();
+    this.syncInventory(true);
   }
 
   setInvHover(hover: { area: 'hotbar' | 'main' | 'craft' | 'container'; idx: number } | null): void {
@@ -1011,8 +1223,9 @@ export class Game {
     if (id === ITEM.STONE_PICKAXE) this.achievements.unlock('gettingUpgrade');
   }
 
-  /** consume durability from held tool; breaks it at 0 */
+  /** consume durability from held tool; breaks it at 0 (creative: no wear) */
   private damageTool(n: number): void {
+    if (this.player.isCreative) return;
     const slot = this.player.hotbar[this.player.selected];
     if (!slot || slot.count <= 0 || !isItemId(slot.blockId)) return;
     const tool = getToolDef(slot.blockId);
@@ -1232,6 +1445,10 @@ export class Game {
       this.lastHudHunger = hg;
       store.setHud({ health: hp, hunger: hg });
     }
+    // game mode + flight indicator
+    if (store.hud.gameMode !== this.player.gameMode || store.hud.flying !== this.player.flying) {
+      store.setHud({ gameMode: this.player.gameMode, flying: this.player.flying });
+    }
     const hash = this.player.hotbar.map((s) => s.blockId + ':' + s.count).join(',') + '|' + this.player.selected;
     if (hash !== this.lastHotbarHash || force) {
       this.lastHotbarHash = hash;
@@ -1362,26 +1579,33 @@ export class Game {
     // hurt cooldown decay
     if (p.hurtCooldown > 0) p.hurtCooldown -= step;
 
-    // ── hunger drain ──
-    if (p.sprinting && (forward !== 0 || strafe !== 0)) {
-      p.hunger = Math.max(0, p.hunger - 0.085 * step);
-    } else if (forward !== 0 || strafe !== 0) {
-      p.hunger = Math.max(0, p.hunger - 0.012 * step);
-    } else {
-      p.hunger = Math.max(0, p.hunger - 0.0015 * step);
+    // ── hunger drain (creative: none) ──
+    if (!p.isCreative) {
+      if (p.sprinting && (forward !== 0 || strafe !== 0)) {
+        p.hunger = Math.max(0, p.hunger - 0.085 * step);
+      } else if (forward !== 0 || strafe !== 0) {
+        p.hunger = Math.max(0, p.hunger - 0.012 * step);
+      } else {
+        p.hunger = Math.max(0, p.hunger - 0.0015 * step);
+      }
+      if (wishJump && p.onGround) p.hunger = Math.max(0, p.hunger - 0.05);
     }
-    if (wishJump && p.onGround) p.hunger = Math.max(0, p.hunger - 0.05);
 
-    // void damage
+    // void damage (creative players fly, but out-of-world still resets)
     if (p.y < -8) {
-      p.damage(4);
-      p.entity.vy = 0;
-      p.entity.y = -8;
+      if (p.isCreative) {
+        p.entity.y = -8;
+        p.entity.vy = 0;
+      } else {
+        p.damage(4);
+        p.entity.vy = 0;
+        p.entity.y = -8;
+      }
     }
 
-    // cactus contact damage
+    // cactus contact damage (creative immune)
     this.cactusTimer -= step;
-    if (this.cactusTimer <= 0 && this.touchingCactus()) {
+    if (!p.isCreative && this.cactusTimer <= 0 && this.touchingCactus()) {
       this.cactusTimer = 0.6;
       p.damage(1);
       audio.hurt();
@@ -1399,6 +1623,12 @@ export class Game {
 
   private frameUpdate(dt: number): void {
     const p = this.player;
+
+    // creative: vitals stay maxed
+    if (p.isCreative) {
+      p.health = p.maxHealth;
+      p.hunger = 20;
+    }
 
     // camera
     p.applyCamera(this.settings.fov, 8, dt);
@@ -1491,7 +1721,7 @@ export class Game {
         eyeY: () => eyeY,
       }, this.sky.sunLevel, {
         damagePlayer: (amount, fx, fz) => {
-          if (amount <= 0) return;
+          if (amount <= 0 || p.isCreative) return; // creative: hostiles can't touch you
           p.damage(amount);
           audio.hurt();
           // knockback away from source
@@ -1523,6 +1753,7 @@ export class Game {
         playerX: p.x,
         playerY: p.y,
         playerZ: p.z,
+        playerCreative: p.isCreative,
       });
     }
 
@@ -1598,6 +1829,8 @@ export class Game {
       mobs: this.mobs ? this.mobs.count : 0,
       time: getTimeLabel(this.sky.time),
       tris: this.renderer.info.render.triangles,
+      mode: p.gameMode,
+      flying: p.flying,
     });
   }
 
@@ -1664,4 +1897,13 @@ export function setEngine(g: Game | null): void {
 
 export function getEngine(): Game | null {
   return engineInstance;
+}
+
+function safeParseArray(json: string): string[] {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
 }

@@ -2,7 +2,19 @@
 import { create } from 'zustand';
 import type { InvSlot } from './inventory';
 
-export type Screen = 'menu' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead';
+export type Screen = 'menu' | 'worlds' | 'createWorld' | 'achievements' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead';
+
+export type GameMode = 'survival' | 'creative';
+
+/** world list entry (metadata only — full data fetched on load) */
+export interface WorldMeta {
+  id: string;
+  name: string;
+  gameMode: GameMode;
+  seed: number;
+  updatedAt: string;
+  achievements: string[];
+}
 
 export interface DebugInfo {
   fps: number;
@@ -15,6 +27,8 @@ export interface DebugInfo {
   mobs: number;
   time: string;
   tris: number;
+  mode?: string;
+  flying?: boolean;
 }
 
 export interface Settings {
@@ -37,6 +51,10 @@ export interface HUDState {
   /** XP bar above hotbar */
   xpLevel: number;
   xpProgress: number; // 0..1
+  /** current game mode (creative hides survival bars) */
+  gameMode: GameMode;
+  /** creative flight active */
+  flying: boolean;
 }
 
 /** snapshot pushed by engine for the inventory screen */
@@ -53,6 +71,8 @@ export interface InvUIState {
   containerSlots: InvSlot[];
   /** furnace progress ratios (burn 0..1, cook 0..1) */
   furnace: { burn: number; cook: number } | null;
+  /** creative item palette open (replaces crafting grid) */
+  creative: boolean;
 }
 
 interface GameStore {
@@ -67,6 +87,11 @@ interface GameStore {
   inv: InvUIState;
   /** MC-style advancement popup (top-right) */
   advancement: { title: string; desc: string; icon: string } | null;
+  /** known worlds (menu list) */
+  worlds: WorldMeta[];
+  /** id of the world currently being played */
+  currentWorldId: string | null;
+  currentWorldName: string;
 
   setScreen: (s: Screen) => void;
   setHasSave: (v: boolean) => void;
@@ -77,6 +102,8 @@ interface GameStore {
   setToast: (t: string | null) => void;
   setInv: (inv: Partial<InvUIState>) => void;
   setAdvancement: (a: { title: string; desc: string; icon: string } | null) => void;
+  setWorlds: (w: WorldMeta[]) => void;
+  setCurrentWorld: (id: string | null, name: string) => void;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -104,10 +131,13 @@ export const useGameStore = create<GameStore>((set) => ({
   debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'north', targetBlock: '—', chunks: 0, mobs: 0, time: '06:00', tris: 0 },
   debugVisible: false,
   settings: DEFAULT_SETTINGS,
-  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0 },
+  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false },
   toast: null,
-  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null },
+  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, creative: false },
   advancement: null,
+  worlds: [],
+  currentWorldId: null,
+  currentWorldName: '',
 
   setScreen: (s) => set((st) => ({ screen: s, prevScreen: st.screen })),
   setHasSave: (v) => set({ hasSave: v }),
@@ -122,6 +152,8 @@ export const useGameStore = create<GameStore>((set) => ({
   setToast: (t) => set({ toast: t }),
   setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
   setAdvancement: (a) => set({ advancement: a }),
+  setWorlds: (w) => set({ worlds: w }),
+  setCurrentWorld: (id, name) => set({ currentWorldId: id, currentWorldName: name }),
 }));
 
 export function saveSettings(s: Settings): void {

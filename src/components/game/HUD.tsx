@@ -58,45 +58,65 @@ export function HUD() {
 
       {/* bottom bars */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
-        {/* XP bar (MC green, above status bars) */}
-        <div className="relative mb-0.5 h-[7px] w-[366px]" style={{ background: 'rgba(0,0,0,0.55)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.9)' }}>
-          <div
-            className="h-full"
-            style={{
-              width: `${hud.xpProgress * 100}%`,
-              background: 'linear-gradient(180deg,#a4ff5e 0%,#7fdc38 45%,#5cb521 100%)',
-              boxShadow: '0 0 4px rgba(140,255,80,0.55)',
-            }}
-          />
-          {hud.xpLevel > 0 && (
-            <span
-              className="absolute -top-[15px] left-1/2 -translate-x-1/2 text-[13px] font-bold"
+        {/* XP bar (MC green, above status bars) — survival only */}
+        {hud.gameMode === 'survival' && (
+          <div className="relative mb-0.5 h-[7px] w-[366px]" style={{ background: 'rgba(0,0,0,0.55)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.9)' }}>
+            <div
+              className="h-full"
               style={{
-                fontFamily: 'var(--font-mc)',
-                color: '#80ff20',
-                textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000',
+                width: `${hud.xpProgress * 100}%`,
+                background: 'linear-gradient(180deg,#a4ff5e 0%,#7fdc38 45%,#5cb521 100%)',
+                boxShadow: '0 0 4px rgba(140,255,80,0.55)',
               }}
-            >
-              {hud.xpLevel}
-            </span>
-          )}
-        </div>
+            />
+            {hud.xpLevel > 0 && (
+              <span
+                className="absolute -top-[15px] left-1/2 -translate-x-1/2 text-[13px] font-bold"
+                style={{
+                  fontFamily: 'var(--font-mc)',
+                  color: '#80ff20',
+                  textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000',
+                }}
+              >
+                {hud.xpLevel}
+              </span>
+            )}
+          </div>
+        )}
 
-        {/* status bars row: hearts left, hunger right (like MC) */}
-        <div className="flex w-[366px] items-end justify-between pb-0.5">
-          <div className="flex gap-[1px]">
-            {Array.from({ length: 10 }, (_, i) => {
-              const hp = hud.health - i * 2;
-              return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
-            })}
+        {/* status bars row: hearts left, hunger right (like MC) — survival only */}
+        {hud.gameMode === 'survival' && (
+          <div className="flex w-[366px] items-end justify-between pb-0.5">
+            <div className="flex gap-[1px]">
+              {Array.from({ length: 10 }, (_, i) => {
+                const hp = hud.health - i * 2;
+                return <Heart key={i} state={hp >= 2 ? 'full' : hp === 1 ? 'half' : 'empty'} />;
+              })}
+            </div>
+            <div className="flex flex-row-reverse gap-[1px]">
+              {Array.from({ length: 10 }, (_, i) => {
+                const hg = hud.hunger - i * 2;
+                return <Drumstick key={i} state={hg >= 2 ? 'full' : hg === 1 ? 'half' : 'empty'} />;
+              })}
+            </div>
           </div>
-          <div className="flex flex-row-reverse gap-[1px]">
-            {Array.from({ length: 10 }, (_, i) => {
-              const hg = hud.hunger - i * 2;
-              return <Drumstick key={i} state={hg >= 2 ? 'full' : hg === 1 ? 'half' : 'empty'} />;
-            })}
+        )}
+
+        {/* creative mode indicator */}
+        {hud.gameMode === 'creative' && (
+          <div
+            className="mb-0.5 px-2 py-[1px] text-[10px] uppercase tracking-widest"
+            style={{
+              fontFamily: 'var(--font-mc)',
+              color: hud.flying ? '#a4ff5e' : '#d8b4fe',
+              background: 'rgba(0,0,0,0.45)',
+              border: '1px solid rgba(0,0,0,0.8)',
+              textShadow: '1px 1px 0 rgba(0,0,0,0.8)',
+            }}
+          >
+            {hud.flying ? '✈ Flying — Space/Shift up/down · double-tap Space to land' : 'Creative — double-tap Space to fly'}
           </div>
-        </div>
+        )}
 
         {/* hotbar */}
         <div className="flex" style={{ background: 'rgba(0,0,0,0.35)', border: '2px solid rgba(0,0,0,0.8)', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.15)' }}>
