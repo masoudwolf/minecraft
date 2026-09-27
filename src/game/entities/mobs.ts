@@ -155,7 +155,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   },
   sheep: {
     hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
-    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }], sound: 'baa',
+    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }, { id: BLOCK.WOOL, min: 1, max: 2 }], sound: 'baa',
     builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48 }),
   },
   chicken: {

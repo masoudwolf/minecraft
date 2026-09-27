@@ -1,6 +1,6 @@
 'use client';
 
-// ─── Inventory screen (E): 2x2 crafting, crafting table 3x3, MC-style GUI ─────
+// ─── Inventory screen (E): 2x2 crafting, table 3x3, chest 27, furnace smelting ─
 import { useEffect, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
@@ -8,7 +8,7 @@ import { getToolDef, isItemId } from '@/game/items';
 import type { InvSlot } from '@/game/inventory';
 import { slotIconUrl, slotName } from './slotIcon';
 
-type Area = 'hotbar' | 'main' | 'craft' | 'out';
+type Area = 'hotbar' | 'main' | 'craft' | 'out' | 'container';
 
 const PANEL_BG = '#c6c6c6';
 const SLOT_BG = '#8b8b8b';
@@ -77,6 +77,45 @@ function Slot({
   );
 }
 
+/** furnace arrow with cook progress */
+function CookArrow({ progress }: { progress: number }) {
+  return (
+    <div className="relative flex h-[24px] w-[44px] items-center" aria-hidden>
+      <div className="h-[12px] w-[36px]" style={{ background: '#8b8b8b', clipPath: 'polygon(0 30%, 62% 30%, 62% 0, 100% 50%, 62% 100%, 62% 70%, 0 70%)' }} />
+      <div
+        className="absolute left-0 top-0 h-[12px]"
+        style={{
+          width: `${Math.round(progress * 36)}px`,
+          marginTop: 6,
+          background: '#f8f8f8',
+          clipPath: 'polygon(0 30%, 62% 30%, 62% 0, 100% 50%, 62% 100%, 62% 70%, 0 70%)',
+          transform: 'translateY(-6px)',
+        }}
+      />
+    </div>
+  );
+}
+
+/** furnace flame indicator (burn progress) */
+function Flame({ level }: { level: number }) {
+  const h = Math.round(6 + level * 10);
+  return (
+    <div className="relative flex h-[16px] w-[16px] items-end justify-center" aria-hidden>
+      <div
+        style={{
+          width: 14,
+          height: Math.max(2, h),
+          background: level > 0
+            ? 'linear-gradient(to top, #e86a17, #ffd83d)'
+            : '#5a5a5a',
+          clipPath: 'polygon(50% 0, 78% 28%, 100% 55%, 82% 100%, 18% 100%, 0 55%, 24% 26%)',
+          opacity: level > 0 ? 1 : 0.55,
+        }}
+      />
+    </div>
+  );
+}
+
 export function InventoryScreen() {
   const inv = useGameStore((s) => s.inv);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
@@ -104,6 +143,7 @@ export function InventoryScreen() {
       if (a === 'hotbar') id = inv.hotbar[i]?.blockId ?? 0;
       else if (a === 'main') id = inv.main[i]?.blockId ?? 0;
       else if (a === 'craft') id = inv.craft[i]?.blockId ?? 0;
+      else if (a === 'container') id = inv.containerSlots[i]?.blockId ?? 0;
       else if (a === 'out') id = inv.craftOut?.blockId ?? 0;
       setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y } : null);
     } else {
@@ -111,10 +151,13 @@ export function InventoryScreen() {
     }
   };
 
-  const craftCols = inv.table ? 3 : 2;
-  const craftIdx = inv.table
-    ? [0, 1, 2, 3, 4, 5, 6, 7, 8]
-    : [0, 1, 2, 3]; // craft2 row-major
+  const title = inv.container === 'chest'
+    ? 'Chest'
+    : inv.container === 'furnace'
+      ? 'Furnace'
+      : inv.table
+        ? 'Crafting Table'
+        : 'Crafting';
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
@@ -130,72 +173,129 @@ export function InventoryScreen() {
           boxShadow: 'inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555, 0 0 0 2px rgba(0,0,0,0.5)',
         }}
       >
-        {/* ── crafting section ── */}
+        {/* ── title ── */}
         <div
           className="mb-1 text-[15px]"
           style={{ fontFamily: 'var(--font-mc)', color: '#3f3f3f' }}
         >
-          {inv.table ? 'Crafting Table' : 'Crafting'}
+          {title}
         </div>
-        <div className="mb-4 flex items-center gap-4">
-          <div
-            className="grid gap-[2px]"
-            style={{ gridTemplateColumns: `repeat(${craftCols}, 44px)` }}
-          >
-            {craftIdx.map((realIdx, i) => (
-              <Slot
-                key={i}
-                slot={inv.craft[realIdx] ?? null}
-                area="craft"
-                idx={realIdx}
-                onHover={onHover}
+
+        {/* ── mode-specific top section ── */}
+        {inv.container === 'none' && (
+          <div className="mb-4 flex items-center gap-4">
+            <div
+              className="grid gap-[2px]"
+              style={{ gridTemplateColumns: `repeat(${inv.table ? 3 : 2}, 44px)` }}
+            >
+              {(inv.table ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [0, 1, 2, 3]).map((realIdx, i) => (
+                <Slot
+                  key={i}
+                  slot={inv.craft[realIdx] ?? null}
+                  area="craft"
+                  idx={realIdx}
+                  onHover={onHover}
+                />
+              ))}
+            </div>
+
+            {/* arrow */}
+            <div className="flex flex-col items-center gap-[2px]" aria-hidden>
+              <div className="h-[4px] w-[26px] bg-[#8b8b8b]" />
+              <div
+                className="h-0 w-0"
+                style={{ borderTop: '8px solid transparent', borderBottom: '8px solid transparent', borderLeft: '12px solid #8b8b8b' }}
               />
+            </div>
+
+            {/* output slot (bigger) */}
+            <div
+              className="relative flex h-[52px] w-[52px] items-center justify-center"
+              style={{ background: SLOT_BG, boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                getEngine()?.invClick('out', 0, e.button === 2 ? 'right' : 'left', e.shiftKey);
+              }}
+              onMouseEnter={() => onHover('out', 0)}
+              onMouseLeave={() => onHover(null, 0)}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              {inv.craftOut && slotIconUrl(inv.craftOut.blockId) && (
+                <img
+                  src={slotIconUrl(inv.craftOut.blockId)!}
+                  alt=""
+                  className="h-[42px] w-[42px]"
+                  style={{ imageRendering: 'pixelated' }}
+                  draggable={false}
+                />
+              )}
+              {inv.craftOut && inv.craftOut.count > 1 && (
+                <span
+                  className="absolute bottom-0 right-1 text-[13px] font-bold text-white"
+                  style={{ fontFamily: 'var(--font-mc)', textShadow: '2px 2px 0 #3f3f3f' }}
+                >
+                  {inv.craftOut.count}
+                </span>
+              )}
+            </div>
+
+            {/* player figure (2x2 mode only, fills space like MC) */}
+            {!inv.table && <PlayerFigure />}
+          </div>
+        )}
+
+        {inv.container === 'chest' && (
+          <div className="mb-4 grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(9, 44px)' }}>
+            {Array.from({ length: 27 }, (_, i) => (
+              <Slot key={i} slot={inv.containerSlots[i] ?? null} area="container" idx={i} onHover={onHover} />
             ))}
           </div>
+        )}
 
-          {/* arrow */}
-          <div className="flex flex-col items-center gap-[2px]" aria-hidden>
-            <div className="h-[4px] w-[26px] bg-[#8b8b8b]" />
+        {inv.container === 'furnace' && (
+          <div className="mb-4 flex items-center justify-center gap-5 py-2">
+            {/* input + flame + fuel */}
+            <div className="flex flex-col items-center gap-2">
+              <Slot slot={inv.containerSlots[0] ?? null} area="container" idx={0} onHover={onHover} />
+              <Flame level={inv.furnace?.burn ?? 0} />
+              <Slot slot={inv.containerSlots[1] ?? null} area="container" idx={1} onHover={onHover} />
+            </div>
+
+            {/* cook arrow */}
+            <CookArrow progress={inv.furnace?.cook ?? 0} />
+
+            {/* output (take-only, big) */}
             <div
-              className="h-0 w-0"
-              style={{ borderTop: '8px solid transparent', borderBottom: '8px solid transparent', borderLeft: '12px solid #8b8b8b' }}
-            />
+              className="relative flex h-[52px] w-[52px] items-center justify-center"
+              style={{ background: SLOT_BG, boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                getEngine()?.invClick('container', 2, e.button === 2 ? 'right' : 'left', e.shiftKey);
+              }}
+              onMouseEnter={() => onHover('container', 2)}
+              onMouseLeave={() => onHover(null, 2)}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              {inv.containerSlots[2] && slotIconUrl(inv.containerSlots[2].blockId) && (
+                <img
+                  src={slotIconUrl(inv.containerSlots[2].blockId)!}
+                  alt=""
+                  className="h-[42px] w-[42px]"
+                  style={{ imageRendering: 'pixelated' }}
+                  draggable={false}
+                />
+              )}
+              {inv.containerSlots[2] && inv.containerSlots[2].count > 1 && (
+                <span
+                  className="absolute bottom-0 right-1 text-[13px] font-bold text-white"
+                  style={{ fontFamily: 'var(--font-mc)', textShadow: '2px 2px 0 #3f3f3f' }}
+                >
+                  {inv.containerSlots[2].count}
+                </span>
+              )}
+            </div>
           </div>
-
-          {/* output slot (bigger) */}
-          <div
-            className="relative flex h-[52px] w-[52px] items-center justify-center"
-            style={{ background: SLOT_BG, boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              getEngine()?.invClick('out', 0, e.button === 2 ? 'right' : 'left', e.shiftKey);
-            }}
-            onMouseEnter={() => onHover('out', 0)}
-            onMouseLeave={() => onHover(null, 0)}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            {inv.craftOut && slotIconUrl(inv.craftOut.blockId) && (
-              <img
-                src={slotIconUrl(inv.craftOut.blockId)!}
-                alt=""
-                className="h-[42px] w-[42px]"
-                style={{ imageRendering: 'pixelated' }}
-                draggable={false}
-              />
-            )}
-            {inv.craftOut && inv.craftOut.count > 1 && (
-              <span
-                className="absolute bottom-0 right-1 text-[13px] font-bold text-white"
-                style={{ fontFamily: 'var(--font-mc)', textShadow: '2px 2px 0 #3f3f3f' }}
-              >
-                {inv.craftOut.count}
-              </span>
-            )}
-          </div>
-
-          {/* player figure (2x2 mode only, fills space like MC) */}
-          {!inv.table && <PlayerFigure />}
-        </div>
+        )}
 
         {/* ── main inventory 9x3 ── */}
         <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(9, 44px)' }}>

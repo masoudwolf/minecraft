@@ -33,6 +33,8 @@ export class Chunk {
   meshes: ChunkMeshes | null = null;
   needsMesh = true;
   hasData = false;
+  /** torch positions (world coords) collected during meshing — used for flame particles */
+  torches: [number, number, number][] = [];
 
   constructor(cx: number, cz: number) {
     this.cx = cx;

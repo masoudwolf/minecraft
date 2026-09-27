@@ -45,6 +45,11 @@ export interface InvUIState {
   craft: InvSlot[]; // 4 (2x2) or 9 (3x3)
   craftOut: InvSlot | null;
   cursor: InvSlot | null;
+  /** open container: none = plain inventory, chest = 27 slots, furnace = [input,fuel,output] */
+  container: 'none' | 'chest' | 'furnace';
+  containerSlots: InvSlot[];
+  /** furnace progress ratios (burn 0..1, cook 0..1) */
+  furnace: { burn: number; cook: number } | null;
 }
 
 interface GameStore {
@@ -95,7 +100,7 @@ export const useGameStore = create<GameStore>((set) => ({
   settings: DEFAULT_SETTINGS,
   hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '' },
   toast: null,
-  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null },
+  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null },
 
   setScreen: (s) => set((st) => ({ screen: s, prevScreen: st.screen })),
   setHasSave: (v) => set({ hasSave: v }),

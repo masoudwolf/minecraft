@@ -98,6 +98,27 @@ export class TerrainGenerator {
     return { type, height };
   }
 
+  /** deterministic decoration for a column: tall grass, flowers, cactus — or null */
+  decorationAt(x: number, z: number): { block: number; h: number } | null {
+    const h = this.heightAt(x, z);
+    if (h <= SEA_LEVEL + 1) return null; // beaches/underwater stay bare
+    const biome = this.biomeAt(x, z);
+    let hash = Math.imul(x ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(z ^ 0x27d4eb2d, 0x165667b1) ^ (this.seed + 77);
+    hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d);
+    hash ^= hash >>> 13;
+    const r = (hash >>> 0) / 4294967296;
+    if (biome === 'plains') {
+      if (r < 0.010) return { block: hash & 1 ? BLOCK.FLOWER_RED : BLOCK.FLOWER_YELLOW, h: 1 };
+      if (r < 0.075) return { block: BLOCK.TALL_GRASS, h: 1 };
+    } else if (biome === 'forest') {
+      if (r < 0.008) return { block: hash & 1 ? BLOCK.FLOWER_YELLOW : BLOCK.FLOWER_RED, h: 1 };
+      if (r < 0.040) return { block: BLOCK.TALL_GRASS, h: 1 };
+    } else if (biome === 'desert') {
+      if (r < 0.006) return { block: BLOCK.CACTUS, h: 1 + (Math.abs(hash) % 3) };
+    }
+    return null;
+  }
+
   /** fill a chunk's block data */
   generateChunk(cx: number, cz: number, data: Uint8Array): void {
     const x0 = cx * CHUNK_SIZE;
@@ -160,6 +181,27 @@ export class TerrainGenerator {
         const biome = this.biomeAt(wx, wz);
         if (biome === 'desert') continue;
         this.placeTree(data, tx, groundH, tz, tree, cx, cz);
+      }
+    }
+
+    // decorations: flowers / tall grass / cactus (in-chunk only, 1 column wide)
+    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        const wx = x0 + lx;
+        const wz = z0 + lz;
+        const dec = this.decorationAt(wx, wz);
+        if (!dec) continue;
+        const ground = this.heightAt(wx, wz);
+        const below = data[blockIndex(lx, ground, lz)];
+        const supports = below === BLOCK.GRASS || below === BLOCK.SNOW_GRASS || below === BLOCK.SAND;
+        if (!supports) continue;
+        // place stack (cactus can be 1-3 tall), only into air
+        for (let dy = 1; dy <= dec.h; dy++) {
+          const y = ground + dy;
+          if (y >= WORLD_HEIGHT) break;
+          const idx = blockIndex(lx, y, lz);
+          if (data[idx] === BLOCK.AIR) data[idx] = dec.block;
+        }
       }
     }
   }

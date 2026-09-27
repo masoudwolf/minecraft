@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot } from './player';
-import { BLOCK, getBlockDef, isLiquid } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -10,10 +10,11 @@ import { MobManager } from './entities/mobs';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem } from './items';
 import { matchRecipe, freshDur } from './crafting';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
+import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
 import { audio, type MaterialSound } from './audio';
-import { getAtlas, getCrackTextures, tileAvgColor } from './textures/atlas';
+import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas } from './textures/atlas';
 import { getItemIconCanvas } from './items';
 import { useGameStore } from './state';
 
@@ -24,6 +25,8 @@ interface SaveData {
   time: number;
   player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; selected: number };
   edits: Record<string, Record<number, number>>;
+  blockEntities?: Record<string, unknown>;
+  spawn?: { x: number; y: number; z: number };
 }
 
 export class Game {
@@ -37,6 +40,8 @@ export class Game {
   mobs!: MobManager;
   particles!: ParticleSystem;
   sky!: SkySystem;
+  blockEnts!: BlockEntityManager;
+  spawnPoint: { x: number; y: number; z: number } | null = null;
 
   private raf = 0;
   private lastTime = 0;
@@ -65,14 +70,18 @@ export class Game {
   private running = false;
   private disposed = false;
 
-  // inventory / crafting
+  // inventory / crafting / containers
   private craft2: HotbarSlot[] = Array.from({ length: 4 }, () => ({ blockId: 0, count: 0 }));
   private craft9: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
   private craftOut: HotbarSlot | null = null;
   private cursor: HotbarSlot | null = null;
   private invTable = false;
-  private invHover: { area: 'hotbar' | 'main' | 'craft'; idx: number } | null = null;
+  private invHover: { area: 'hotbar' | 'main' | 'craft' | 'container'; idx: number } | null = null;
   private lastInvHash = '';
+  private containerKey: string | null = null; // "x,y,z" of open chest/furnace
+  private furnaceSyncTimer = 0;
+  private torchFxTimer = 0;
+  private cactusTimer = 0;
 
   private highlight: THREE.LineSegments;
   private crackMesh: THREE.Mesh;
@@ -173,7 +182,10 @@ export class Game {
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
+    this.blockEnts = new BlockEntityManager(this.world);
     this.player = new Player(this.camera);
+    this.spawnPoint = save?.spawn ?? null;
+    if (save?.blockEntities) this.blockEnts.load(save.blockEntities);
 
     // spawn position
     let sx = 8, sz = 8;
@@ -279,6 +291,8 @@ export class Game {
         selected: this.player.selected,
       },
       edits,
+      blockEntities: this.blockEnts.serialize(),
+      spawn: this.spawnPoint ?? undefined,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(save));
@@ -458,7 +472,26 @@ export class Game {
         this.drops.spawn(dropId, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
       }
       this.damageTool(1);
+      // container: spill contents
+      if (containerOf(t.id)) {
+        for (const item of this.blockEnts.destroy(t.x, t.y, t.z)) {
+          this.drops.spawn(item.id, t.x + 0.5, t.y + 0.5, t.z + 0.5, item.count);
+        }
+      }
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+      // pop unsupported ground-needs blocks sitting on top (torch, flowers, bed)
+      const aboveId = this.world.getBlock(t.x, t.y + 1, t.z);
+      const aboveDef = getBlockDef(aboveId);
+      if (aboveDef?.needsGround) {
+        const aDrop = aboveDef.drop === undefined ? aboveId : aboveDef.drop;
+        if (aDrop) this.drops.spawn(aDrop, t.x + 0.5, t.y + 1.3, t.z + 0.5, 1);
+        if (containerOf(aboveId)) {
+          for (const item of this.blockEnts.destroy(t.x, t.y + 1, t.z)) {
+            this.drops.spawn(item.id, t.x + 0.5, t.y + 1.5, t.z + 0.5, item.count);
+          }
+        }
+        this.world.setBlock(t.x, t.y + 1, t.z, BLOCK.AIR);
+      }
       this.mineProgress = 0;
       this.mineTarget = null;
       this.crackMesh.visible = false;
@@ -473,11 +506,13 @@ export class Game {
 
   private placeBlock(): void {
     if (!this.target || this.placeCooldown > 0) return;
-    // right-click on crafting table opens the 3x3 grid (unless sneaking)
+    // ── right-click interactions on target block ──
     const targetId = this.world.getBlock(this.target.x, this.target.y, this.target.z);
-    if (targetId === BLOCK.CRAFTING_TABLE && !this.player.sneaking) {
-      this.openInventory(true);
-      return;
+    if (!this.player.sneaking) {
+      if (targetId === BLOCK.CRAFTING_TABLE) { this.openInventory(true); return; }
+      const cont = containerOf(targetId);
+      if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
+      if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
     }
     const slot = this.player.hotbar[this.player.selected];
     if (!slot || slot.blockId === 0 || slot.count <= 0) return;
@@ -506,7 +541,18 @@ export class Game {
     // don't place inside player
     if (aabbIntersectsBlock(this.player.entity, bx, by, bz)) return;
     const def = getBlockDef(slot.blockId);
+    // ground-support requirement (torch, flowers, bed)
+    if (def?.needsGround) {
+      const below = this.world.getBlock(bx, by - 1, bz);
+      const belowDef = getBlockDef(below);
+      if (!belowDef?.solid) {
+        this.showToast('Needs solid ground below');
+        return;
+      }
+    }
     this.world.setBlock(bx, by, bz, slot.blockId);
+    // attach block entity for containers
+    if (def?.container) this.blockEnts.getOrCreate(bx, by, bz);
     audio.place((def?.sound ?? 'stone') as MaterialSound);
     this.placeCooldown = 0.22;
     this.startSwing();
@@ -514,6 +560,37 @@ export class Game {
     if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
     this.syncHUD();
     this.updateHandMesh();
+  }
+
+  /** right-click on chest / furnace */
+  private openContainer(kind: 'furnace' | 'chest', x: number, y: number, z: number): void {
+    const st = useGameStore.getState();
+    if (st.screen !== 'playing' || st.inv.open) return;
+    const be = this.blockEnts.getOrCreate(x, y, z);
+    if (!be) return;
+    this.mining = false;
+    this.mineProgress = 0;
+    this.keys.clear();
+    this.containerKey = x + ',' + y + ',' + z;
+    this.invTable = false;
+    this.craftOut = null;
+    st.setInv({ open: true, table: false, container: kind, cursor: null, craftOut: null, craft: [] });
+    this.syncInventory(true);
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  /** right-click on bed: set spawn + skip night */
+  private sleepInBed(x: number, y: number, z: number): void {
+    this.spawnPoint = { x: x + 0.5, y: y + 0.6, z: z + 0.5 };
+    const dayFrac = this.sky.time / DAY_LENGTH; // 0=midnight .25=sunrise .5=noon .75=sunset
+    const night = dayFrac > 0.72 || dayFrac < 0.22;
+    if (night) {
+      this.sky.time = DAY_LENGTH * 0.24; // just before sunrise
+      this.showToast('Spawn point set · Slept until morning');
+    } else {
+      this.showToast('Spawn point set (you can only sleep at night)');
+    }
+    audio.click();
   }
 
   private pickBlock(): void {
@@ -595,11 +672,13 @@ export class Game {
     if (!st.inv.open) return;
     // return craft grid + cursor to inventory (drop if full)
     const p = this.player.entity;
-    for (const s of this.craftGrid) {
-      if (isEmptySlot(s)) continue;
-      const left = this.addToInventory(s.blockId, s.count, s.dur);
-      if (left > 0) this.drops.spawn(s.blockId, p.x, p.y + 1, p.z, left);
-      s.blockId = 0; s.count = 0;
+    if (st.inv.container === 'none') {
+      for (const s of this.craftGrid) {
+        if (isEmptySlot(s)) continue;
+        const left = this.addToInventory(s.blockId, s.count, s.dur);
+        if (left > 0) this.drops.spawn(s.blockId, p.x, p.y + 1, p.z, left);
+        s.blockId = 0; s.count = 0;
+      }
     }
     if (this.cursor) {
       const left = this.addToInventory(this.cursor.blockId, this.cursor.count, this.cursor.dur);
@@ -608,31 +687,72 @@ export class Game {
     }
     this.craftOut = null;
     this.invHover = null;
-    st.setInv({ open: false, cursor: null, craftOut: null, craft: [] });
+    this.containerKey = null;
+    st.setInv({ open: false, cursor: null, craftOut: null, craft: [], container: 'none', containerSlots: [], furnace: null });
     this.syncHUD(true);
     this.updateHandMesh(true);
     this.requestLock();
   }
 
-  setInvHover(hover: { area: 'hotbar' | 'main' | 'craft'; idx: number } | null): void {
+  setInvHover(hover: { area: 'hotbar' | 'main' | 'craft' | 'container'; idx: number } | null): void {
     this.invHover = hover;
   }
 
-  private invHotbarSwap(area: 'hotbar' | 'main' | 'craft', idx: number, hotbarIdx: number): void {
-    const list = area === 'hotbar' ? this.player.hotbar : area === 'main' ? this.player.main : this.craftGrid;
-    if (hotbarIdx === idx && area === 'hotbar') return;
-    const a = list[idx];
-    list[idx] = this.player.hotbar[hotbarIdx];
-    this.player.hotbar[hotbarIdx] = a;
+  private invHotbarSwap(area: 'hotbar' | 'main' | 'craft' | 'container', idx: number, hotbarIdx: number): void {
+    if (area === 'container') {
+      if (!this.containerKey) return;
+      const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+      const be = this.blockEnts.get(+xs, +ys, +zs);
+      if (!be) return;
+      const list = be.kind === 'chest' ? be.slots : [be.input, be.fuel];
+      const a = list[idx];
+      list[idx] = this.player.hotbar[hotbarIdx];
+      this.player.hotbar[hotbarIdx] = a;
+      if (be.kind === 'furnace') { be.input = list[0]; be.fuel = list[1]; }
+    } else {
+      const list = area === 'hotbar' ? this.player.hotbar : area === 'main' ? this.player.main : this.craftGrid;
+      if (hotbarIdx === idx && area === 'hotbar') return;
+      const a = list[idx];
+      list[idx] = this.player.hotbar[hotbarIdx];
+      this.player.hotbar[hotbarIdx] = a;
+    }
     this.syncInventory(true);
     this.syncHUD(true);
     this.updateHandMesh();
   }
 
-  invClick(area: 'hotbar' | 'main' | 'craft' | 'out', idx: number, button: 'left' | 'right', shift: boolean): void {
+  invClick(area: 'hotbar' | 'main' | 'craft' | 'out' | 'container', idx: number, button: 'left' | 'right', shift: boolean): void {
     const st = useGameStore.getState();
     if (!st.inv.open) return;
     if (area === 'out') { this.takeCraftOutput(shift); return; }
+    if (area === 'container') {
+      const st2 = useGameStore.getState();
+      if (st2.inv.container === 'furnace' && idx === 2) {
+        this.takeFurnaceOutput(shift);
+        return;
+      }
+      if (!this.containerKey) return;
+      const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+      const be = this.blockEnts.get(+xs, +ys, +zs);
+      if (!be) return;
+      if (be.kind === 'chest') {
+        if (idx < 0 || idx >= be.slots.length) return;
+        if (shift) this.shiftFromContainer(be.slots, idx);
+        else this.clickSlot(be.slots, idx, button);
+      } else {
+        // furnace: idx 0 = input, 1 = fuel (output handled above)
+        const list = [be.input, be.fuel];
+        if (idx < 0 || idx >= 2) return;
+        if (shift) this.shiftFromContainer(list, idx);
+        else this.clickSlot(list, idx, button);
+        be.input = list[0];
+        be.fuel = list[1];
+      }
+      this.syncInventory(true);
+      this.syncHUD(true);
+      this.updateHandMesh();
+      return;
+    }
     const list = area === 'hotbar' ? this.player.hotbar : area === 'main' ? this.player.main : this.craftGrid;
     if (idx < 0 || idx >= list.length) return;
     if (shift) {
@@ -644,6 +764,47 @@ export class Game {
     this.syncInventory(true);
     this.syncHUD(true);
     this.updateHandMesh();
+  }
+
+  /** shift-click from chest/furnace: move into player inventory */
+  private shiftFromContainer(list: HotbarSlot[], idx: number): void {
+    const slot = list[idx];
+    if (isEmptySlot(slot)) return;
+    let left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur);
+    if (left > 0) left = addToSlots(this.player.main, slot.blockId, left, slot.dur);
+    if (left <= 0) list[idx] = emptySlot();
+    else slot.count = left;
+    audio.pop();
+  }
+
+  /** take items out of the furnace output slot */
+  private takeFurnaceOutput(shift: boolean): void {
+    if (!this.containerKey) return;
+    const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+    const be = this.blockEnts.get(+xs, +ys, +zs);
+    if (!be || be.kind !== 'furnace' || isEmptySlot(be.output)) return;
+    const out = be.output;
+    if (!shift) {
+      if (!this.cursor) {
+        this.cursor = { ...out };
+        be.output = emptySlot();
+      } else if (this.cursor.blockId === out.blockId && !isToolItem(out.blockId) && this.cursor.count + out.count <= maxStack(out.blockId)) {
+        this.cursor.count += out.count;
+        be.output = emptySlot();
+      } else return;
+    } else {
+      let guard = 0;
+      while (guard++ < 64 && !isEmptySlot(be.output)) {
+        const o = be.output;
+        const left = this.addToInventory(o.blockId, o.count, o.dur);
+        if (left > 0) { o.count = left; break; }
+        be.output = emptySlot();
+        audio.pop();
+      }
+    }
+    audio.pop();
+    this.syncInventory(true);
+    this.syncHUD(true);
   }
 
   private clickSlot(list: HotbarSlot[], idx: number, button: 'left' | 'right'): void {
@@ -774,7 +935,14 @@ export class Game {
     const st = useGameStore.getState();
     if (!st.inv.open && !force) return;
     const grid = this.craftGrid;
-    const hash = JSON.stringify([this.player.hotbar, this.player.main, grid, this.craftOut, this.cursor]);
+    // container snapshot
+    let containerSlots: HotbarSlot[] = [];
+    if (this.containerKey) {
+      const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+      const be = this.blockEnts.get(+xs, +ys, +zs);
+      if (be) containerSlots = be.kind === 'chest' ? be.slots : [be.input, be.fuel, be.output];
+    }
+    const hash = JSON.stringify([this.player.hotbar, this.player.main, grid, this.craftOut, this.cursor, containerSlots, this.furnaceRatios()]);
     if (hash === this.lastInvHash && !force) return;
     this.lastInvHash = hash;
     st.setInv({
@@ -783,7 +951,20 @@ export class Game {
       craft: cloneSlots(grid),
       craftOut: this.craftOut ? { ...this.craftOut } : null,
       cursor: this.cursor ? { ...this.cursor } : null,
+      containerSlots: cloneSlots(containerSlots),
+      furnace: this.furnaceRatios(),
     });
+  }
+
+  private furnaceRatios(): { burn: number; cook: number } | null {
+    if (!this.containerKey) return null;
+    const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+    const be = this.blockEnts.get(+xs, +ys, +zs);
+    if (!be || be.kind !== 'furnace') return null;
+    return {
+      burn: be.burnMax > 0 ? Math.max(0, Math.min(1, be.burnTime / be.burnMax)) : 0,
+      cook: Math.max(0, Math.min(1, be.cookTime / 10)),
+    };
   }
 
   // ── hand model ─────────────────────────────────────────────────────────────
@@ -797,8 +978,10 @@ export class Game {
       this.handMesh.geometry.dispose();
       this.handMesh = null;
     }
-    if (id > 0 && isItemId(id)) {
-      const tex = new THREE.CanvasTexture(getItemIconCanvas(id));
+    const flatDef = id > 0 && !isItemId(id) ? getBlockDef(id) : undefined;
+    if (id > 0 && (isItemId(id) || flatDef?.flatIcon)) {
+      const canvas = isItemId(id) ? getItemIconCanvas(id) : getTileCanvas(Array.isArray(flatDef!.tiles) ? flatDef!.tiles[0] : flatDef!.tiles);
+      const tex = new THREE.CanvasTexture(canvas);
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
       tex.generateMipmaps = false;
@@ -814,6 +997,51 @@ export class Game {
       this.handMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xd8a17b }));
     }
     this.handGroup.add(this.handMesh);
+  }
+
+  /** emit flame/smoke particles from a random nearby torch */
+  private spawnTorchParticles(): void {
+    if (!this.world) return;
+    const px2 = this.player.x, pz2 = this.player.z;
+    const candidates: [number, number, number][] = [];
+    for (const chunk of this.world.chunks.values()) {
+      if (chunk.torches.length === 0) continue;
+      const dx = chunk.cx * CHUNK_SIZE + 8 - px2;
+      const dz = chunk.cz * CHUNK_SIZE + 8 - pz2;
+      if (dx * dx + dz * dz > 48 * 48) continue;
+      candidates.push(...chunk.torches);
+    }
+    if (candidates.length === 0) return;
+    const [tx, ty, tz] = candidates[Math.floor(Math.random() * candidates.length)];
+    if (Math.random() < 0.72) {
+      // flame
+      this.particles.spawnParticle(
+        tx + (Math.random() - 0.5) * 0.12, ty + 0.06, tz + (Math.random() - 0.5) * 0.12,
+        (Math.random() - 0.5) * 0.15, 0.55 + Math.random() * 0.4, (Math.random() - 0.5) * 0.15,
+        Math.random() < 0.5 ? [1, 0.72, 0.2] : [1, 0.5, 0.1], 0.05, 0.45, -1,
+      );
+    } else {
+      // smoke
+      this.particles.spawnParticle(
+        tx, ty + 0.12, tz,
+        (Math.random() - 0.5) * 0.1, 0.7 + Math.random() * 0.3, (Math.random() - 0.5) * 0.1,
+        [0.25, 0.25, 0.25], 0.05, 0.8, -1,
+      );
+    }
+  }
+
+  /** is the player overlapping any cactus block (expanded AABB)? */
+  private touchingCactus(): boolean {
+    const e = this.player.entity;
+    const half = e.width / 2 + 0.06;
+    const x0 = Math.floor(e.x - half), x1 = Math.floor(e.x + half);
+    const y0 = Math.floor(e.y - 0.05), y1 = Math.floor(e.y + e.height);
+    const z0 = Math.floor(e.z - half), z1 = Math.floor(e.z + half);
+    for (let x = x0; x <= x1; x++)
+      for (let y = y0; y <= y1; y++)
+        for (let z = z0; z <= z1; z++)
+          if (this.world.getBlock(x, y, z) === BLOCK.CACTUS) return true;
+    return false;
   }
 
   private startSwing(): void {
@@ -1029,6 +1257,14 @@ export class Game {
       p.entity.y = -8;
     }
 
+    // cactus contact damage
+    this.cactusTimer -= step;
+    if (this.cactusTimer <= 0 && this.touchingCactus()) {
+      this.cactusTimer = 0.6;
+      p.damage(1);
+      audio.hurt();
+    }
+
     // death
     if (p.dead) {
       useGameStore.getState().setScreen('dead');
@@ -1068,6 +1304,25 @@ export class Game {
     // interaction
     this.updateTarget();
     this.mineTick(dt);
+
+    // block entities (furnace smelting etc.)
+    this.blockEnts.tick(dt);
+    this.furnaceSyncTimer += dt;
+    if (this.furnaceSyncTimer > 0.3) {
+      this.furnaceSyncTimer = 0;
+      const iv = useGameStore.getState().inv;
+      if (iv.open && iv.container === 'furnace') {
+        this.lastInvHash = ''; // force push (progress ratios change continuously)
+        this.syncInventory();
+      }
+    }
+
+    // torch flame particles
+    this.torchFxTimer += dt;
+    if (this.torchFxTimer > 0.12) {
+      this.torchFxTimer = 0;
+      this.spawnTorchParticles();
+    }
 
     // drops + particles
     this.drops.update(dt, p.entity, (stack) => {
@@ -1201,6 +1456,16 @@ export class Game {
   }
 
   respawn(): void {
+    // respawn at bed spawn point if set, else world spawn
+    if (this.spawnPoint) {
+      const sp = this.spawnPoint;
+      // make sure the area is loaded
+      this.world.ensureChunk(Math.floor(sp.x / CHUNK_SIZE), Math.floor(sp.z / CHUNK_SIZE));
+      this.player.respawn(sp.x, sp.y + 0.4, sp.z);
+      useGameStore.getState().setScreen('playing');
+      this.requestLock();
+      return;
+    }
     // respawn at world spawn
     let sx = 8;
     const sz = 8;

@@ -222,3 +222,47 @@ Stage Summary:
 - Design decisions: iron/gold ore drop ingots directly (furnace smelting arrives Phase 3); invOpen suppresses pause screen (world keeps running, like MC)
 - Known minor: addToSlots merges only within target list (cursor-return can leave split stacks — harmless); requestPointerLock after inv close may need a click in some browsers (ClickHint covers)
 - NEXT (Phase 3 per roadmap): torches (light-emit placement + cross-model mesher support), furnace smelting UI (iron/gold from ore, cooked food, glass), chest storage UI, water flow, more biomes (jungle/swamp), flowers/cacti cross-models, beds, XP orbs
+
+---
+Task ID: 5 (Phase 3a — Torches, Furnace, Chest, Bed, Decorations)
+Agent: main (status-assess round)
+Task: Status assessment + agent-browser QA + Phase 3a: torches w/ block-light + flame particles, furnace smelting UI, chest storage UI, beds (sleep/spawn), flowers/tall-grass/cactus worldgen, wool, cooked foods, save v3
+
+Work Log:
+- QA first: build stable (Phase 1+2b verified), 0 console errors, lint pass → proceeded to Phase 3a per roadmap
+- Files created:
+  - src/game/blockEntities.ts — BlockEntityManager: FurnaceBE {input,fuel,output,burnTime,burnMax,cookTime} + ChestBE {27 slots}; SMELT registry (iron/gold ore→ingots, sand→glass, cobble→stone, raw meats→cooked); FUEL registry (coal 80s, planks/log 15s, stick 5s, table/chest/bookshelf 15s); COOK_TIME=10s; tick() per-frame: fuel consumption, cook progress, output production, FURNACE<->FURNACE_LIT auto-swap (drives relight via setBlock); destroy() spills contents; serialize/load for save v3
+- Files updated:
+  - blocks.ts — +9 blocks: TORCH(30, lightEmit 14, model torch, needsGround), FURNACE_LIT(31, lightEmit 13, drop FURNACE), CHEST(32, container), FLOWER_RED(33)/FLOWER_YELLOW(34)/TALL_GRASS(35, model cross, needsGround, tall-grass drop=null), CACTUS(36), WOOL(37), BED(38, height 0.5625, needsGround, flatIcon); FURNACE(22) got container:'furnace' (bugfix found in QA); new BlockDef fields: model/height/flatIcon/container/needsGround + blockHeight()/containerOf() helpers
+  - textures/atlas.ts — 13 new procedural tiles (38-50): torch (stick+flame), furnace front lit (fire pixels), chest (planks+latch+lid seam), poppy/dandelion (petal clusters + stem), tall grass (9 curved blades), cactus side (ribs+spikes)/top, wool (curls), bed top (red blanket+white pillow)/side; getTileIconURL() + getTileCanvas() for flat icons/sprites
+  - world/mesher.ts — special models: 'cross' (2 diagonal quads, own-cell light, inset 0.08), 'torch' (mini-box 2/16 wide x 10/16 tall, cropped UVs via tileSub(), block light min 0.92 so torch always bright, registers chunk.torches[]); partial-height blocks (bed 9/16): corner y clamped to def.height
+  - world/world.ts — Chunk.torches[] field (collected at mesh time for particles)
+  - world/terrain.ts — decorationAt(x,z): plains 7.5% tall grass + 1% flowers, forest 4%/0.8%, desert 0.6% cactus (1-3 tall); placed post-trees, only on grass/snow-grass/sand with air above
+  - physics.ts — collides() respects blockHeight() (bed = 9/16 collision, can't stand inside)
+  - items.ts — cooked foods 293-296: Cooked Porkchop/Steak (8 hunger), Cooked Chicken/Mutton (6), pixel icons
+  - crafting.ts — +3 recipes: chest (8 planks ring), torch (coal over stick -> 4), bed (3 wool + 3 planks)
+  - engine.ts — blockEnts integration (tick in frameUpdate); placeBlock: RMB interactions (furnace/chest open UI, bed sleep, sneak bypasses), needsGround check w/ toast, BE attach on container place; mining: container spill on break + pops unsupported needsGround blocks above; openContainer/closeInventory w/ containerKey; invClick 'container' area (chest slots, furnace input/fuel w/ write-back, furnace output take-only + shift craft-all); shiftFromContainer; invHotbarSwap container support; syncInventory pushes containerSlots + furnace ratios; furnace UI sync 0.3s while open; spawnPoint (bed) + save v3 {blockEntities, spawn}; respawn() uses bed spawn; torch flame/smoke particles (0.12s cadence, random nearby torch from chunk.torches, 48-block range); cactus contact damage (0.6s cooldown, 1 dmg); updateHandMesh renders flatIcon blocks as sprites
+  - state.ts — InvUIState + container/containerSlots/furnace
+  - InventoryScreen.tsx — 3 layouts: crafting (2x2/3x3), chest (27 grid), furnace (input/flame/fuel + cook arrow + big output); flame + arrow progress indicators (CSS clip-path), titles, shared Slot/tooltip/cursor
+  - slotIcon.ts — flatIcon blocks use flat tile icon
+  - mobs.ts — sheep now drops 1-2 wool
+  - DebugOverlay/MainMenu — version 0.4.0
+- BUGS FIXED during QA: FURNACE missing container field (BE getOrCreate null); shiftFromContainer const-reassign (compile error); decorationAt BLOCK-as-type
+
+QA (agent-browser + eval-driven, all verified):
+- Decorations generated (57 flowers, 290 tall grass sampled); poppy cross-model renders; tall grass visible
+- Torch: placement consumes hotbar (16->15), needsGround + player-AABB rejections work, light 13 above cell, night glow pool visible, chunk.torches registry, hotbar flat icon + hand sprite
+- Furnace: seeded 5 sand + 2 coal -> auto-lit (block 31), 3 glass produced in ~30s, fuel burned 80s/down, GUI shows input/flame/arrow/output (glass x3), output click -> cursor (5 glass), close -> returned to main inv (hotbar full)
+- Chest: placed, 3 clicks stored coal x8 + porkchop x5, close/reopen contents persist, GUI authentic
+- Bed: night sleep time 400->115 + "Spawn point set · Slept until morning" toast; zombies killed AFK player -> death screen -> Respawn spawned exactly at bed spawn (7.5, 43.6, 6.5) with full HP
+- Crafting: coal+stick -> 4 torches (2x2), craft-all +4; 3 wool + 3 planks -> bed (3x3)
+- Sheep killed: dropped wool x2 + mutton x2
+- Cactus: touchingCactus precision verified (not touching = no dmg), flush contact: hp 18->15 over 3s
+- Save v3: blockEntities (2) + spawn persisted; Continue World restored chest contents, furnace BE, bed block, spawn point
+- No console errors; lint pass; dev.log clean (200s only)
+
+Stage Summary:
+- PHASE 3a COMPLETE: full smelting loop (ore -> ingot, sand -> glass, raw -> cooked food), storage (chest), light+ambience (torches w/ particles), beds (skip night + respawn), world decoration layer
+- Design decisions: furnace lit-state as separate block id (drives relight automatically); BEs keyed "x,y,z" persisted in save v3; needsGround blocks pop when support broken; bed = single block 9/16 tall
+- Known minor: furnace fuel slot accepts any item (only fuels burn — permissive like early MC); cactus full-cube collision (MC is 15/16); torch floor-only (wall torches deferred); flowers don't spread/bonemeal
+- NEXT (Phase 3b per roadmap): water flow simulation, more biomes (jungle/swamp + new blocks), sugarcane/flowers spread, XP orbs, mob spawn persistence, then Phase 4: creative mode, DB saves via API+Prisma, achievements

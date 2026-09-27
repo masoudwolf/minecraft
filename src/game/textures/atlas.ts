@@ -237,6 +237,158 @@ function drawGrassSide(ctx: Ctx, tx: number, ty: number, snow: boolean, rnd: () 
   }
 }
 
+// ─── Phase 3 tile painters ─────────────────────────────────────────────────
+function drawTorchTile(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  // wooden stick (column x=7..8, y=6..15)
+  for (let y = 6; y < 16; y++)
+    for (let x = 7; x < 9; x++)
+      px(ctx, tx + x, ty + y, rnd() < 0.3 ? '#8a683c' : '#75562f');
+  px(ctx, tx + 8, ty + 8, '#5d421f'); px(ctx, tx + 8, ty + 11, '#5d421f');
+  // flame
+  ctx.fillStyle = '#ffd83d';
+  ctx.fillRect(tx + 7, ty + 3, 2, 3);
+  ctx.fillStyle = '#ff9d2e';
+  ctx.fillRect(tx + 7, ty + 5, 2, 1); ctx.fillRect(tx + 6, ty + 4, 1, 1); ctx.fillRect(tx + 9, ty + 4, 1, 1);
+  ctx.fillStyle = '#fff3b0';
+  ctx.fillRect(tx + 7, ty + 4, 1, 1);
+  px(ctx, tx + 7, ty + 2, '#fff3b0'); px(ctx, tx + 8, ty + 2, '#ff9d2e');
+}
+
+function drawFurnaceFrontOn(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  drawFurnace(ctx, tx, ty, false, rnd);
+  // opening with fire
+  ctx.fillStyle = '#1c1c1c';
+  ctx.fillRect(tx + 4, ty + 8, 8, 6);
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(tx + 4, ty + 7, 8, 1);
+  const fire = ['#ff9d2e', '#ffd83d', '#e86a17', '#fff3b0'];
+  for (let x = 5; x < 11; x++) {
+    const h = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < h; i++) px(ctx, tx + x, ty + 13 - i, pick(rnd, fire));
+  }
+  px(ctx, tx + 6, ty + 11, '#e86a17'); px(ctx, tx + 9, ty + 12, '#ffd83d');
+}
+
+function drawChest(ctx: Ctx, tx: number, ty: number, front: boolean, rnd: () => number): void {
+  // wooden chest body
+  noiseFill(ctx, tx, ty, 16, 16, ['#a5763e', '#96682f', '#b08044', '#8a5c2a', '#a97a3e'], rnd);
+  // frame
+  ctx.fillStyle = '#5d3f1d';
+  ctx.fillRect(tx, ty, 16, 1); ctx.fillRect(tx, ty + 15, 16, 1);
+  ctx.fillRect(tx, ty, 1, 16); ctx.fillRect(tx + 15, ty, 1, 16);
+  ctx.fillRect(tx, ty + 6, 16, 1); // lid seam
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(tx + 1, ty + 1, 14, 1); ctx.fillRect(tx + 1, ty + 1, 1, 5);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(tx + 1, ty + 14, 14, 1); ctx.fillRect(tx + 14, ty + 2, 1, 13);
+  if (front) {
+    // iron latch
+    ctx.fillStyle = '#4a4a4a';
+    ctx.fillRect(tx + 6, ty + 4, 4, 5);
+    ctx.fillStyle = '#8f8f8f';
+    ctx.fillRect(tx + 6, ty + 4, 4, 1); ctx.fillRect(tx + 6, ty + 4, 1, 4);
+    ctx.fillStyle = '#6a6a6a';
+    ctx.fillRect(tx + 9, ty + 5, 1, 4);
+    ctx.fillStyle = '#2c2c2c';
+    ctx.fillRect(tx + 7, ty + 6, 2, 2);
+  }
+}
+
+function drawFlower(ctx: Ctx, tx: number, ty: number, petals: string[], center: string, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  // stem
+  ctx.fillStyle = '#3d7a24';
+  ctx.fillRect(tx + 7, ty + 8, 1, 8);
+  px(ctx, tx + 6, ty + 11, '#4d8f2e'); px(ctx, tx + 9, ty + 9, '#4d8f2e');
+  px(ctx, tx + 6, ty + 12, '#356a1e'); px(ctx, tx + 9, ty + 10, '#356a1e');
+  // petals 2x2 cluster around (7.5, 5.5)
+  const spots: [number, number][] = [[7, 3], [6, 4], [8, 4], [7, 5], [5, 5], [9, 5], [6, 6], [8, 6], [7, 7], [7, 4], [8, 5], [6, 5]];
+  for (const [sx, sy] of spots) px(ctx, tx + sx, ty + sy, pick(rnd, petals));
+  px(ctx, tx + 7, ty + 5, center); px(ctx, tx + 8, ty + 5, center);
+}
+
+function drawTallGrassTile(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  ctx.clearRect(tx, ty, 16, 16);
+  const greens = ['#5d9c33', '#6fae3e', '#4d8a2a', '#79bb48', '#568e30'];
+  for (let i = 0; i < 9; i++) {
+    let x = 2 + Math.floor(rnd() * 12);
+    const h = 6 + Math.floor(rnd() * 8);
+    const c = pick(rnd, greens);
+    for (let j = 0; j < h; j++) {
+      px(ctx, tx + x, ty + 15 - j, c);
+      if (j > h * 0.55 && rnd() < 0.35) x += rnd() < 0.5 ? 1 : -1;
+      x = Math.max(0, Math.min(15, x));
+    }
+  }
+}
+
+function drawCactusSide(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  noiseFill(ctx, tx, ty, 16, 16, ['#0f7a1e', '#0c6a19', '#128a24', '#0a5c15', '#159630'], rnd);
+  // ribs
+  for (const x of [1, 5, 9, 13]) {
+    for (let y = 0; y < 16; y++) px(ctx, tx + x, ty + y, y % 4 === 0 ? '#0a5413' : '#0d701a');
+  }
+  // highlight edge
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.fillRect(tx + 1, ty, 1, 16);
+  // spikes
+  for (let i = 0; i < 7; i++) px(ctx, tx + Math.floor(rnd() * 16), ty + Math.floor(rnd() * 16), '#d8e8c0');
+}
+
+function drawCactusTop(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  noiseFill(ctx, tx, ty, 16, 16, ['#128a24', '#0f7a1e', '#159630', '#0c6a19'], rnd);
+  ctx.fillStyle = '#0a5413';
+  ctx.fillRect(tx, ty, 16, 1); ctx.fillRect(tx, ty + 15, 16, 1);
+  ctx.fillRect(tx, ty, 1, 16); ctx.fillRect(tx + 15, ty, 1, 16);
+  ctx.fillStyle = '#35a848';
+  ctx.fillRect(tx + 4, ty + 4, 8, 8);
+  ctx.fillStyle = '#1c6b2a';
+  ctx.fillRect(tx + 6, ty + 6, 4, 4);
+  for (let i = 0; i < 5; i++) px(ctx, tx + 2 + Math.floor(rnd() * 12), ty + 2 + Math.floor(rnd() * 12), '#d8e8c0');
+}
+
+function drawWool(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  noiseFill(ctx, tx, ty, 16, 16, ['#e8e8e8', '#dcdcdc', '#f4f4f4', '#d0d0d0', '#eeeeee'], rnd);
+  // soft curls
+  for (let i = 0; i < 12; i++) {
+    const x = Math.floor(rnd() * 14), y = Math.floor(rnd() * 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillRect(tx + x, ty + y, 2, 1);
+    ctx.fillStyle = 'rgba(160,160,160,0.35)';
+    ctx.fillRect(tx + x, ty + y + 1, 2, 1);
+  }
+}
+
+function drawBedTop(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  // mattress base (planks-ish white sheet)
+  noiseFill(ctx, tx, ty, 16, 16, ['#b03a2e', '#a03328', '#bd4536', '#963026', '#c74e3c'], rnd);
+  // blanket fold
+  ctx.fillStyle = '#7a1f16';
+  ctx.fillRect(tx, ty + 7, 16, 1);
+  ctx.fillStyle = '#d8564a';
+  ctx.fillRect(tx, ty + 8, 16, 1);
+  // pillow (top third)
+  noiseFill(ctx, tx + 1, ty + 1, 14, 5, ['#f2f2f2', '#e6e6e6', '#fafafa', '#dcdcdc'], rnd);
+  ctx.fillStyle = '#b8b8b8';
+  ctx.fillRect(tx + 1, ty + 6, 14, 1);
+  px(ctx, tx + 2, ty + 2, '#ffffff'); px(ctx, tx + 3, ty + 2, '#ffffff');
+  // corner stitches
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(tx, ty, 16, 1); ctx.fillRect(tx, ty, 1, 16); ctx.fillRect(tx + 15, ty, 1, 16); ctx.fillRect(tx, ty + 15, 16, 1);
+}
+
+function drawBedSide(ctx: Ctx, tx: number, ty: number, rnd: () => number): void {
+  // bed frame legs (bottom half planks)
+  drawPlanks(ctx, tx, ty, rnd, false);
+  // red blanket covers upper area
+  noiseFill(ctx, tx, ty, 16, 6, ['#b03a2e', '#a03328', '#bd4536', '#963026'], rnd);
+  ctx.fillStyle = '#7a1f16';
+  ctx.fillRect(tx, ty + 6, 16, 1);
+  ctx.fillStyle = '#5d3f1d';
+  ctx.fillRect(tx, ty, 16, 1);
+}
+
 // ─── Atlas builder ───────────────────────────────────────────────────────────
 let atlasCanvas: HTMLCanvasElement | null = null;
 let atlasTexture: THREE.CanvasTexture | null = null;
@@ -339,6 +491,19 @@ export function getAtlas(): AtlasData {
   p = T(35); drawBookshelf(ctx, p[0], p[1], rnd);                                                       // bookshelf
   p = T(36); drawCobble(ctx, p[0], p[1], rnd, true);                                                    // mossy cobble
   p = T(37); noiseFill(ctx, p[0], p[1], 16, 16, OBSID, rnd);                                            // obsidian
+  p = T(38); drawTorchTile(ctx, p[0], p[1], rnd);                                                       // torch
+  p = T(39); drawFurnaceFrontOn(ctx, p[0], p[1], rnd);                                                  // furnace front lit
+  p = T(40); drawChest(ctx, p[0], p[1], true, rnd);                                                     // chest front
+  p = T(41); drawChest(ctx, p[0], p[1], false, rnd);                                                    // chest side
+  p = T(42); drawChest(ctx, p[0], p[1], false, rnd);                                                    // chest top
+  p = T(43); drawFlower(ctx, p[0], p[1], ['#d8382e', '#c22a22', '#e84a3e'], '#2c2c2c', rnd);            // poppy
+  p = T(44); drawFlower(ctx, p[0], p[1], ['#f6d33c', '#e8c227', '#fce88a'], '#c9930f', rnd);            // dandelion
+  p = T(45); drawTallGrassTile(ctx, p[0], p[1], rnd);                                                   // tall grass
+  p = T(46); drawCactusSide(ctx, p[0], p[1], rnd);                                                      // cactus side
+  p = T(47); drawCactusTop(ctx, p[0], p[1], rnd);                                                       // cactus top
+  p = T(48); drawWool(ctx, p[0], p[1], rnd);                                                            // wool
+  p = T(49); drawBedTop(ctx, p[0], p[1], rnd);                                                          // bed top
+  p = T(50); drawBedSide(ctx, p[0], p[1], rnd);                                                         // bed side
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
@@ -472,4 +637,31 @@ export function getBlockIcon(blockId: number, topTile: number, sideTile: number)
   const url = c.toDataURL();
   iconCache.set(blockId, url);
   return url;
+}
+
+// ─── Flat tile icons (for non-cube models: torch, flowers, bed…) ────────────
+const tileIconCache = new Map<number, string>();
+export function getTileIconURL(tileIndex: number): string {
+  const cached = tileIconCache.get(tileIndex);
+  if (cached) return cached;
+  const S = 64;
+  const c = makeCanvas(S, S);
+  const ctx = c.getContext('2d') as Ctx;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(shadedTile(tileIndex, 1.0), 0, 0, TILE_PX, TILE_PX, 0, 0, S, S);
+  const url = c.toDataURL();
+  tileIconCache.set(tileIndex, url);
+  return url;
+}
+
+const tileCanvasCache = new Map<number, HTMLCanvasElement>();
+export function getTileCanvas(tileIndex: number): HTMLCanvasElement {
+  const cached = tileCanvasCache.get(tileIndex);
+  if (cached) return cached;
+  const c = makeCanvas(TILE_PX, TILE_PX);
+  const ctx = c.getContext('2d') as Ctx;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(getAtlas().canvas, (tileIndex % ATLAS_TILES) * TILE_PX, Math.floor(tileIndex / ATLAS_TILES) * TILE_PX, TILE_PX, TILE_PX, 0, 0, TILE_PX, TILE_PX);
+  tileCanvasCache.set(tileIndex, c);
+  return c;
 }

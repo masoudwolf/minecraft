@@ -29,6 +29,16 @@ const FACES: FaceDef[] = [
 const UV_CORNERS: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 1]];
 const AO_CURVE = [0.42, 0.62, 0.82, 1.0];
 
+/** sub-rectangle of a tile in pixel coords (y measured from top) -> uv rect [u0,v0,u1,v1] */
+function tileSub(tileIndex: number, x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+  const [tu0, tv0, tu1, tv1] = tileUV(tileIndex);
+  const u0 = tu0 + (tu1 - tu0) * (x0 / 16);
+  const u1 = tu0 + (tu1 - tu0) * (x1 / 16);
+  const v1 = tv1 - (tv1 - tv0) * (y0 / 16); // top edge
+  const v0 = tv1 - (tv1 - tv0) * (y1 / 16); // bottom edge
+  return [u0, v0, u1, v1];
+}
+
 // tangent axes per face axis
 const TANGENT_AXES: [number, number][] = [[1, 2], [1, 2], [0, 2], [0, 2], [0, 1], [0, 1]];
 
@@ -63,6 +73,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
   const opaque = newBuffers();
   const cutout = newBuffers();
   const water = newBuffers();
+  chunk.torches = [];
 
   const x0 = chunk.cx * CHUNK_SIZE;
   const z0 = chunk.cz * CHUNK_SIZE;
@@ -83,9 +94,74 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
         const isCutout = !!def.cutout;
         const target = isWater ? water : isCutout ? cutout : opaque;
 
+        // ── special model: cross (flowers, tall grass) ──
+        if (def.model === 'cross') {
+          const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const [u0, v0, u1, v1] = tileUV(tile);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const quads: [number, number, number][][] = [
+            [[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]],
+            [[1, 0, 0], [0, 0, 1], [0, 1, 1], [1, 1, 0]],
+          ];
+          for (const quad of quads) {
+            const basePos = cutout.positions.length / 3;
+            for (let c = 0; c < 4; c++) {
+              const cr = quad[c];
+              const px2 = cr[0] === 0 ? 0.08 : 0.92;
+              const pz2 = cr[2] === 0 ? 0.08 : 0.92;
+              cutout.positions.push(lx + px2, y + cr[1], lz + pz2);
+              const uvc = UV_CORNERS[c];
+              cutout.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
+              cutout.shades.push(0.95);
+              cutout.skies.push(sky);
+              cutout.blocks.push(blk);
+            }
+            cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+          }
+          continue;
+        }
+
+        // ── special model: torch (mini box, cropped UVs, always bright) ──
+        if (def.model === 'torch') {
+          chunk.torches.push([wx + 0.5, y + 0.62, wz + 0.5]);
+          const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const a = 0.4375, b = 0.5625, h = 0.625; // 7/16..9/16 wide, 10/16 tall
+          const sideUV = tileSub(tile, 7, 6, 9, 16);
+          const topUV = tileSub(tile, 7, 2, 9, 4);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = Math.max((l & 15) / 15, 0.92);
+          const boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number }[] = [
+            { c: [[b, 0, b], [b, 0, a], [b, h, a], [b, h, b]], uv: sideUV, sh: 0.95 }, // +X
+            { c: [[a, 0, a], [a, 0, b], [a, h, b], [a, h, a]], uv: sideUV, sh: 0.95 }, // -X
+            { c: [[a, h, b], [b, h, b], [b, h, a], [a, h, a]], uv: topUV, sh: 1.0 },   // +Y
+            { c: [[a, 0, a], [b, 0, a], [b, 0, b], [a, 0, b]], uv: sideUV, sh: 0.7 },  // -Y
+            { c: [[a, 0, b], [b, 0, b], [b, h, b], [a, h, b]], uv: sideUV, sh: 0.95 }, // +Z
+            { c: [[b, 0, a], [a, 0, a], [a, h, a], [b, h, a]], uv: sideUV, sh: 0.95 }, // -Z
+          ];
+          for (const f of boxFaces) {
+            const basePos = cutout.positions.length / 3;
+            for (let c = 0; c < 4; c++) {
+              const cr = f.c[c];
+              cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+              const uvc = UV_CORNERS[c];
+              cutout.uvs.push(f.uv[0] + (f.uv[2] - f.uv[0]) * uvc[0], f.uv[1] + (f.uv[3] - f.uv[1]) * uvc[1]);
+              cutout.shades.push(f.sh);
+              cutout.skies.push(sky);
+              cutout.blocks.push(blk);
+            }
+            cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+          }
+          continue;
+        }
+
         // water top surface lowered
         const aboveId = getB(wx, y + 1, wz);
         const waterTop = isWater && aboveId !== BLOCK.WATER;
+        // partial-height blocks (bed)
+        const hTop = def.height ?? 1;
 
         for (let f = 0; f < 6; f++) {
           const face = FACES[f];
@@ -125,6 +201,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             // world-space sample cell (the air cell in front of the face)
             let cy = y + corner[1];
             if (isWater && waterTop && corner[1] === 1) cy = y + 0.875;
+            else if (corner[1] === 1 && hTop !== 1) cy = y + hTop;
 
             target.positions.push(lx + corner[0], cy, lz + corner[2]);
 

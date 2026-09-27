@@ -30,6 +30,7 @@ const S = ITEM.STICK;
 const I = ITEM.IRON_INGOT;
 const G = ITEM.GOLD_INGOT;
 const D = ITEM.DIAMOND;
+const W = BLOCK.WOOL;
 
 function shaped(w: number, h: number, cells: number[], id: number, count = 1): ShapedRecipe {
   return { kind: 'shaped', w, h, cells, out: { id, count } };
@@ -59,6 +60,9 @@ export const RECIPES: Recipe[] = [
   shaped(1, 2, [P, P], S, 4),
   shaped(2, 2, [P, P, P, P], BLOCK.CRAFTING_TABLE),
   shaped(3, 3, [C, C, C, C, 0, C, C, C, C], BLOCK.FURNACE),
+  shaped(3, 3, [P, P, P, P, 0, P, P, P, P], BLOCK.CHEST),
+  shaped(1, 2, [ITEM.COAL, S], BLOCK.TORCH, 4),
+  shaped(3, 2, [W, W, W, P, P, P], BLOCK.BED),
   // ── wooden tools ──
   pickaxe(P, ITEM.WOOD_PICKAXE),
   axe(P, ITEM.WOOD_AXE),

@@ -16,6 +16,16 @@ export interface BlockDef {
   drop?: number | null;    // block id dropped (default: itself)
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
+  /** custom render model (default cube) */
+  model?: 'cube' | 'cross' | 'torch';
+  /** collision + render height 0..1 for partial blocks (bed) */
+  height?: number;
+  /** inventory icon = flat texture tile instead of isometric cube */
+  flatIcon?: boolean;
+  /** block entity attached on placement (furnace/chest) */
+  container?: 'furnace' | 'chest';
+  /** needs solid ground below to be placed (torch, flowers) */
+  needsGround?: boolean;
 }
 
 import { ITEM } from './items';
@@ -51,6 +61,15 @@ export const BLOCK = {
   BOOKSHELF: 27,
   MOSSY_COBBLE: 28,
   OBSIDIAN: 29,
+  TORCH: 30,
+  FURNACE_LIT: 31,
+  CHEST: 32,
+  FLOWER_RED: 33,
+  FLOWER_YELLOW: 34,
+  TALL_GRASS: 35,
+  CACTUS: 36,
+  WOOL: 37,
+  BED: 38,
 } as const;
 
 // Atlas tile indices — filled by textures/atlas.ts (same order)
@@ -63,6 +82,9 @@ export const TILE = {
   crafting_front: 27, furnace_front: 28, furnace_side: 29, furnace_top: 30,
   glowstone: 31, spruce_log_side: 32, spruce_log_top: 33, spruce_leaves: 34,
   bookshelf: 35, mossy_cobble: 36, obsidian: 37,
+  torch: 38, furnace_front_on: 39, chest_front: 40, chest_side: 41, chest_top: 42,
+  flower_red: 43, flower_yellow: 44, tall_grass: 45, cactus_side: 46, cactus_top: 47,
+  wool: 48, bed_top: 49, bed_side: 50,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -97,7 +119,7 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.BRICKS]: { id: BLOCK.BRICKS, name: 'Bricks', tiles: TILE.bricks, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
   [BLOCK.TNT]: { id: BLOCK.TNT, name: 'TNT', tiles: t(TILE.tnt_side, TILE.tnt_side, TILE.tnt_top, TILE.tnt_top, TILE.tnt_side, TILE.tnt_side), solid: true, opaque: true, hardness: 0.4, sound: 'grass' },
   [BLOCK.CRAFTING_TABLE]: { id: BLOCK.CRAFTING_TABLE, name: 'Crafting Table', tiles: t(TILE.crafting_side, TILE.crafting_side, TILE.crafting_top, TILE.planks, TILE.crafting_front, TILE.crafting_front), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
-  [BLOCK.FURNACE]: { id: BLOCK.FURNACE, name: 'Furnace', tiles: t(TILE.furnace_side, TILE.furnace_side, TILE.furnace_top, TILE.furnace_top, TILE.furnace_front, TILE.furnace_side), solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.FURNACE]: { id: BLOCK.FURNACE, name: 'Furnace', tiles: t(TILE.furnace_side, TILE.furnace_side, TILE.furnace_top, TILE.furnace_top, TILE.furnace_front, TILE.furnace_side), solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', container: 'furnace', sound: 'stone' },
   [BLOCK.GLOWSTONE]: { id: BLOCK.GLOWSTONE, name: 'Glowstone', tiles: TILE.glowstone, solid: true, opaque: true, hardness: 0.4, lightEmit: 15, sound: 'glass' },
   [BLOCK.SPRUCE_LOG]: { id: BLOCK.SPRUCE_LOG, name: 'Spruce Log', tiles: logTiles(TILE.spruce_log_side, TILE.spruce_log_top), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
   [BLOCK.SPRUCE_LEAVES]: { id: BLOCK.SPRUCE_LEAVES, name: 'Spruce Leaves', tiles: TILE.spruce_leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
@@ -105,6 +127,17 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.BOOKSHELF]: { id: BLOCK.BOOKSHELF, name: 'Bookshelf', tiles: t(TILE.bookshelf, TILE.bookshelf, TILE.planks, TILE.planks, TILE.bookshelf, TILE.bookshelf), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
   [BLOCK.MOSSY_COBBLE]: { id: BLOCK.MOSSY_COBBLE, name: 'Mossy Cobblestone', tiles: TILE.mossy_cobble, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
   [BLOCK.OBSIDIAN]: { id: BLOCK.OBSIDIAN, name: 'Obsidian', tiles: TILE.obsidian, solid: true, opaque: true, hardness: 12, tool: 'pickaxe', minTier: 5, sound: 'stone' },
+
+  // ── phase 3 ──
+  [BLOCK.TORCH]: { id: BLOCK.TORCH, name: 'Torch', tiles: TILE.torch, solid: false, opaque: false, cutout: true, model: 'torch', flatIcon: true, needsGround: true, hardness: 0.05, lightEmit: 14, sound: 'wood' },
+  [BLOCK.FURNACE_LIT]: { id: BLOCK.FURNACE_LIT, name: 'Furnace', tiles: t(TILE.furnace_side, TILE.furnace_side, TILE.furnace_top, TILE.furnace_top, TILE.furnace_front_on, TILE.furnace_side), solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', lightEmit: 13, drop: BLOCK.FURNACE, container: 'furnace', sound: 'stone' },
+  [BLOCK.CHEST]: { id: BLOCK.CHEST, name: 'Chest', tiles: t(TILE.chest_side, TILE.chest_side, TILE.chest_top, TILE.chest_top, TILE.chest_front, TILE.chest_side), solid: true, opaque: true, hardness: 1.6, tool: 'axe', container: 'chest', sound: 'wood' },
+  [BLOCK.FLOWER_RED]: { id: BLOCK.FLOWER_RED, name: 'Poppy', tiles: TILE.flower_red, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+  [BLOCK.FLOWER_YELLOW]: { id: BLOCK.FLOWER_YELLOW, name: 'Dandelion', tiles: TILE.flower_yellow, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+  [BLOCK.TALL_GRASS]: { id: BLOCK.TALL_GRASS, name: 'Grass', tiles: TILE.tall_grass, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, drop: null, sound: 'grass' },
+  [BLOCK.CACTUS]: { id: BLOCK.CACTUS, name: 'Cactus', tiles: t(TILE.cactus_side, TILE.cactus_side, TILE.cactus_top, TILE.cactus_top, TILE.cactus_side, TILE.cactus_side), solid: true, opaque: true, hardness: 0.6, sound: 'wool' },
+  [BLOCK.WOOL]: { id: BLOCK.WOOL, name: 'Wool', tiles: TILE.wool, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
+  [BLOCK.BED]: { id: BLOCK.BED, name: 'Bed', tiles: t(TILE.bed_side, TILE.bed_side, TILE.bed_top, TILE.planks, TILE.bed_side, TILE.bed_side), solid: true, opaque: false, height: 0.5625, flatIcon: true, needsGround: true, hardness: 0.4, sound: 'wood' },
 };
 
 export function getBlockDef(id: number): BlockDef | undefined {
@@ -131,4 +164,13 @@ export function isTranslucent(id: number): boolean {
 /** does this block type cull the face of a neighbor of the same type (water-water) */
 export function sameCull(id: number): boolean {
   return id === BLOCK.WATER;
+}
+/** effective collision/render height of a block cell (1 = full cube) */
+export function blockHeight(id: number): number {
+  const d = BLOCKS[id];
+  return d?.height ?? 1;
+}
+/** openable container block? (furnace incl. lit) */
+export function containerOf(id: number): 'furnace' | 'chest' | undefined {
+  return BLOCKS[id]?.container;
 }

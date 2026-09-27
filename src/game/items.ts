@@ -58,6 +58,11 @@ export const ITEM = {
   IRON_INGOT: 290,
   GOLD_INGOT: 291,
   DIAMOND: 292,
+  // cooked food (smelting)
+  PORKCHOP_COOKED: 293,
+  STEAK: 294,
+  CHICKEN_COOKED: 295,
+  MUTTON_COOKED: 296,
 } as const;
 
 // ─── tier stats (MC values) ───────────────────────────────────────────────────
@@ -304,6 +309,41 @@ export const ITEMS: Record<number, ItemDef> = {
       px(ctx, 5, 9, '#2fb5a8', 7, 1);
       px(ctx, 7, 10, '#23968b', 3, 1);
       px(ctx, 5, 4, '#d8fffa', 2, 2);
+    },
+  },
+  [ITEM.PORKCHOP_COOKED]: {
+    id: ITEM.PORKCHOP_COOKED, name: 'Cooked Porkchop', food: 8,
+    icon: (ctx) => {
+      noiseRect(ctx, ['#b5703c', '#a5622e', '#c98250'], 3, 5, 10, 7, 41);
+      noiseRect(ctx, ['#d8a878', '#cc9a68'], 5, 3, 7, 3, 43);
+      ctx.fillStyle = '#8a5222';
+      ctx.fillRect(3, 11, 10, 1);
+    },
+  },
+  [ITEM.STEAK]: {
+    id: ITEM.STEAK, name: 'Steak', food: 8,
+    icon: (ctx) => {
+      noiseRect(ctx, ['#6b3a22', '#5c2f1a', '#7d482c'], 3, 5, 11, 8, 45);
+      noiseRect(ctx, ['#a5764c', '#986a40'], 5, 4, 7, 2, 47);
+      ctx.fillStyle = '#4a2412';
+      ctx.fillRect(3, 12, 11, 1);
+    },
+  },
+  [ITEM.CHICKEN_COOKED]: {
+    id: ITEM.CHICKEN_COOKED, name: 'Cooked Chicken', food: 6,
+    icon: (ctx) => {
+      noiseRect(ctx, ['#c98a4a', '#bb7c3c', '#d99c5c'], 4, 4, 9, 9, 49);
+      ctx.fillStyle = '#e8dcc8';
+      ctx.fillRect(11, 10, 3, 4);
+      ctx.fillStyle = '#c8bca8';
+      ctx.fillRect(12, 13, 2, 1);
+    },
+  },
+  [ITEM.MUTTON_COOKED]: {
+    id: ITEM.MUTTON_COOKED, name: 'Cooked Mutton', food: 6,
+    icon: (ctx) => {
+      noiseRect(ctx, ['#9c5a34', '#8a4c28', '#ae6a40'], 3, 5, 10, 8, 51);
+      noiseRect(ctx, ['#d8b088', '#cca078'], 4, 3, 8, 3, 53);
     },
   },
 };

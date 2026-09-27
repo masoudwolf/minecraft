@@ -1,5 +1,5 @@
 // ─── Voxel physics: AABB collision + DDA raycast ─────────────────────────────
-import { isSolid, isLiquid } from './blocks';
+import { isSolid, isLiquid, blockHeight } from './blocks';
 import { WORLD_HEIGHT } from './constants';
 import type { World } from './world/world';
 
@@ -64,7 +64,11 @@ function collides(world: VoxelAccess, e: AABBEntity, half: number): boolean {
       for (let z = z0; z <= z1; z++) {
         if (y < 0) return true;
         if (y >= WORLD_HEIGHT) continue;
-        if (isSolid(world.getBlock(x, y, z))) return true;
+        const id = world.getBlock(x, y, z);
+        if (!isSolid(id)) continue;
+        // partial-height blocks (bed = 9/16): only collide when feet are below the top
+        if (e.y >= y + blockHeight(id)) continue;
+        return true;
       }
   return false;
 }
