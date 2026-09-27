@@ -35,7 +35,7 @@ export function PauseMenu() {
       </div>
       <div className="mt-10 max-w-md text-center text-[11px] leading-5 text-[#bbb]" style={{ fontFamily: 'var(--font-mc)' }}>
         WASD move · SPACE jump · CTRL sprint · SHIFT sneak<br />
-        {hud.gameMode === 'creative' ? 'Double-SPACE fly · instant mine · infinite blocks' : 'LMB mine · RMB place · MMB pick · Q drop · 1-9 hotbar'} · F3 debug
+        {hud.gameMode === 'creative' ? 'Double-SPACE fly · instant mine · infinite blocks' : 'LMB mine · RMB place · MMB pick · Q drop · 1-9 hotbar'} · F3 debug · F5 camera
       </div>
     </div>
   );

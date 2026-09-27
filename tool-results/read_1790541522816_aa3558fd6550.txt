@@ -1,0 +1,379 @@
+     1→     1→# 🎮 VOXELCRAFT — Minecraft-like Game (Handover / Worklog)
+     2→     2→
+     3→     3→> **CRITICAL:** This file is the single source of truth for the whole project.
+     4→     4→> Every agent MUST read this file before working and append a section after finishing (do NOT overwrite).
+     5→     5→> User request (Persian): build a full Minecraft-like game — mobs, textures, tools, blocks, worlds, animations, particles, physics, menus, camera, hotkeys. Advanced graphics. Step-by-step development. Test heavily with agent-browser each round.
+     6→     6→
+     7→     7→---
+     8→     8→
+     9→     9→## 1. PROJECT VISION (Game Design Document)
+    10→    10→
+    11→    11→A browser-based Minecraft clone ("VOXELCRAFT") built with **Next.js 16 + TypeScript + Three.js**, survival mode, first person, blocky voxel world. Persian-speaking user; UI in English (like real Minecraft).
+    12→    12→
+    13→    13→### 1.1 Core Pillars
+    14→    14→1. **Authentic Minecraft feel**: 16×16 pixel textures (procedurally generated pixel-art), blocky mobs made of boxes, cull-mesh chunks, smooth lighting + ambient occlusion, day/night cycle.
+    15→    15→2. **Advanced graphics**: custom voxel shader (sky light + block light channels + AO per vertex), animated water with waves, fog, stars, sun/moon, blocky clouds, crack overlay while mining, particles.
+    16→    16→3. **Full survival loop**: mine → collect drops → inventory → craft tools → fight mobs → survive nights.
+    17→    17→
+    18→    18→### 1.2 Feature Roadmap (phases; check off as done)
+    19→    19→
+    20→    20→**PHASE 1 — Core Engine (Session 1)** ✅ target of first build
+    21→    21→- [ ] Procedural texture atlas (canvas pixel-art): grass/dirt/stone/cobble/sand/gravel/log/leaves/planks/glass/water/ores/bedrock/snow/bricks/TNT/crafting table/furnace/glowstone + crack stages + item icons (isometric block icons for hotbar)
+    22→    22→- [ ] Block registry (~30 blocks) with hardness, tool, drops, light emission, transparency
+    23→    23→- [ ] World gen: multi-biome (plains, forest, desert, snowy, mountains), caves (spaghetti+cheese), ores by depth, trees (oak+spruce), beaches, sea, bedrock
+    24→    24→- [ ] Chunk system 16×96×16, streaming, meshing with face culling, per-vertex AO, smooth lighting
+    25→    25→- [ ] Light engine: sky light BFS flood fill + block light (glowstone/torch), incremental add/remove on edits
+    26→    26→- [ ] Player: AABB physics, walk/sprint/sneak/jump/swim, fall damage, pointer-lock mouse look
+    27→    27→- [ ] Interaction: DDA raycast, hold-to-mine with crack overlay stages, place blocks, pick-block
+    28→    28→- [ ] Item drop entities (spinning mini-blocks, magnet pickup), hotbar inventory (9 slots), block picker (Q drop, 1-9/wheel select)
+    29→    29→- [ ] Sky: gradient fog + background lerp, sun/moon quads, stars, blocky clouds layer
+    30→    30→- [ ] Particles: block break, landing, splash
+    31→    31→- [ ] Audio: procedural Web Audio (dig/place/step per material, pop, hurt, splash)
+    32→    32→- [ ] UI: main menu (Minecraft style), loading progress, pause menu, settings (render distance/FOV/sensitivity/volume/clouds), HUD (crosshair, hotbar, hearts, hunger), F3 debug overlay, death screen, save/load via localStorage
+    33→    33→- [ ] Held block in hand with swing animation
+    34→    34→
+    35→    35→**PHASE 2 — Mobs & Combat** (next cron rounds)
+    36→    36→- [ ] Mob framework: box-model builder from parts, walk/limb swing animation, mob physics reuse
+    37→    37→- [ ] Passive: pig, cow, sheep, chicken (wander AI, flee when hit, drop food/leather/wool/feather)
+    38→    38→- [ ] Hostile: zombie (chase+melee, burns in sunlight), skeleton (arrow shooting), spider, creeper (approach → hiss → explode destroying blocks), enderman-later
+    39→    39→- [ ] Spawn rules: hostile at night/dark, passive on grass day, caps, despawn far
+    40→    40→- [ ] Combat: attack cooldown, knockback, damage, mob health bars via hurt flash (red tint), player damage + death
+    41→    41→- [ ] Full inventory screen (E): 27+9 slots, drag/drop, shift-click, 2×2 crafting grid
+    42→    42→- [ ] Crafting table (3×3) + recipes (planks, sticks, table, torches, all tools tiers, furnace, chest)
+    43→    43→- [ ] Tools: wood/stone/iron/gold/diamond pickaxe/axe/shovel/sword/hoe, durability, mining speed multipliers, tool gating for drops
+    44→    44→- [ ] Hunger system + food + eating anim, regen, sprint drains hunger
+    45→    45→
+    46→    46→**PHASE 3 — World depth**
+    47→    47→- [ ] Torch light sources placement, glowstone; furnace with smelting UI (iron ingot, glass, cooked food)
+    48→    48→- [ ] Chests with storage UI
+    49→    49→- [ ] Water flow simulation (simplified), lava + damage, fire
+    50→    50→- [ ] More biomes: jungle, swamp, mushroom; flowers/tall grass cross-models; cacti; sugarcane
+    51→    51→- [ ] Villages? (later/optional) — abandoned mineshafts? (optional)
+    52→    52→- [ ] Beds to skip night, spawn point
+    53→    53→- [ ] XP orbs + XP bar, enchanting placeholder?
+    54→    54→
+    55→    55→**PHASE 4 — Polish & extras**
+    56→    56→- [ ] Saving to Prisma DB via API route (multi-world), screenshots gallery?
+    57→    57→- [ ] Creative mode toggle (fly, instant break, infinite blocks)
+    58→    58→- [ ] Achievements/toasts, better sounds, music (procedural ambient)
+    59→    59→- [ ] Performance: worker-based meshing (if needed), greedy meshing option
+    60→    60→- [ ] Mobile touch controls? (optional)
+    61→    61→
+    62→    62→### 1.3 Architecture contracts (MUST follow for consistency)
+    63→    63→
+    64→    64→- **Route**: single route `src/app/page.tsx` (dynamic import, `ssr:false`). Everything client-side.
+    65→    65→- **Engine files**: `src/game/**` — no React imports there; communicate via `src/game/state.ts` (zustand) ONLY.
+    66→    66→- **UI files**: `src/components/game/*.tsx` — shadcn/tailwind styling, read state from zustand store, call `engine` methods through a singleton ref exported from `src/game/engine.ts` (`getEngine()/setEngine()`).
+    67→    67→- **Chunk**: `CHUNK_SIZE=16`, `WORLD_HEIGHT=96`, `SEA_LEVEL=40`. Index: `x + z*16 + y*256`. Blocks `Uint8Array`, light `Uint8Array` (sky<<4|block).
+    68→    68→- **Atlas**: 16×16 tiles of 16px = 256×256 canvas, NearestFilter, no mipmaps. Tile enum in `src/game/textures/atlas.ts`. UV inset half-texel to avoid bleeding.
+    69→    69→- **Faces order**: [+X, −X, +Y, −Y, +Z, −Z].
+    70→    70→- **Shader lighting**: attributes `aShade` (AO×face shade), `aSky`, `aBlock` (0..1); uniforms `uSunLevel`, `uFogColor`, `uFogNear/Far`, `uTime` (water waves). Final = tex × shade × max(block, sky×sun).
+    71→    71→- **Items**: `{ blockId }` for blocks; item ids ≥ 256 reserved for non-block items (tools/food) — registry in `src/game/items.ts` (phase 2).
+    72→    72→- **Save format** (localStorage key `voxelcraft.save`): `{seed, time, player:{pos,yaw,pitch,health,hunger,hotbar}, edits:{"cx,cz":{index:blockId}}}`.
+    73→    73→- **Input**: WASD move, Space jump/swim, Shift sneak, Ctrl sprint, E inventory(phase2), Q drop, 1-9 hotbar, wheel select, F3 debug, Esc pause, LMB mine/attack, RMB place, MMB pick.
+    74→    74→- **Day cycle**: 480s full cycle; sunLevel computed from sun angle; night = mobs spawn (phase 2).
+    75→    75→
+    76→    76→### 1.4 QA Protocol (mandatory every round)
+    77→    77→- `bun run lint` must pass; check `/home/z/my-project/dev.log` tail for errors.
+    78→    78→- agent-browser: open `/`, start game, verify: menu renders → loading completes → terrain visible → HUD visible → mine block → drop appears+pickup → place block → pause menu → settings work → F3 shows stats. Screenshot each step. Check console errors.
+    79→    79→- Performance sanity: FPS ≥ 40 in debug overlay with render distance 4.
+    80→    80→
+    81→    81→---
+    82→    82→
+    83→    83→## 2. WORK LOG (append-only, newest at bottom)
+    84→    84→
+    85→    85→---
+    86→    86→Task ID: 1
+    87→    87→Agent: main
+    88→    88→Task: research + worklog creation
+    89→    89→
+    90→    90→Work Log:
+    91→    91→- Inspected project scaffold (Next.js 16, shadcn/ui, prisma, zustand present)
+    92→    92→- Web-searched Minecraft gameplay mechanics + voxel meshing/AO/lighting techniques
+    93→    93→- Created this worklog with full GDD, roadmap and contracts
+    94→    94→
+    95→    95→Stage Summary:
+    96→    96→- Project scaffold understood; contracts defined; ready to build Phase 1
+    97→    97→
+    98→    98→---
+    99→    99→Task ID: 2 (Phase 1 — Core Engine)
+   100→   100→Agent: main
+   101→   101→Task: Build complete Phase 1 core engine: textures, world gen, chunks+lighting, player physics, interaction, sky, UI, audio, saves
+   102→   102→
+   103→   103→Work Log:
+   104→   104→- Installed three@latest + @types/three + simplex-noise
+   105→   105→- Files created (all in src/game/):
+   106→   106→  - constants.ts — CHUNK 16x96x16, SEA 40, physics constants
+   107→   107→  - blocks.ts — 29 blocks registry (tiles per face, hardness, drops, lightEmit, sounds)
+   108→   108→  - textures/atlas.ts — procedural 256x256 pixel-art atlas (38 tiles), crack stages x10, isometric hotbar icons, tile avg colors; seeded PRNG
+   109→   109→  - world/terrain.ts — biomes (plains/forest/desert/snowy/mountains), FBM heights + ridged mountains, caves (spaghetti+cheese 3D noise), ores by depth, oak+spruce trees w/ cross-chunk margin
+   110→   110→  - world/world.ts — Chunk class, World w/ edits map, sky-light column scan + BFS flood fill (add/remove queues, cross-chunk, water/leaves attenuation), block-light BFS, incremental relight on setBlock, chunk streaming helpers
+   111→   111→  - world/mesher.ts — culled mesher, per-vertex AO (4-sample smooth lighting), quad diagonal flip, 3 buckets: opaque/cutout/water; water top lowered to 0.875; custom ShaderMaterial (attributes aShade/aSky/aBlock; uniforms uSunLevel/uFog/uTime; wave on water)
+   112→   112→  - physics.ts — per-axis AABB voxel collision w/ substeps, DDA raycast
+   113→   113→  - player.ts — controller: walk/sprint(ctrl)/sneak(shift)/jump/swim, fall damage, view bob, FOV sprint boost, health/respawn
+   114→   114→  - entities/drops.ts — item drops (mini block meshes, gravity+float, magnet pickup, merge into hotbar), createBlockGeometry shared
+   115→   115→  - particles.ts — GPU points, block break/land/splash/hurt bursts, fade by life
+   116→   116→  - sky.ts — day cycle 480s, sun/moon quads, 420 stars (night opacity), blocky drifting clouds (instanced, threshold 1.04, follow player), sky/fog color palette lerp + sunset tint, sunLevel 0.14..1
+   117→   117→  - audio.ts — WebAudio synth: dig/step per material, break, place, pop, hurt, splash, click; master volume
+   118→   118→  - state.ts — zustand store (screen router, settings persisted, HUD state, debug info)
+   119→   119→  - engine.ts — Game class: renderer/scene/camera, streaming (data r+1, mesh budgeted 6-7ms/frame, unload r+3), mining w/ crack overlay + progress, placing, pick-block, Q drop, hand view model + swing anim, autosave 20s + on pause, localStorage save (seed+edits+player), underwater fog, death/respawn, window.__voxel QA handle
+   120→   120→- UI (src/components/game/): GameRoot (canvas + screen router), MainMenu (dirt bg, splash), HUD (crosshair, hotbar w/ iso icons + counts, 10 pixel-hearts, hurt flash, toast, underwater tint, item name popup), Overlays (PauseMenu, SettingsScreen w/ live sliders, DeathScreen, LoadingScreen), DebugOverlay (F3), ui.tsx (McButton/Heart/Splash/menu bg)
+   121→   121→- page.tsx: dynamic import ssr:false; layout metadata; globals.css: --font-mc, mc-slider, splashPulse keyframes
+   122→   122→
+   123→   123→QA (agent-browser, all verified):
+   124→   124→- Menu renders (footer overlap fixed), New World -> loading bar -> spawn on grass ✓
+   125→   125→- Terrain/trees/water/beach render with AO + textures ✓
+   126→   126→- Pointer lock works; mouse look verified via pitch/yaw ✓
+   127→   127→- Mining: raycast target -> crack -> block removed -> drop spawned ✓ (eval-verified world.getBlock==0, drops==1)
+   128→   128→- Pickup: magnet -> hotbar gained Dirt x1 ✓ (fixed crash: missing useState import in HUD)
+   129→   129→- Placing: RMB placed dirt on grass; hotbar count 5->4 ✓; held item view shows block ✓
+   130→   130→- Pause menu on Esc; settings sliders persist to localStorage; Back returns ✓
+   131→   131→- F3 debug: fps/xyz/chunk/biome/facing/time/tris ✓ (facing labels fixed: yaw=0=north)
+   132→   132→- Save/Continue: edits+inventory+position restored ✓
+   133→   133→- Night: sunLevel 0.14, dark world; noon sun quad visible ✓
+   134→   134→- Clouds: double-offset bug fixed; 87 instances now visible ✓
+   135→   135→- lint passes; dev.log clean (old compile errors were pre-fix)
+   136→   136→
+   137→   137→Stage Summary:
+   138→   138→- PHASE 1 COMPLETE: playable Minecraft-like core loop (mine→collect→build), authentic visuals
+   139→   139→- Known minor items for next rounds: headless FPS ~8 (software GL — likely fine on real GPU; consider worker meshing later), clouds drift wrap jump every 12 blocks, footstep sounds only
+   140→   140→- NEXT (Phase 2 per roadmap): mobs (box models, AI, combat), hunger/food, full inventory + 2x2/3x3 crafting, tools+tiers, torch block-light placements
+   141→   141→
+   142→   142→---
+   143→   143→Task ID: 3 (Phase 2a — Mobs, Combat, Hunger, Items)
+   144→   144→Agent: main (cron round 1)
+   145→   145→Task: QA Phase 1 + build mob framework, passive/hostile mobs, combat, hunger/food, item system
+   146→   146→
+   147→   147→Work Log:
+   148→   148→- QA first: server 200, lint pass, engine loads (121 chunks), no console errors
+   149→   149→- Files created:
+   150→   150→  - src/game/items.ts — non-block item registry (id>=256): raw porkchop/beef/chicken/mutton, leather, feather, stick, coal; 16x16 pixel-art icons (cached dataURLs) + drop-sprite canvases
+   151→   151→  - src/game/entities/mobSkins.ts — procedural mob skins (canvas): pig/cow/sheep/chicken/zombie/creeper/skeleton; each has head(face: eyes/snout/beak/mouth/ribs)+body+limb textures, NearestFilter
+   152→   152→  - src/game/entities/mobs.ts — MobManager + Mob entities:
+   153→   153→    * Box models via part builders (quadruped/humanoid/creeper), per-instance cloned materials (individual hurt tint), part userData tags
+   154→   154→    * Walk animation (diagonal leg pairs, zombie arms forward with sway), head bob, smooth yaw turn
+   155→   155→    * AI: passive idle/walk/flee(on hurt); zombie chase<24 + melee 3dmg/1.1s + knockback; skeleton keep-distance 6-9.5 + strafe + arrow projectiles (gravity, inaccuracy, hit player 3dmg); creeper chase<13 -> fuse 1.5s (white flash + hiss, aborts if player escapes) -> explosion (radius 2.6 destroys blocks except bedrock/water, damages player+mobs by distance, chain reactions)
+   156→   156→    * Spawning: every 1.6s, 16-42 blocks from player; hostile if effective light <6 (night/caves), passive on grass/snow-grass with daylight, herd spawns, caps 12 hostile/10 passive, despawn >64
+   157→   157→    * Sun burning: zombie/skeleton with skyLight==15 && sunLevel>0.82 take 1dmg/s + fire particles
+   158→   158→    * Death: fall-over rotation + red tint 0.45s -> drops (porkchop/beef/mutton/leather/feather/chicken) + particles
+   159→   159→    * Circle shadow blobs under mobs; chicken slow-fall; mobs swim up in water; auto-jump when blocked
+   160→   160→    * Arrows: small box meshes, lookAt velocity, stuck-on-block, 8s life
+   161→   161→- Files updated:
+   162→   162→  - audio.ts: mobAmbient/mobHurt per species, zombieAttack, fuseHiss, boom, bowShoot, eat, burp (distance attenuation)
+   163→   163→  - drops.ts: non-block items render as flat spinning sprites (CanvasTexture, alphaTest)
+   164→   164→  - engine.ts: MobManager integration (setupWorld/dispose/frameUpdate callbacks incl. explosion particles + fire particles), attack-mob priority in mineTick (raycastMob within 3.4, cooldown 0.42, 2dmg hand), eating (RMB with food when hunger<19.6: +hunger, sounds, count--), hunger drain (sprint .085/s walk .012/s idle .0015 jump .05), regen (>=18 hunger: +1hp/2s, -0.4 hunger), starve (0 hunger: 1dmg/3s to 2 hearts), HUD hunger sync
+   165→   165→  - state.ts: hud.hunger, debug.mobs
+   166→   166→  - HUD.tsx: hunger drumstick row (pixel SVG, right side like MC), item icons in hotbar via getItemIcon, held item = flat sprite in hand
+   167→   167→  - DebugOverlay: mobs count line, version 0.2.0
+   168→   168→- FIXED: hurt-flash stuck bug (cancellable timeout -> reflow-restart transition)
+   169→   169→- MobManager.debugSpawn() public QA helper added
+   170→   170→
+   171→   171→QA (agent-browser, verified):
+   172→   172→- Mobs render beautifully: cow (patches+face), pig (snout+eyes), sheep, chicken ✓
+   173→   173→- Zombie killed AFK player at night -> death screen ✓ (hostile AI proof)
+   174→   174→- Cow combat: 3 hits (10->2hp) via aimed attacks, knockback visible ✓
+   175→   175→- Cow killed -> dropped beef(257)x2 + leather(260)x2 -> picked up into hotbar ✓
+   176→   176→- Eating: RMB beef -> hunger 10->13, count-- ✓; beef sprite in hand ✓
+   177→   177→- Creeper: chased -> fused -> EXPLODED: player 20->11hp, terrain crater visible, chain-killed a pig -> porkchop drop ✓
+   178→   178→- 6 zombies burned in daylight (hp 20->15 in ~4s), one chased ✓
+   179→   179→- Skeleton: 2 arrow hits landed (health -6) ✓
+   180→   180→- Natural ambient spawning works (passive herds appeared in day) ✓
+   181→   181→- Hunger bar renders (drumsticks deplete with sprint) ✓
+   182→   182→- No console errors; lint pass; server 200
+   183→   183→
+   184→   184→Stage Summary:
+   185→   185→- PHASE 2a COMPLETE: living world with 7 mob types, combat, hunger/food loop
+   186→   186→- Deferred to next rounds: full inventory screen (E) + crafting 2x2/3x3 + tools/tiers (Phase 2b), spider+enderman, sheep wool color, hold-to-eat animation, mob spawn persistence, clouds slightly darker at night
+   187→   187→- Recommended next (Task 4): inventory UI + crafting system + tools (mining speed multipliers + tool gating), then furnace/torch Phase 3
+   188→   188→
+   189→   189→---
+   190→   190→Task ID: 4 (Phase 2b — Inventory, Crafting, Tools)
+   191→   191→Agent: main (cron round 2)
+   192→   192→Task: Status assessment + agent-browser QA + Phase 2b: full inventory (E), 2x2/3x3 crafting, tools with tiers/durability/mining-speed/tool-gating
+   193→   193→
+   194→   194→Work Log:
+   195→   195→- QA round 1 (pre-existing build): menu → New World → terrain/HUD render ✓; eval-driven mining (block broke, 4 dirt drops) ✓; magnet pickup (Dirt x4 → hotbar) ✓; natural mob spawning (13 mobs incl. herds + night hostiles) ✓; no console errors; lint pass. Verdict: Phase 1+2a STABLE → proceed to Phase 2b per roadmap.
+   196→   196→- Files created:
+   197→   197→  - src/game/crafting.ts — recipe registry (26 recipes) + matcher: shapeless (log→planks) + shaped w/ bounding-box sliding + automatic mirroring (axe); needsTable(); freshDur(); grid sizes 2 and 3 supported. Recipes: planks, sticks, crafting table, furnace (8 cobble ring), full tool sets (pickaxe/axe/shovel/sword) x 5 tiers (wood/stone/iron/gold/diamond).
+   198→   198→  - src/game/inventory.ts — InvSlot {blockId,count,dur?}, addToSlots (merge-then-empty, maxStack-aware), isEmptySlot, cloneSlots helpers.
+   199→   199→  - src/components/game/InventoryScreen.tsx — authentic MC GUI: #c6c6c6 panel w/ bevel box-shadows, #8b8b8b inset-bevel slots (44px), hover white/45 overlay, count text w/ MC shadow, durability bars (green→red hsl), cursor stack follows mouse (fixed, z-50), MC-style tooltips (dark purple border), 2x2 grid (player inv) vs 3x3 (table mode), pixel-art player figure filler, arrow glyph, hint line. Left-click pick/place/swap/merge, right-click split-half/place-one, shift-click quick-move (hotbar<->main, craft→inv), output click = take, shift-click output = craft-all (loop ≤64).
+   200→   200→  - src/components/game/slotIcon.ts — shared icon/name resolution (block iso icon or item pixel icon) used by HUD + InventoryScreen.
+   201→   201→- Files updated:
+   202→   202→  - src/game/items.ts — +20 tool items (ids 270-289, MC stats: wood 2x/59, stone 4x/131, iron 6x/250, gold 12x/32 tier1, diamond 8x/1561), dmg per type; +materials iron/gold ingot, diamond (290-292) w/ pixel icons; procedural tool icon painters (diagonal handle + tier-colored heads); getToolDef/maxStack (tools stack 1)/isToolItem; breakInfo(def, tool) — MC formula: harvest? h*1.5/speed : h*5/speed, tool-type match required for speed+tier gating.
+   203→   203→  - src/game/blocks.ts — minTier added: stone/cobble 1, coal 1 (drops COAL item now), iron 2 (drops IRON_INGOT temp), gold/diamond 3, obsidian 5. (imports ITEM from items — one-way dep ok)
+   204→   204→  - src/game/player.ts — HotbarSlot.dur?, main inventory 27 slots.
+   205→   205→  - src/game/state.ts — InvUIState (open/table/hotbar/main/craft/craftOut/cursor) + setInv.
+   206→   206→  - src/game/engine.ts — E key opens 2x2 (playing) / closes (inv open); Esc closes; digits 1-9 swap hovered slot w/ hotbar; RMB on crafting table opens 3x3 (unless sneaking); invClick/clickSlot/shiftMove/takeCraftOutput/updateCraftOut/invHotbarSwap/setInvHover; closeInventory returns craft grid + cursor to inv (drops overflow); addToInventory hotbar→main; tryPickup uses it (works w/ main inv now); mineTick uses breakInfo (tool speeds + gating) + damageTool(1) per block, mob hit dmg = tool.dmg (sword 4-7), non-sword tools lose 2 dur on hit; damageTool breaks tool at 0 (sound + toast); syncInventory hash-guarded push to store; save format v2: player.main + dur (backward compatible).
+   207→   207→  - GameRoot.tsx — renders InventoryScreen while playing+invOpen (world keeps simulating, pointer unlocked, pause suppressed via onPointerLockChange guard).
+   208→   208→  - HUD.tsx — durability bar in hotbar, shared slotIcon.
+   209→   209→  - DebugOverlay — version 0.3.0.
+   210→   210→
+   211→   211→QA (agent-browser, eval-driven, all verified):
+   212→   212→- E opens 2x2 inv; GUI renders MC-authentic (panel, slots, player figure, hint) ✓
+   213→   213→- Log→Planks x4 (shapeless) ✓; Planks 2x2→Crafting Table ✓; 2-plank column→Sticks x4 (3x3) ✓; shift-click output craft-all ✓; Pickaxe pattern (3 planks top + 2 sticks) → Wooden Pickaxe dur=59 ✓
+   214→   214→- RMB split/place-one, cursor stack render, swap, merge, return-on-close (craft+cursor → inv, overflow drops) ✓
+   215→   215→- Tool speed: pickaxe breaks stone ~1.1s ✓; durability 59→56 over 3 breaks ✓; harvest gating: pickaxe→cobble drops x3 ✓, bare hand breaks stone w/ NO drop ✓
+   216→   216→- Living-world interruptions handled authentically: night zombies killed AFK player (death screen), respawn button works, creeper explosion destroyed test block; tools survived all cycles ✓
+   217→   217→- Save v2: main inventory (27) + dur persisted to localStorage; quit→title→Continue available ✓
+   218→   218→- lint pass, dev.log clean (200s only), no console errors
+   219→   219→
+   220→   220→Stage Summary:
+   221→   221→- PHASE 2b COMPLETE: full inventory + crafting progression (punch tree → planks → table → sticks → tools) + MC tool mechanics (tiers, speeds, durability, gating)
+   222→   222→- Design decisions: iron/gold ore drop ingots directly (furnace smelting arrives Phase 3); invOpen suppresses pause screen (world keeps running, like MC)
+   223→   223→- Known minor: addToSlots merges only within target list (cursor-return can leave split stacks — harmless); requestPointerLock after inv close may need a click in some browsers (ClickHint covers)
+   224→   224→- NEXT (Phase 3 per roadmap): torches (light-emit placement + cross-model mesher support), furnace smelting UI (iron/gold from ore, cooked food, glass), chest storage UI, water flow, more biomes (jungle/swamp), flowers/cacti cross-models, beds, XP orbs
+   225→   225→
+   226→   226→---
+   227→   227→Task ID: 5 (Phase 3a — Torches, Furnace, Chest, Bed, Decorations)
+   228→   228→Agent: main (status-assess round)
+   229→   229→Task: Status assessment + agent-browser QA + Phase 3a: torches w/ block-light + flame particles, furnace smelting UI, chest storage UI, beds (sleep/spawn), flowers/tall-grass/cactus worldgen, wool, cooked foods, save v3
+   230→   230→
+   231→   231→Work Log:
+   232→   232→- QA first: build stable (Phase 1+2b verified), 0 console errors, lint pass → proceeded to Phase 3a per roadmap
+   233→   233→- Files created:
+   234→   234→  - src/game/blockEntities.ts — BlockEntityManager: FurnaceBE {input,fuel,output,burnTime,burnMax,cookTime} + ChestBE {27 slots}; SMELT registry (iron/gold ore→ingots, sand→glass, cobble→stone, raw meats→cooked); FUEL registry (coal 80s, planks/log 15s, stick 5s, table/chest/bookshelf 15s); COOK_TIME=10s; tick() per-frame: fuel consumption, cook progress, output production, FURNACE<->FURNACE_LIT auto-swap (drives relight via setBlock); destroy() spills contents; serialize/load for save v3
+   235→   235→- Files updated:
+   236→   236→  - blocks.ts — +9 blocks: TORCH(30, lightEmit 14, model torch, needsGround), FURNACE_LIT(31, lightEmit 13, drop FURNACE), CHEST(32, container), FLOWER_RED(33)/FLOWER_YELLOW(34)/TALL_GRASS(35, model cross, needsGround, tall-grass drop=null), CACTUS(36), WOOL(37), BED(38, height 0.5625, needsGround, flatIcon); FURNACE(22) got container:'furnace' (bugfix found in QA); new BlockDef fields: model/height/flatIcon/container/needsGround + blockHeight()/containerOf() helpers
+   237→   237→  - textures/atlas.ts — 13 new procedural tiles (38-50): torch (stick+flame), furnace front lit (fire pixels), chest (planks+latch+lid seam), poppy/dandelion (petal clusters + stem), tall grass (9 curved blades), cactus side (ribs+spikes)/top, wool (curls), bed top (red blanket+white pillow)/side; getTileIconURL() + getTileCanvas() for flat icons/sprites
+   238→   238→  - world/mesher.ts — special models: 'cross' (2 diagonal quads, own-cell light, inset 0.08), 'torch' (mini-box 2/16 wide x 10/16 tall, cropped UVs via tileSub(), block light min 0.92 so torch always bright, registers chunk.torches[]); partial-height blocks (bed 9/16): corner y clamped to def.height
+   239→   239→  - world/world.ts — Chunk.torches[] field (collected at mesh time for particles)
+   240→   240→  - world/terrain.ts — decorationAt(x,z): plains 7.5% tall grass + 1% flowers, forest 4%/0.8%, desert 0.6% cactus (1-3 tall); placed post-trees, only on grass/snow-grass/sand with air above
+   241→   241→  - physics.ts — collides() respects blockHeight() (bed = 9/16 collision, can't stand inside)
+   242→   242→  - items.ts — cooked foods 293-296: Cooked Porkchop/Steak (8 hunger), Cooked Chicken/Mutton (6), pixel icons
+   243→   243→  - crafting.ts — +3 recipes: chest (8 planks ring), torch (coal over stick -> 4), bed (3 wool + 3 planks)
+   244→   244→  - engine.ts — blockEnts integration (tick in frameUpdate); placeBlock: RMB interactions (furnace/chest open UI, bed sleep, sneak bypasses), needsGround check w/ toast, BE attach on container place; mining: container spill on break + pops unsupported needsGround blocks above; openContainer/closeInventory w/ containerKey; invClick 'container' area (chest slots, furnace input/fuel w/ write-back, furnace output take-only + shift craft-all); shiftFromContainer; invHotbarSwap container support; syncInventory pushes containerSlots + furnace ratios; furnace UI sync 0.3s while open; spawnPoint (bed) + save v3 {blockEntities, spawn}; respawn() uses bed spawn; torch flame/smoke particles (0.12s cadence, random nearby torch from chunk.torches, 48-block range); cactus contact damage (0.6s cooldown, 1 dmg); updateHandMesh renders flatIcon blocks as sprites
+   245→   245→  - state.ts — InvUIState + container/containerSlots/furnace
+   246→   246→  - InventoryScreen.tsx — 3 layouts: crafting (2x2/3x3), chest (27 grid), furnace (input/flame/fuel + cook arrow + big output); flame + arrow progress indicators (CSS clip-path), titles, shared Slot/tooltip/cursor
+   247→   247→  - slotIcon.ts — flatIcon blocks use flat tile icon
+   248→   248→  - mobs.ts — sheep now drops 1-2 wool
+   249→   249→  - DebugOverlay/MainMenu — version 0.4.0
+   250→   250→- BUGS FIXED during QA: FURNACE missing container field (BE getOrCreate null); shiftFromContainer const-reassign (compile error); decorationAt BLOCK-as-type
+   251→   251→
+   252→   252→QA (agent-browser + eval-driven, all verified):
+   253→   253→- Decorations generated (57 flowers, 290 tall grass sampled); poppy cross-model renders; tall grass visible
+   254→   254→- Torch: placement consumes hotbar (16->15), needsGround + player-AABB rejections work, light 13 above cell, night glow pool visible, chunk.torches registry, hotbar flat icon + hand sprite
+   255→   255→- Furnace: seeded 5 sand + 2 coal -> auto-lit (block 31), 3 glass produced in ~30s, fuel burned 80s/down, GUI shows input/flame/arrow/output (glass x3), output click -> cursor (5 glass), close -> returned to main inv (hotbar full)
+   256→   256→- Chest: placed, 3 clicks stored coal x8 + porkchop x5, close/reopen contents persist, GUI authentic
+   257→   257→- Bed: night sleep time 400->115 + "Spawn point set · Slept until morning" toast; zombies killed AFK player -> death screen -> Respawn spawned exactly at bed spawn (7.5, 43.6, 6.5) with full HP
+   258→   258→- Crafting: coal+stick -> 4 torches (2x2), craft-all +4; 3 wool + 3 planks -> bed (3x3)
+   259→   259→- Sheep killed: dropped wool x2 + mutton x2
+   260→   260→- Cactus: touchingCactus precision verified (not touching = no dmg), flush contact: hp 18->15 over 3s
+   261→   261→- Save v3: blockEntities (2) + spawn persisted; Continue World restored chest contents, furnace BE, bed block, spawn point
+   262→   262→- No console errors; lint pass; dev.log clean (200s only)
+   263→   263→
+   264→   264→Stage Summary:
+   265→   265→- PHASE 3a COMPLETE: full smelting loop (ore -> ingot, sand -> glass, raw -> cooked food), storage (chest), light+ambience (torches w/ particles), beds (skip night + respawn), world decoration layer
+   266→   266→- Design decisions: furnace lit-state as separate block id (drives relight automatically); BEs keyed "x,y,z" persisted in save v3; needsGround blocks pop when support broken; bed = single block 9/16 tall
+   267→   267→- Known minor: furnace fuel slot accepts any item (only fuels burn — permissive like early MC); cactus full-cube collision (MC is 15/16); torch floor-only (wall torches deferred); flowers don't spread/bonemeal
+   268→   268→- NEXT (Phase 3b per roadmap): water flow simulation, more biomes (jungle/swamp + new blocks), sugarcane/flowers spread, XP orbs, mob spawn persistence, then Phase 4: creative mode, DB saves via API+Prisma, achievements
+   269→   269→
+   270→   270→---
+   271→   271→Task ID: 6 (Phase 3b — Water Flow, Biomes, XP, Achievements)
+   272→   272→Agent: main (status-assess round)
+   273→   273→Task: Status assessment + agent-browser QA + Phase 3b: water flow simulation, jungle/swamp biomes, sugarcane/lily pads/dead bush, XP orbs + bar, achievements
+   274→   274→
+   275→   275→Work Log:
+   276→   276→- QA first: build stable (Phase 1..3a), lint pass, 0 console errors, menu/world/mining/drops/pickup/inventory all verified via agent-browser + __voxel eval
+   277→   277→- IN PROGRESS (files edited, compile clean, lint pass; browser QA pending):
+   278→   278→  - blocks.ts: +7 flowing-water ids WATER_FLOW1..7 (39..45) w/ isWaterId/waterLevel/flowId/waterReplaceable helpers; +SUGARCANE(46) cross, DEAD_BUSH(47) cross, LILY_PAD(48) lily-model, JUNGLE_LOG(49), JUNGLE_LEAVES(50)
+   279→   279→  - atlas.ts: 5 new tiles (sugarcane stalks, dead bush, lily pad w/ notch, jungle log, bright jungle leaves) + painters
+   280→   280→  - world.ts: fluid tick scheduler (fluidQ Map + tickFluids budgeted 120/frame, 0.28s/cell); tickWater: flow-down-first (falling=level 1), horizontal spread level+1 to FLOW_MAX, decay/recompute when support removed, infinite-water rule (2+ source neighbors -> source); wakeFluidsAround hooked into setBlock; tickPlant (sugarcane/cactus growth via same scheduler); light engine now attenuates ALL water ids + jungle leaves
+   281→   281→  - mesher.ts: per-level water surface heights (source 0.875, flow thins to 0.12), side faces match height, same-id-only culling between water cells, lily pad flat quad model
+   282→   282→  - terrain.ts: +jungle (temp>0.30 humid>0.42, tall 9-13 jungle trees w/ big canopies, dense grass) +swamp (flatten to sea level w/ pools, wide flat oak canopies, lily pads 10%, dead bush); desert dead bush; sugarcane gen on beaches near water 1-3 tall (deterministic hash)
+   283→   283→  - entities/xp.ts: XPOrbManager (pixel-art green orb sprites, physics+strong magnet 4.2, absorb callback)
+   284→   284→  - achievements.ts: 12 achievements (getWood, benchmarking, timeToMine, gettingUpgrade, hotTopic, acquireHardware, diamonds, monsterHunter, cowTipper, ironBelly, sleepTight, lightItUp) + manager w/ save restore
+   285→   285→  - engine.ts: world.tickFluids in frameUpdate + ambient plant scan every 2s; XP from ores (coal1/iron1/gold2/diamond5); mob kill XP (passive 1-3, hostile 5); addXP w/ level curve 7+3L; achievements hooked (pickup/craft/place/sleep/kill); sugarcane placement rule (sand/grass/dirt+adjacent water or cane stack), lily pad surface placement (source water only), chain-pop cane/cactus stacks on support break; save v4 (+level/xp/achievements); hurtMob returns killed
+   286→   286→  - state.ts: hud.xpLevel/xpProgress + advancement; HUD.tsx: XP bar w/ green gradient + level number, AdvancementToast (slide-in MC style); audio.orb/achievement sounds; mobs.ts isWaterId fixes; version 0.5.0
+   287→   287→
+   288→   288→Stage Summary:
+   289→   289→- Phase 3b code complete pending runtime QA (water flow behavior, biome render, XP bar, achievements)
+   290→   290→- Next after QA: fix any bugs found; then Phase 4 (creative mode, DB saves via API+Prisma) or mob spawn persistence
+   291→   291→
+   292→   292→---
+   293→   293→Task ID: 6 (Phase 3b) — FINAL QA RESULTS
+   294→   294→Agent: main
+   295→   295→Task: agent-browser QA of water flow, biomes, XP, achievements
+   296→   296→
+   297→   297→QA (agent-browser + __voxel eval, all verified):
+   298→   298→- Water flow: dug trench at shore -> water flowed in with EXACT MC levels 1..7 (ids 39-45), then stopped (FLOW_MAX) ✓
+   299→   299→- Water decay: plugged trench mouth with dirt -> all downstream flow receded to air in ~8s ✓
+   300→   300→- Falling water: dug shaft under flow -> level-1 falling column propagated down 3 cells to floor ✓ (after fixing bug: above-fed cells computed want=0 and early-returned without spreading)
+   301→   301→- Infinite water: 2 source blocks with 1 gap -> middle cell auto-converted to source ✓
+   302→   302→- Resume-on-load: fluid queue is transient -> added ensureChunk scan of saved edits (flow ids/canes/cacti get re-scheduled on chunk load) ✓ verified falling column completes after reload
+   303→   303→- Swamp biome: rendered w/ lily pads on pools, sugarcane on beaches, swamp oaks w/ wide canopies, dead bush ✓
+   304→   304→- Jungle biome: found interior, big 9-13 tall jungle trees w/ bright-green canopies render correctly ✓ (surfaceY spawns on canopy - authentic)
+   305→   305→- Sugarcane growth: placed cane near water -> grew 1->2 blocks via fluid-tick growth (max 3, 18%/tick) ✓
+   306→   306→- XP: mined coal ore -> orb spawned -> magnet-absorbed -> player.xp=1 (bar 1/7 shown) ✓
+   307→   307→- Achievement toast: placed torch -> "Achievement Get! / Let There Be Light" slide-in popup top-right w/ icon + fanfare ✓
+   308→   308→- XP bar: green gradient bar w/ glowing level number renders above hearts ✓
+   309→   309→- Save v4: achievements=["lightItUp"], level, xp persisted; Continue World restored ✓
+   310→   310→- Zero console errors (window.__errs tracker), lint pass, dev.log 200s only
+   311→   311→- Fixed during round: (1) opaque-block removal didn't wake fluids -> wakeFluidsAround now unconditional in setBlock; (2) falling column early-return bug; (3) fractional tree heights from hash2 float (floored)
+   312→   312→
+   313→   313→Stage Summary:
+   314→   314→- PHASE 3b COMPLETE: dynamic water (flow/decay/falling/infinite sources/save-resume), 2 new biomes (jungle+swamp), 5 new blocks w/ textures (sugarcane/dead bush/lily pad/jungle log/leaves), plant growth, XP orbs+bar+levels, 12 achievements w/ MC-style toasts
+   315→   315→- Known minor: fluid tick queue not serialized (re-scanned from edits on load — equivalent); water washes torches silently (no pop sound); lily pad requires SOURCE water below (flowing water rejected); treeAt hash change alters tree placement vs pre-3b saves' unexplored chunks (cosmetic)
+   316→   316→- NEXT (Phase 4 per roadmap): creative mode (fly/instant break/infinite blocks), DB saves via API+Prisma (multi-world), achievements screen, then optional: mob spawn persistence, spiders/enderman, enchanter placeholder
+   317→   317→
+   318→   318→---
+   319→   319→Task ID: 7 (Phase 4 — Creative Mode, DB Multi-World Saves, Achievements Screen)
+   320→   320→Agent: main (status-assess round)
+   321→   321→Task: Status assessment + agent-browser QA + Phase 4: creative mode (fly/instant break/infinite blocks/creative palette), Prisma+API multi-world save system, achievements screen, UI polish
+   322→   322→
+   323→   323→Work Log:
+   324→   324→- QA round 0 (pre-existing build): dev.log clean, lint pass, menu→world render verified, setBlock/remesh eval OK, 0 console errors → proceeded to Phase 4 per roadmap
+   325→   325→- DB layer:
+   326→   326→  - prisma/schema.prisma: +World model {id, name, gameMode, seed, time, data(JSON string=full SaveData), achievements(JSON array), createdAt, updatedAt}; db:push OK
+   327→   327→  - src/app/api/worlds/route.ts: GET list (ordered by updatedAt, includes achievements), POST create {name, gameMode, seed?, time?, data?} (seed random default, text-safe clamp)
+   328→   328→  - src/app/api/worlds/[id]/route.ts: GET full record, PUT partial update {name?, gameMode?, seed?, time?, data?, achievements?}, DELETE
+   329→   329→- Engine (src/game/engine.ts):
+   330→   330→  - createWorld(name, gameMode, seed?) → POST /api/worlds → setupWorld → preloadSpawn → enterPlaying → immediate baseline saveGame; offline fallback plays local-only world
+   331→   331→  - loadWorld(id) → GET → JSON.parse data → setupWorld(seed, save, gameMode) → play; failure toast + back to menu
+   332→   332→  - fetchWorlds() refreshes zustand worlds list (parses achievements column safely); deleteWorld(id)
+   333→   333→  - migrateLocalSave(): one-time legacy localStorage save → DB world; singleton promise + 'voxelcraft.migrated' localStorage flag (prevents duplicate migration on StrictMode double-mount and re-saves)
+   334→   334→  - saveGame(): save format v5 (+gameMode, flying); localStorage mirror kept as offline fallback + fire-and-forget PUT to /api/worlds/{id} with time+data+achievements; 'Cloud save failed' toast once on error
+   335→   335→  - quitToMenu() saves then fetchWorlds()
+   336→   336→  - setupWorld(seed, save|null, gameMode) — gameMode applied to player; save?.player null-safe (worlds created with empty data no longer crash)
+   337→   337→  - resume() public method (Back to Game / QA)
+   338→   338→  - hadLock + lockHeldAt pointer-lock logic: auto-pause only when a real >500ms lock session ends (headless flash-lock cycles no longer pause the game)
+   339→   339→  - creativePick(id) (cursor = 64-stack, tools 1 w/ freshDur), creativeDelete() (void slot)
+   340→   340→  - mob callbacks now pass playerCreative
+   341→   341→- Creative mode:
+   342→   342→  - player.ts: gameMode, flying fields; isCreative getter; damage() immune in creative; fall damage skipped; respawn resets flying
+   343→   343→  - Flight: double-tap Space toggles; Space/Shift ascend/descend; Ctrl sprint-fly (2.1x); damped glide; landing (onGround && vy<=0) cancels flight — fresh toggle from ground rises because vy>0
+   344→   344→  - mineTick: creative branch = instant break w/ particles+sound, NO drops/XP/tool wear, pops unsupported stacks above
+   345→   345→  - placeBlock: infinite placement (no count decrement) in creative
+   346→   346→  - physicsStep: hunger drain skipped in creative; void damage guarded (creative just clamps); cactus damage skipped
+   347→   347→  - frameUpdate: creative vitals pinned to full (health/hunger)
+   348→   348→  - damagePlayer callback: hostile damage+knockback fully skipped in creative
+   349→   349→  - mobs.ts: MobCallbacks.playerCreative — hostile AI treats creative player as invisible (wander instead of chase)
+   350→   350→  - creativeItems.ts: palette registry — all placeable blocks (no AIR/flow ids), then materials/food, then tools; cached
+   351→   351→- UI:
+   352→   352→  - state.ts: Screen + 'worlds' | 'createWorld' | 'achievements'; GameMode, WorldMeta; HUDState.gameMode/flying; InvUIState.creative; worlds/currentWorldId/currentWorldName store fields
+   353→   353→  - InventoryScreen.tsx: creative palette section (9-col grid, max-h scroll, mc-scrollbar, hover tooltips w/ names, X destroy slot, hint line); title switches to "Creative Inventory"
+   354→   354→  - WorldMenu.tsx: WorldSelectScreen (MC-style list w/ deterministic WorldThumb pattern from seed, mode badge, seed/trophy/date meta, select+dblclick play, delete confirm dialog) + CreateWorldScreen (name input, Game Mode toggle w/ description, optional seed text/number → deterministic hashString)
+   355→   355→  - AchievementsScreen.tsx: 12 achievements, locked shows "?" + hidden desc, unlocked shows icon (getTileIconURL) + gold border; source='game' = live engine unlocked set; source='menu' = aggregate union across all DB worlds; progress bar
+   356→   356→  - MainMenu.tsx: Singleplayer / Achievements / Settings… buttons (v0.6.0 footer)
+   357→   357→  - Overlays.tsx PauseMenu: world name + mode line, Achievements button, creative-specific hint line
+   358→   358→  - HUD.tsx: hearts/hunger/XP bar hidden in creative; creative indicator pill ("double-tap Space to fly" / "✈ Flying — Space/Shift…")
+   359→   359→  - DebugOverlay: +Mode line (mode/flying), v0.6.0
+   360→   360→  - globals.css: .mc-scrollbar (chunky bevel scrollbar), .mc-input (MC text field)
+   361→   361→- GameRoot.tsx: routes worlds/createWorld/achievements screens; mounts migrateLocalSave + fetchWorlds on start; achievements source picked from prevScreen
+   362→   362→
+   363→   363→QA (agent-browser + eval-driven, all verified):
+   364→   364→- World select lists DB worlds w/ metadata; Create New World (Creative) → world live (mode=creative, HUD hides hearts/hunger/XP, shows creative pill) ✓
+   365→   365→- Creative palette renders all ~55 blocks+items w/ icons; pick → cursor 64-stack ✓; place into hotbar ✓; X destroy ✓
+   366→   366→- Instant break: target broke in 1 tick, no drops, no tool wear ✓
+   367→   367→- Infinite placement: stone placed, count stays 64 ✓; WATER source placed via palette → 93 flowing cells spread by fluid sim, count stays 64 ✓
+   368→   368→- Flight: double-tap toggle ✓, rise 43→52.9 @vy5.25 ✓, hover (vy=0, no gravity) ✓, Shift descend ✓, landing auto-cancels ✓
+   369→   369→- DB round-trip: quit→title→Play Selected World → same world restored (seed/player/mode/time) ✓; autosave PUTs all 200 ✓
+   370→   370→- Survival regression: hearts/hunger/XP render, torch placed (count 4→3), lightItUp unlocked, mining progress 0.5@1s (not instant) ✓
+   371→   371→- Achievements: menu aggregate shows 1/12 w/ progress bar after quit ✓; in-game screen reads live engine set ✓
+   372→   372→- Delete flow: confirm dialog → world gone from UI+DB ✓
+   373→   373→- Fixed during round: (1) worlds/route.ts missing (404) — recreated; (2) TDZ crash in moveInput flying branch (wx/wz before init) — froze the whole game loop whenever flight enabled, root cause of all "pauses"; (3) flight cancel-on-toggle from ground (onGround && vy<=0 guard); (4) store-subscriber crash (sky undefined pre-setupWorld setting cloudsEnabled) breaking createWorld; (5) setupWorld crash on empty save data (save?.player guard); (6) duplicate Migrated Worlds (migration singleton + permanent flag); (7) spurious headless pauses (500ms lock-session rule)
+   374→   374→
+   375→   375→Stage Summary:
+   376→   376→- PHASE 4 COMPLETE: full creative mode (fly/instant mine/infinite/water+palette/invulnerable/peaceful hostiles), DB-backed multi-world system (Prisma+API, autosave, world select/create/delete/migration), achievements screen (in-game + cross-world aggregate), MC-authentic menu flow
+   377→   377→- Known minor: localStorage mirror still written (offline fallback — harmless); text-seed hashing deterministic but different from MC; creative flight speed values are tuned approximations; delete confirm lacks world-icon
+   378→   378→- NEXT (Phase 5 per roadmap): gamepad/sprint-fov polish optional; bigger candidates: spiders + enderman mobs, mob spawn persistence in saves, enchanting placeholder→real, sprint particles, biome-specific colors (jungle grass tint), held-item block swing on place, achievements-GUI from pause verified E2E, sound for XP level-up, world rename, chest/furnace placement sounds, F5 third-person camera
+   379→   379→

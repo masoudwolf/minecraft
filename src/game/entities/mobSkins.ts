@@ -69,6 +69,8 @@ export function getMobSkins(type: string): MobSkins {
     case 'zombie': skins = buildZombie(); break;
     case 'creeper': skins = buildCreeper(); break;
     case 'skeleton': skins = buildSkeleton(); break;
+    case 'spider': skins = buildSpider(); break;
+    case 'enderman': skins = buildEnderman(); break;
     default: skins = buildPig();
   }
   skinCache.set(type, skins);
@@ -247,6 +249,71 @@ function buildCreeper(): MobSkins {
   const limb = makeCanvas(8, 16);
   ctx = limb.getContext('2d')!;
   noiseFill(ctx, 0, 0, 8, 16, greens, rnd);
+
+  return { head: tex(head), body: tex(body), limb: tex(limb) };
+}
+
+// ── SPIDER ────────────────────────────────────────────────────────────────────
+function buildSpider(): MobSkins {
+  const rnd = seeded(808);
+  const fur = ['#2c2420', '#241c18', '#38302a', '#1e1714'];
+  const head = makeCanvas(16, 16);
+  let ctx = head.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, fur, rnd);
+  // iconic red eyes (cluster like MC: 2 big + 4 small)
+  ctx.fillStyle = '#c02020';
+  ctx.fillRect(3, 5, 2, 2); ctx.fillRect(11, 5, 2, 2);
+  ctx.fillStyle = '#8a1414';
+  ctx.fillRect(6, 4, 1, 1); ctx.fillRect(9, 4, 1, 1);
+  ctx.fillRect(5, 8, 1, 1); ctx.fillRect(10, 8, 1, 1);
+  // fangs
+  ctx.fillStyle = '#c8b890';
+  ctx.fillRect(5, 12, 1, 2); ctx.fillRect(10, 12, 1, 2);
+
+  const body = makeCanvas(16, 16);
+  ctx = body.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, fur, rnd);
+  // abdomen marking (dark hourglass-ish)
+  ctx.fillStyle = '#161010';
+  ctx.fillRect(6, 3, 4, 3);
+  ctx.fillRect(5, 7, 6, 2);
+  ctx.fillRect(7, 10, 2, 3);
+
+  const limb = makeCanvas(8, 16);
+  ctx = limb.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 16, fur, rnd);
+  ctx.fillStyle = '#12100e';
+  ctx.fillRect(0, 7, 8, 1);
+  ctx.fillRect(0, 14, 8, 1);
+
+  return { head: tex(head), body: tex(body), limb: tex(limb) };
+}
+
+// ── ENDERMAN ──────────────────────────────────────────────────────────────────
+function buildEnderman(): MobSkins {
+  const rnd = seeded(909);
+  const black = ['#161616', '#101010', '#1e1e1e', '#0c0c0c'];
+  const head = makeCanvas(16, 16);
+  let ctx = head.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, black, rnd);
+  // purple glowing eyes (wide, enderman style)
+  ctx.fillStyle = '#cc78e8';
+  ctx.fillRect(1, 6, 5, 3); ctx.fillRect(10, 6, 5, 3);
+  ctx.fillStyle = '#f0bcff';
+  ctx.fillRect(2, 7, 3, 1); ctx.fillRect(11, 7, 3, 1);
+  // jaw line (mouth opens when provoked — drawn lighter, base state subtle)
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(5, 12, 6, 1);
+
+  const body = makeCanvas(16, 16);
+  ctx = body.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, black, rnd);
+
+  const limb = makeCanvas(8, 16);
+  ctx = limb.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 16, black, rnd);
+  ctx.fillStyle = '#060606';
+  ctx.fillRect(0, 15, 8, 1);
 
   return { head: tex(head), body: tex(body), limb: tex(limb) };
 }

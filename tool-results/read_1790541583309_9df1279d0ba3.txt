@@ -1,0 +1,794 @@
+     1→     1→// ─── Mobs: box-model entities, AI, spawning, combat ──────────────────────────
+     2→     2→import * as THREE from 'three';
+     3→     3→import { moveEntity, type AABBEntity } from '../physics';
+     4→     4→import { BLOCK, isWaterId } from '../blocks';
+     5→     5→import { getMobSkins } from './mobSkins';
+     6→     6→import { audio } from '../audio';
+     7→     7→import { ITEM } from '../items';
+     8→     8→
+     9→     9→export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton';
+    10→    10→
+    11→    11→interface MobDef {
+    12→    12→  hostile: boolean;
+    13→    13→  width: number;
+    14→    14→  height: number;
+    15→    15→  health: number;
+    16→    16→  speed: number;
+    17→    17→  /** contact/attack damage to player */
+    18→    18→  damage: number;
+    19→    19→  drops: { id: number; min: number; max: number }[];
+    20→    20→  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle';
+    21→    21→  builder: (skins: ReturnType<typeof getMobSkins>) => MobParts;
+    22→    22→}
+    23→    23→
+    24→    24→export interface MobParts {
+    25→    25→  group: THREE.Group;
+    26→    26→  head: THREE.Mesh;
+    27→    27→  legs: THREE.Mesh[];
+    28→    28→  arms: THREE.Mesh[];
+    29→    29→  materials: THREE.MeshLambertMaterial[];
+    30→    30→  shadow: THREE.Mesh;
+    31→    31→}
+    32→    32→
+    33→    33→interface Mob extends AABBEntity {
+    34→    34→  type: MobType;
+    35→    35→  def: MobDef;
+    36→    36→  group: THREE.Group;
+    37→    37→  parts: MobParts;
+    38→    38→  health: number;
+    39→    39→  yaw: number;
+    40→    40→  targetYaw: number;
+    41→    41→  state: 'idle' | 'walk' | 'flee' | 'chase';
+    42→    42→  stateTimer: number;
+    43→    43→  walkPhase: number;
+    44→    44→  hurtT: number;
+    45→    45→  attackCd: number;
+    46→    46→  ambientCd: number;
+    47→    47→  burnTimer: number;
+    48→    48→  burning: boolean;
+    49→    49→  fuse: number;          // creeper
+    50→    50→  dead: boolean;
+    51→    51→  deathT: number;
+    52→    52→  wanderX: number;
+    53→    53→  wanderZ: number;
+    54→    54→}
+    55→    55→
+    56→    56→interface Arrow {
+    57→    57→  x: number; y: number; z: number;
+    58→    58→  vx: number; vy: number; vz: number;
+    59→    59→  life: number;
+    60→    60→  stuck: number;
+    61→    61→  mesh: THREE.Mesh;
+    62→    62→}
+    63→    63→
+    64→    64→// ─── Model builders ──────────────────────────────────────────────────────────
+    65→    65→function partMat(tex: THREE.CanvasTexture): THREE.MeshLambertMaterial {
+    66→    66→  return new THREE.MeshLambertMaterial({ map: tex });
+    67→    67→}
+    68→    68→
+    69→    69→function boxPart(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial, tag: string): THREE.Mesh {
+    70→    70→  const geo = new THREE.BoxGeometry(w, h, d);
+    71→    71→  const mesh = new THREE.Mesh(geo, mat);
+    72→    72→  mesh.userData.part = tag;
+    73→    73→  return mesh;
+    74→    74→}
+    75→    75→
+    76→    76→function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
+    77→    77→  const geo = new THREE.CircleGeometry(radius, 12);
+    78→    78→  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+    79→    79→  const mesh = new THREE.Mesh(geo, mat);
+    80→    80→  mesh.rotation.x = -Math.PI / 2;
+    81→    81→  mesh.renderOrder = 1;
+    82→    82→  scene.add(mesh);
+    83→    83→  return mesh;
+    84→    84→}
+    85→    85→
+    86→    86→function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
+    87→    87→  bodyW: number; bodyH: number; bodyD: number; bodyY: number;
+    88→    88→  legW: number; legH: number;
+    89→    89→  headS: number; headY: number; headZ: number;
+    90→    90→  shadowR: number;
+    91→    91→}): MobParts {
+    92→    92→  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+    93→    93→  const group = new THREE.Group();
+    94→    94→  const body = boxPart(opts.bodyW, opts.bodyH, opts.bodyD, mats[1], 'body');
+    95→    95→  body.position.y = opts.bodyY;
+    96→    96→  group.add(body);
+    97→    97→  const head = boxPart(opts.headS, opts.headS, opts.headS, mats[0], 'head');
+    98→    98→  head.position.set(0, opts.headY, opts.headZ);
+    99→    99→  group.add(head);
+   100→   100→  const legs: THREE.Mesh[] = [];
+   101→   101→  const lx = opts.bodyW / 2 - opts.legW / 2;
+   102→   102→  const lz = opts.bodyD / 2 - opts.legW / 2;
+   103→   103→  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   104→   104→    const leg = boxPart(opts.legW, opts.legH, opts.legW, mats[2], 'limb');
+   105→   105→    leg.position.set(sx * lx, opts.bodyY - opts.bodyH / 2 - opts.legH / 2, sz * lz);
+   106→   106→    group.add(leg);
+   107→   107→    legs.push(leg);
+   108→   108→  }
+   109→   109→  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   110→   110→}
+   111→   111→
+   112→   112→function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts {
+   113→   113→  const lw = thin ? 0.16 : 0.25;
+   114→   114→  const aw = thin ? 0.14 : 0.22;
+   115→   115→  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+   116→   116→  const group = new THREE.Group();
+   117→   117→  const body = boxPart(0.5, 0.72, 0.26, mats[1], 'body');
+   118→   118→  body.position.y = 1.1;
+   119→   119→  group.add(body);
+   120→   120→  const head = boxPart(0.5, 0.5, 0.5, mats[0], 'head');
+   121→   121→  head.position.y = 1.72;
+   122→   122→  group.add(head);
+   123→   123→  const legs: THREE.Mesh[] = [];
+   124→   124→  for (const sx of [-1, 1]) {
+   125→   125→    const leg = boxPart(lw, 0.74, lw, mats[2], 'limb');
+   126→   126→    leg.position.set(sx * 0.125, 0.37, 0);
+   127→   127→    group.add(leg);
+   128→   128→    legs.push(leg);
+   129→   129→  }
+   130→   130→  const arms: THREE.Mesh[] = [];
+   131→   131→  for (const sx of [-1, 1]) {
+   132→   132→    const pivot = new THREE.Group();
+   133→   133→    pivot.position.set(sx * (0.25 + aw / 2), 1.42, 0);
+   134→   134→    const arm = boxPart(aw, 0.7, aw, mats[2], 'limb');
+   135→   135→    arm.position.y = -0.32;
+   136→   136→    pivot.add(arm);
+   137→   137→    group.add(pivot);
+   138→   138→    arms.push(arm);
+   139→   139→    (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+   140→   140→  }
+   141→   141→  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   142→   142→}
+   143→   143→
+   144→   144→// ─── Mob definitions ─────────────────────────────────────────────────────────
+   145→   145→const MOB_DEFS: Record<MobType, MobDef> = {
+   146→   146→  pig: {
+   147→   147→    hostile: false, width: 0.9, height: 0.9, health: 10, speed: 1.1, damage: 0,
+   148→   148→    drops: [{ id: ITEM.PORKCHOP, min: 1, max: 2 }], sound: 'oink',
+   149→   149→    builder: (s) => quadruped(s, { bodyW: 0.62, bodyH: 0.5, bodyD: 1.0, bodyY: 0.55, legW: 0.24, legH: 0.32, headS: 0.5, headY: 0.62, headZ: 0.62, shadowR: 0.45 }),
+   150→   150→  },
+   151→   151→  cow: {
+   152→   152→    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+   153→   153→    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'moo',
+   154→   154→    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+   155→   155→  },
+   156→   156→  sheep: {
+   157→   157→    hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
+   158→   158→    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }, { id: BLOCK.WOOL, min: 1, max: 2 }], sound: 'baa',
+   159→   159→    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48 }),
+   160→   160→  },
+   161→   161→  chicken: {
+   162→   162→    hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
+   163→   163→    drops: [{ id: ITEM.CHICKEN_RAW, min: 1, max: 1 }, { id: ITEM.FEATHER, min: 0, max: 2 }], sound: 'cluck',
+   164→   164→    builder: (s) => {
+   165→   165→      const p = quadruped(s, { bodyW: 0.38, bodyH: 0.38, bodyD: 0.5, bodyY: 0.5, legW: 0.08, legH: 0.3, headS: 0.26, headY: 0.78, headZ: 0.28, shadowR: 0.25 });
+   166→   166→      return p;
+   167→   167→    },
+   168→   168→  },
+   169→   169→  zombie: {
+   170→   170→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.9, damage: 3,
+   171→   171→    drops: [], sound: 'groan',
+   172→   172→    builder: (s) => humanoid(s),
+   173→   173→  },
+   174→   174→  creeper: {
+   175→   175→    hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
+   176→   176→    drops: [], sound: 'hiss',
+   177→   177→    builder: (s) => {
+   178→   178→      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+   179→   179→      const group = new THREE.Group();
+   180→   180→      const body = boxPart(0.5, 0.78, 0.32, mats[1], 'body');
+   181→   181→      body.position.y = 0.76;
+   182→   182→      group.add(body);
+   183→   183→      const head = boxPart(0.52, 0.52, 0.52, mats[0], 'head');
+   184→   184→      head.position.y = 1.42;
+   185→   185→      group.add(head);
+   186→   186→      const legs: THREE.Mesh[] = [];
+   187→   187→      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   188→   188→        const leg = boxPart(0.24, 0.38, 0.24, mats[2], 'limb');
+   189→   189→        leg.position.set(sx * 0.14, 0.19, sz * 0.18);
+   190→   190→        group.add(leg);
+   191→   191→        legs.push(leg);
+   192→   192→      }
+   193→   193→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   194→   194→    },
+   195→   195→  },
+   196→   196→  skeleton: {
+   197→   197→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
+   198→   198→    drops: [], sound: 'rattle',
+   199→   199→    builder: (s) => humanoid(s, true),
+   200→   200→  },
+   201→   201→};
+   202→   202→
+   203→   203→// ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
+   204→   204→export interface MobHit { mob: Mob; dist: number }
+   205→   205→
+   206→   206→function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, e: AABBEntity, maxDist: number): number | null {
+   207→   207→  const half = e.width / 2;
+   208→   208→  const minX = e.x - half, maxX = e.x + half;
+   209→   209→  const minY = e.y, maxY = e.y + e.height;
+   210→   210→  const minZ = e.z - half, maxZ = e.z + half;
+   211→   211→  let tmin = 0;
+   212→   212→  let tmax = maxDist;
+   213→   213→  for (const [o, d, min, max] of [[ox, dx, minX, maxX], [oy, dy, minY, maxY], [oz, dz, minZ, maxZ]] as const) {
+   214→   214→    if (Math.abs(d) < 1e-9) {
+   215→   215→      if (o < min || o > max) return null;
+   216→   216→    } else {
+   217→   217→      let t1 = (min - o) / d;
+   218→   218→      let t2 = (max - o) / d;
+   219→   219→      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+   220→   220→      tmin = Math.max(tmin, t1);
+   221→   221→      tmax = Math.min(tmax, t2);
+   222→   222→      if (tmin > tmax) return null;
+   223→   223→    }
+   224→   224→  }
+   225→   225→  return tmin;
+   226→   226→}
+   227→   227→
+   228→   228→// ─── MobManager ──────────────────────────────────────────────────────────────
+   229→   229→export interface MobCallbacks {
+   230→   230→  damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
+   231→   231→  spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
+   232→   232→  spawnXP: (x: number, y: number, z: number, value: number) => void;
+   233→   233→  explodeParticles: (x: number, y: number, z: number) => void;
+   234→   234→  deathParticles: (x: number, y: number, z: number) => void;
+   235→   235→  fireParticle: (x: number, y: number, z: number) => void;
+   236→   236→  playerX: number;
+   237→   237→  playerY: number;
+   238→   238→  playerZ: number;
+   239→   239→  /** creative players are ignored by hostile AI (like MC) */
+   240→   240→  playerCreative: boolean;
+   241→   241→}
+   242→   242→
+   243→   243→export class MobManager {
+   244→   244→  mobs: Mob[] = [];
+   245→   245→  arrows: Arrow[] = [];
+   246→   246→  private scene: THREE.Scene;
+   247→   247→  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void };
+   248→   248→  private spawnTimer = 0;
+   249→   249→  private arrowMat: THREE.MeshLambertMaterial;
+   250→   250→  private time = 0;
+   251→   251→
+   252→   252→  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void }) {
+   253→   253→    this.scene = scene;
+   254→   254→    this.world = world;
+   255→   255→    this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+   256→   256→  }
+   257→   257→
+   258→   258→  get count(): number {
+   259→   259→    return this.mobs.length;
+   260→   260→  }
+   261→   261→
+   262→   262→  /** QA/testing helper: force-spawn a mob at position */
+   263→   263→  debugSpawn(type: MobType, x: number, y: number, z: number): Mob | null {
+   264→   264→    return this.spawn(type, x, y, z);
+   265→   265→  }
+   266→   266→
+   267→   267→  clear(): void {
+   268→   268→    for (const m of this.mobs) {
+   269→   269→      this.scene.remove(m.group);
+   270→   270→      this.scene.remove(m.parts.shadow);
+   271→   271→    }
+   272→   272→    this.mobs = [];
+   273→   273→    for (const a of this.arrows) this.scene.remove(a.mesh);
+   274→   274→    this.arrows = [];
+   275→   275→  }
+   276→   276→
+   277→   277→  /** raycast mobs for attacks; returns nearest hit within reach */
+   278→   278→  raycastMob(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number): MobHit | null {
+   279→   279→    let best: MobHit | null = null;
+   280→   280→    for (const m of this.mobs) {
+   281→   281→      if (m.dead) continue;
+   282→   282→      const t = rayAABB(ox, oy, oz, dx, dy, dz, m, reach);
+   283→   283→      if (t !== null && (!best || t < best.dist)) best = { mob: m, dist: t };
+   284→   284→    }
+   285→   285→    return best;
+   286→   286→  }
+   287→   287→
+   288→   288→  private spawn(type: MobType, x: number, y: number, z: number): Mob | null {
+   289→   289→    const def = MOB_DEFS[type];
+   290→   290→    const skins = getMobSkins(type);
+   291→   291→    const parts = def.builder(skins);
+   292→   292→    // per-instance material clones so hurt tint is individual
+   293→   293→    const cloned = parts.materials.map((mm) => mm.clone());
+   294→   294→    const mapping = new Map<THREE.Material, THREE.Material>();
+   295→   295→    parts.materials.forEach((mm, i2) => mapping.set(mm, cloned[i2]));
+   296→   296→    parts.group.traverse((obj) => {
+   297→   297→      const mesh = obj as THREE.Mesh;
+   298→   298→      if (mesh.isMesh && mapping.has(mesh.material as THREE.Material)) {
+   299→   299→        mesh.material = mapping.get(mesh.material) as THREE.Material;
+   300→   300→      }
+   301→   301→    });
+   302→   302→    parts.materials = cloned;
+   303→   303→    this.scene.add(parts.group);
+   304→   304→    const shadow = makeShadow(def.width * 0.55, this.scene);
+   305→   305→    const mob: Mob = {
+   306→   306→      type, def,
+   307→   307→      x, y, z, vx: 0, vy: 0, vz: 0,
+   308→   308→      width: def.width, height: def.height,
+   309→   309→      onGround: false, inWater: false,
+   310→   310→      group: parts.group, parts,
+   311→   311→      health: def.health,
+   312→   312→      yaw: Math.random() * Math.PI * 2,
+   313→   313→      targetYaw: 0,
+   314→   314→      state: 'idle',
+   315→   315→      stateTimer: 1 + Math.random() * 3,
+   316→   316→      walkPhase: 0,
+   317→   317→      hurtT: 0, attackCd: 0, ambientCd: 3 + Math.random() * 6,
+   318→   318→      burnTimer: 0, burning: false,
+   319→   319→      fuse: -1, dead: false, deathT: 0,
+   320→   320→      wanderX: x, wanderZ: z,
+   321→   321→    };
+   322→   322→    mob.targetYaw = mob.yaw;
+   323→   323→    parts.shadow = shadow;
+   324→   324→    this.mobs.push(mob);
+   325→   325→    return mob;
+   326→   326→  }
+   327→   327→
+   328→   328→  private trySpawnMob(playerX: number, playerY: number, playerZ: number, sunLevel: number, passiveCount: number, hostileCount: number): void {
+   329→   329→    const angle = Math.random() * Math.PI * 2;
+   330→   330→    const dist = 16 + Math.random() * 26;
+   331→   331→    const x = Math.floor(playerX + Math.cos(angle) * dist) + 0.5;
+   332→   332→    const z = Math.floor(playerZ + Math.sin(angle) * dist) + 0.5;
+   333→   333→    const cx = Math.floor(x);
+   334→   334→    const cz = Math.floor(z);
+   335→   335→    // find surface
+   336→   336→    let sy = -1;
+   337→   337→    for (let y = 95; y > 2; y--) {
+   338→   338→      const id = this.world.getBlock(cx, y, cz);
+   339→   339→      if (id !== 0 && !isWaterId(id)) {
+   340→   340→        sy = y;
+   341→   341→        break;
+   342→   342→      }
+   343→   343→    }
+   344→   344→    if (sy < 3) return;
+   345→   345→    const above = this.world.getBlock(cx, sy + 1, cz);
+   346→   346→    const above2 = this.world.getBlock(cx, sy + 2, cz);
+   347→   347→    if (above !== 0 || above2 !== 0) return;
+   348→   348→    const groundId = this.world.getBlock(cx, sy, cz);
+   349→   349→    if (isWaterId(groundId)) return;
+   350→   350→
+   351→   351→    const l = this.world.getLight(cx, sy + 1, cz);
+   352→   352→    if (l < 0) return;
+   353→   353→    const skyL = l >> 4;
+   354→   354→    const blkL = l & 15;
+   355→   355→    const effLight = Math.max(blkL, skyL * sunLevel);
+   356→   356→
+   357→   357→    const wantHostile = hostileCount < 12 && (effLight < 6);
+   358→   358→    const wantPassive = passiveCount < 10 && skyL >= 9 && sunLevel > 0.55 && (groundId === BLOCK.GRASS || groundId === BLOCK.SNOW_GRASS);
+   359→   359→
+   360→   360→    if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
+   361→   361→      const roll = Math.random();
+   362→   362→      const type: MobType = roll < 0.45 ? 'zombie' : roll < 0.75 ? 'skeleton' : 'creeper';
+   363→   363→      this.spawn(type, x, sy + 1, z);
+   364→   364→    } else if (wantPassive) {
+   365→   365→      const roll = Math.random();
+   366→   366→      const type: MobType = roll < 0.3 ? 'pig' : roll < 0.55 ? 'sheep' : roll < 0.8 ? 'cow' : 'chicken';
+   367→   367→      // spawn small herd for passive
+   368→   368→      const herd = 1 + Math.floor(Math.random() * 3);
+   369→   369→      for (let i = 0; i < herd; i++) {
+   370→   370→        this.spawn(type, x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3);
+   371→   371→      }
+   372→   372→    }
+   373→   373→  }
+   374→   374→
+   375→   375→  hurtMob(mob: Mob, dmg: number, kx: number, kz: number): boolean {
+   376→   376→    if (mob.dead) return false;
+   377→   377→    mob.health -= dmg;
+   378→   378→    mob.hurtT = 0.4;
+   379→   379→    const len = Math.hypot(kx, kz) || 1;
+   380→   380→    mob.vx += (kx / len) * 7;
+   381→   381→    mob.vz += (kz / len) * 7;
+   382→   382→    mob.vy = Math.max(mob.vy, 4.4);
+   383→   383→    audio.mobHurt(mob.def.sound);
+   384→   384→    if (mob.def.hostile) {
+   385→   385→      mob.state = 'chase';
+   386→   386→    } else {
+   387→   387→      mob.state = 'flee';
+   388→   388→      mob.stateTimer = 4;
+   389→   389→      mob.wanderX = mob.x + (mob.x - kx) * 10;
+   390→   390→      mob.wanderZ = mob.z + (mob.z - kz) * 10;
+   391→   391→    }
+   392→   392→    if (mob.health <= 0) {
+   393→   393→      mob.dead = true;
+   394→   394→      mob.deathT = 0.45;
+   395→   395→      if (mob.type === 'creeper' && mob.fuse >= 0) mob.fuse = -1;
+   396→   396→      return true;
+   397→   397→    }
+   398→   398→    return false;
+   399→   399→  }
+   400→   400→
+   401→   401→  /** creeper explosion */
+   402→   402→  private explode(x: number, y: number, z: number, cb: MobCallbacks): void {
+   403→   403→    audio.boom();
+   404→   404→    const R = 2.6;
+   405→   405→    for (let bx = Math.floor(x - R); bx <= Math.floor(x + R); bx++)
+   406→   406→      for (let by = Math.floor(y - R); by <= Math.floor(y + R); by++)
+   407→   407→        for (let bz = Math.floor(z - R); bz <= Math.floor(z + R); bz++) {
+   408→   408→          const d = Math.hypot(bx + 0.5 - x, by + 0.5 - y, bz + 0.5 - z);
+   409→   409→          if (d > R) continue;
+   410→   410→          const id = this.world.getBlock(bx, by, bz);
+   411→   411→          if (id !== 0 && id !== BLOCK.BEDROCK && id !== BLOCK.WATER) {
+   412→   412→            this.world.setBlock(bx, by, bz, 0);
+   413→   413→          }
+   414→   414→        }
+   415→   415→    // damage nearby mobs (chain) + player
+   416→   416→    for (const m of this.mobs) {
+   417→   417→      if (m.dead) continue;
+   418→   418→      const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+   419→   419→      if (d < R * 2 && m.type !== 'creeper') {
+   420→   420→        this.hurtMob(m, Math.max(1, Math.round(14 * (1 - d / (R * 2)))), m.x - x, m.z - z);
+   421→   421→      }
+   422→   422→    }
+   423→   423→    const pd = Math.hypot(cb.playerX - x, cb.playerY - y, cb.playerZ - z);
+   424→   424→    if (pd < R * 2) {
+   425→   425→      cb.damagePlayer(Math.max(1, Math.round(16 * (1 - pd / (R * 2)))), x, z);
+   426→   426→    }
+   427→   427→    cb.explodeParticles(x, y, z);
+   428→   428→  }
+   429→   429→
+   430→   430→  update(dt: number, player: AABBEntity & { eyeY(): number }, sunLevel: number, cb: MobCallbacks): void {
+   431→   431→    this.time += dt;
+   432→   432→    // ── spawning ──
+   433→   433→    this.spawnTimer -= dt;
+   434→   434→    if (this.spawnTimer <= 0) {
+   435→   435→      this.spawnTimer = 1.6;
+   436→   436→      let passive = 0, hostile = 0;
+   437→   437→      for (const m of this.mobs) {
+   438→   438→        if (m.def.hostile) hostile++; else passive++;
+   439→   439→      }
+   440→   440→      if (this.mobs.length < 22 && Math.random() < 0.5) {
+   441→   441→        this.trySpawnMob(player.x, player.y, player.z, sunLevel, passive, hostile);
+   442→   442→      }
+   443→   443→    }
+   444→   444→
+   445→   445→    // ── mobs ──
+   446→   446→    for (let i = this.mobs.length - 1; i >= 0; i--) {
+   447→   447→      const m = this.mobs[i];
+   448→   448→      const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y, player.z - m.z);
+   449→   449→
+   450→   450→      // despawn far
+   451→   451→      if (distToPlayer > 64) {
+   452→   452→        this.scene.remove(m.group);
+   453→   453→        this.scene.remove(m.parts.shadow);
+   454→   454→        this.mobs.splice(i, 1);
+   455→   455→        continue;
+   456→   456→      }
+   457→   457→
+   458→   458→      // death animation
+   459→   459→      if (m.dead) {
+   460→   460→        m.deathT -= dt;
+   461→   461→        m.group.rotation.z = Math.min(Math.PI / 2, m.group.rotation.z + dt * 6);
+   462→   462→        tint(m.parts.materials, 1, 0.35, 0.35);
+   463→   463→        if (m.deathT <= 0) {
+   464→   464→          for (const drop of m.def.drops) {
+   465→   465→            const n = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+   466→   466→            for (let d = 0; d < n; d++) {
+   467→   467→              cb.spawnDrop(drop.id, m.x, m.y + 0.4, m.z);
+   468→   468→            }
+   469→   469→          }
+   470→   470→          cb.spawnXP(m.x, m.y + 0.4, m.z, m.def.hostile ? 5 : 1 + Math.floor(Math.random() * 3));
+   471→   471→          cb.deathParticles(m.x, m.y + m.height / 2, m.z);
+   472→   472→          this.scene.remove(m.group);
+   473→   473→          this.scene.remove(m.parts.shadow);
+   474→   474→          this.mobs.splice(i, 1);
+   475→   475→        }
+   476→   476→        continue;
+   477→   477→      }
+   478→   478→
+   479→   479→      // hurt tint decay
+   480→   480→      if (m.hurtT > 0) {
+   481→   481→        m.hurtT -= dt;
+   482→   482→        tint(m.parts.materials, 1, 0.35, 0.35);
+   483→   483→        if (m.hurtT <= 0) tint(m.parts.materials, 1, 1, 1);
+   484→   484→      }
+   485→   485→
+   486→   486→      // ambient sound
+   487→   487→      m.ambientCd -= dt;
+   488→   488→      if (m.ambientCd <= 0 && distToPlayer < 18) {
+   489→   489→        m.ambientCd = 5 + Math.random() * 9;
+   490→   490→        audio.mobAmbient(m.def.sound, distToPlayer);
+   491→   491→      }
+   492→   492→
+   493→   493→      // ── AI ──
+   494→   494→      m.attackCd -= dt;
+   495→   495→      m.stateTimer -= dt;
+   496→   496→      let moveSpeed = 0;
+   497→   497→      let wantX = 0, wantZ = 0;
+   498→   498→
+   499→   499→      // creative players are invisible to hostile AI: treat hostiles as passive wanderers
+   500→   500→      const hostileActive = m.def.hostile && !cb.playerCreative;
+   501→   501→
+   502→   502→      if (!hostileActive) {
+   503→   503→        // passive
+   504→   504→        if (m.state === 'flee') {
+   505→   505→          const dx = m.x - player.x;
+   506→   506→          const dz = m.z - player.z;
+   507→   507→          const len = Math.hypot(dx, dz) || 1;
+   508→   508→          wantX = dx / len; wantZ = dz / len;
+   509→   509→          moveSpeed = m.def.speed * 1.7;
+   510→   510→          if (m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+   511→   511→        } else if (m.state === 'walk') {
+   512→   512→          const dx = m.wanderX - m.x;
+   513→   513→          const dz = m.wanderZ - m.z;
+   514→   514→          const len = Math.hypot(dx, dz);
+   515→   515→          if (len < 0.8 || m.stateTimer <= 0) {
+   516→   516→            m.state = 'idle';
+   517→   517→            m.stateTimer = 2 + Math.random() * 4;
+   518→   518→          } else {
+   519→   519→            wantX = dx / len; wantZ = dz / len;
+   520→   520→            moveSpeed = m.def.speed;
+   521→   521→          }
+   522→   522→        } else {
+   523→   523→          if (m.stateTimer <= 0) {
+   524→   524→            m.state = 'walk';
+   525→   525→            m.stateTimer = 4 + Math.random() * 5;
+   526→   526→            const a = Math.random() * Math.PI * 2;
+   527→   527→            const r = 3 + Math.random() * 6;
+   528→   528→            m.wanderX = m.x + Math.cos(a) * r;
+   529→   529→            m.wanderZ = m.z + Math.sin(a) * r;
+   530→   530→          }
+   531→   531→        }
+   532→   532→      } else if (m.type === 'zombie') {
+   533→   533→        // burn in sunlight
+   534→   534→        this.updateBurning(m, dt, sunLevel, cb);
+   535→   535→        if (distToPlayer < 24) {
+   536→   536→          m.state = 'chase';
+   537→   537→          const dx = player.x - m.x;
+   538→   538→          const dz = player.z - m.z;
+   539→   539→          const len = Math.hypot(dx, dz) || 1;
+   540→   540→          wantX = dx / len; wantZ = dz / len;
+   541→   541→          moveSpeed = m.def.speed;
+   542→   542→          if (distToPlayer < 1.7 && m.attackCd <= 0) {
+   543→   543→            m.attackCd = 1.1;
+   544→   544→            cb.damagePlayer(m.def.damage, m.x, m.z);
+   545→   545→            audio.zombieAttack();
+   546→   546→          }
+   547→   547→        } else {
+   548→   548→          wanderAI(m, dt);
+   549→   549→          if (m.state === 'walk') {
+   550→   550→            const dx = m.wanderX - m.x;
+   551→   551→            const dz = m.wanderZ - m.z;
+   552→   552→            const len = Math.hypot(dx, dz);
+   553→   553→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+   554→   554→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+   555→   555→          }
+   556→   556→        }
+   557→   557→      } else if (m.type === 'skeleton') {
+   558→   558→        this.updateBurning(m, dt, sunLevel, cb);
+   559→   559→        if (distToPlayer < 17) {
+   560→   560→          m.state = 'chase';
+   561→   561→          const dx = player.x - m.x;
+   562→   562→          const dz = player.z - m.z;
+   563→   563→          const len = Math.hypot(dx, dz) || 1;
+   564→   564→          // keep distance ~8
+   565→   565→          if (distToPlayer > 9.5) { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed; }
+   566→   566→          else if (distToPlayer < 6) { wantX = -dx / len; wantZ = -dz / len; moveSpeed = m.def.speed * 0.8; }
+   567→   567→          else {
+   568→   568→            // strafe
+   569→   569→            wantX = -dz / len * 0.6; wantZ = dx / len * 0.6;
+   570→   570→            moveSpeed = m.def.speed * 0.5;
+   571→   571→          }
+   572→   572→          if (m.attackCd <= 0 && distToPlayer < 15) {
+   573→   573→            m.attackCd = 2.2;
+   574→   574→            this.shootArrow(m, player);
+   575→   575→          }
+   576→   576→        } else {
+   577→   577→          wanderAI(m, dt);
+   578→   578→          if (m.state === 'walk') {
+   579→   579→            const dx = m.wanderX - m.x;
+   580→   580→            const dz = m.wanderZ - m.z;
+   581→   581→            const len = Math.hypot(dx, dz);
+   582→   582→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+   583→   583→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+   584→   584→          }
+   585→   585→        }
+   586→   586→      } else if (m.type === 'creeper') {
+   587→   587→        if (m.fuse >= 0) {
+   588→   588→          // fused: flash + wait
+   589→   589→          m.fuse += dt;
+   590→   590→          const flash = Math.sin(m.fuse * 22) > 0 ? 1 : 0;
+   591→   591→          tint(m.parts.materials, 1, 1 + flash * 1.2, 1 + flash * 1.2);
+   592→   592→          if (distToPlayer > 5) {
+   593→   593→            m.fuse = -1;
+   594→   594→            tint(m.parts.materials, 1, 1, 1);
+   595→   595→          } else if (m.fuse > 1.5) {
+   596→   596→            this.explode(m.x, m.y + 0.8, m.z, cb);
+   597→   597→            this.scene.remove(m.group);
+   598→   598→            this.scene.remove(m.parts.shadow);
+   599→   599→            this.mobs.splice(i, 1);
+   600→   600→            continue;
+   601→   601→          }
+   602→   602→        } else if (distToPlayer < 13) {
+   603→   603→          m.state = 'chase';
+   604→   604→          const dx = player.x - m.x;
+   605→   605→          const dz = player.z - m.z;
+   606→   606→          const len = Math.hypot(dx, dz) || 1;
+   607→   607→          wantX = dx / len; wantZ = dz / len;
+   608→   608→          moveSpeed = m.def.speed;
+   609→   609→          if (distToPlayer < 2.4) {
+   610→   610→            m.fuse = 0;
+   611→   611→            audio.fuseHiss();
+   612→   612→          }
+   613→   613→        } else {
+   614→   614→          wanderAI(m, dt);
+   615→   615→          if (m.state === 'walk') {
+   616→   616→            const dx = m.wanderX - m.x;
+   617→   617→            const dz = m.wanderZ - m.z;
+   618→   618→            const len = Math.hypot(dx, dz);
+   619→   619→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+   620→   620→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+   621→   621→          }
+   622→   622→        }
+   623→   623→      }
+   624→   624→
+   625→   625→      // ── movement + physics ──
+   626→   626→      const prevX = m.x, prevZ = m.z;
+   627→   627→      if (moveSpeed > 0) {
+   628→   628→        m.vx += (wantX * moveSpeed - m.vx) * Math.min(1, dt * 8);
+   629→   629→        m.vz += (wantZ * moveSpeed - m.vz) * Math.min(1, dt * 8);
+   630→   630→        m.targetYaw = Math.atan2(wantX, wantZ);
+   631→   631→      } else {
+   632→   632→        m.vx *= Math.pow(0.02, dt);
+   633→   633→        m.vz *= Math.pow(0.02, dt);
+   634→   634→      }
+   635→   635→      m.vy -= 32 * dt;
+   636→   636→      if (m.type === 'chicken') m.vy = Math.max(m.vy, -3.2);
+   637→   637→      moveEntity(this.world, m, dt);
+   638→   638→
+   639→   639→      // jump when blocked (or climb 1 block)
+   640→   640→      if (moveSpeed > 0 && m.onGround) {
+   641→   641→        const blockedXZ = Math.hypot(m.x - prevX, m.z - prevZ) < moveSpeed * dt * 0.3;
+   642→   642→        if (blockedXZ) {
+   643→   643→          m.vy = 8.4;
+   644→   644→        }
+   645→   645→      }
+   646→   646→      if (m.inWater) {
+   647→   647→        m.vy = Math.max(m.vy, 1.8); // swim up
+   648→   648→      }
+   649→   649→
+   650→   650→      // ── visuals ──
+   651→   651→      // smooth yaw
+   652→   652→      let dyaw = m.targetYaw - m.yaw;
+   653→   653→      while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+   654→   654→      while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+   655→   655→      m.yaw += dyaw * Math.min(1, dt * 8);
+   656→   656→      m.group.position.set(m.x, m.y, m.z);
+   657→   657→      m.group.rotation.y = m.yaw;
+   658→   658→
+   659→   659→      // walk animation
+   660→   660→      const hSpeed = Math.hypot(m.vx, m.vz);
+   661→   661→      m.walkPhase += hSpeed * dt * 3.2;
+   662→   662→      const swing = Math.sin(m.walkPhase * 2.4) * Math.min(1, hSpeed / m.def.speed) * 0.65;
+   663→   663→      const legs = m.parts.legs;
+   664→   664→      if (legs.length === 4) {
+   665→   665→        legs[0].rotation.x = swing;
+   666→   666→        legs[3].rotation.x = swing;
+   667→   667→        legs[1].rotation.x = -swing;
+   668→   668→        legs[2].rotation.x = -swing;
+   669→   669→      } else {
+   670→   670→        legs[0].rotation.x = swing;
+   671→   671→        if (legs[1]) legs[1].rotation.x = -swing;
+   672→   672→      }
+   673→   673→      // zombie arms forward
+   674→   674→      for (const arm of m.parts.arms) {
+   675→   675→        const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+   676→   676→        if (pivot) {
+   677→   677→          pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
+   678→   678→          pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
+   679→   679→        }
+   680→   680→      }
+   681→   681→      // head bob
+   682→   682→      m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
+   683→   683→
+   684→   684→      // shadow
+   685→   685→      m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
+   686→   686→      const shadowScale = m.onGround ? 1 : Math.max(0.4, 1 - Math.min(1, Math.abs(m.vy) * 0.06));
+   687→   687→      m.parts.shadow.scale.setScalar(shadowScale);
+   688→   688→
+   689→   689→      // burning visual
+   690→   690→      if (m.burning && Math.random() < dt * 12) {
+   691→   691→        cb.fireParticle(m.x + (Math.random() - 0.5) * 0.5, m.y + Math.random() * m.height, m.z + (Math.random() - 0.5) * 0.5);
+   692→   692→      }
+   693→   693→    }
+   694→   694→
+   695→   695→    // ── arrows ──
+   696→   696→    for (let i = this.arrows.length - 1; i >= 0; i--) {
+   697→   697→      const a = this.arrows[i];
+   698→   698→      a.life -= dt;
+   699→   699→      if (a.life <= 0 || a.stuck > 0.8) {
+   700→   700→        this.scene.remove(a.mesh);
+   701→   701→        this.arrows.splice(i, 1);
+   702→   702→        continue;
+   703→   703→      }
+   704→   704→      if (a.stuck > 0) {
+   705→   705→        a.stuck += dt;
+   706→   706→        continue;
+   707→   707→      }
+   708→   708→      a.vy -= 18 * dt;
+   709→   709→      const nx = a.x + a.vx * dt;
+   710→   710→      const ny = a.y + a.vy * dt;
+   711→   711→      const nz = a.z + a.vz * dt;
+   712→   712→      // block hit
+   713→   713→      const bid = this.world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+   714→   714→      if (bid !== 0) {
+   715→   715→        a.stuck = 0.001;
+   716→   716→        continue;
+   717→   717→      }
+   718→   718→      a.x = nx; a.y = ny; a.z = nz;
+   719→   719→      // player hit
+   720→   720→      const px = player.x, py = player.y + player.height * 0.5, pz = player.z;
+   721→   721→      if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 0.75) {
+   722→   722→        cb.damagePlayer(3, a.x - a.vx, a.z - a.vz);
+   723→   723→        a.life = 0;
+   724→   724→        continue;
+   725→   725→      }
+   726→   726→      a.mesh.position.set(a.x, a.y, a.z);
+   727→   727→      a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
+   728→   728→    }
+   729→   729→  }
+   730→   730→
+   731→   731→  private updateBurning(m: Mob, dt: number, sunLevel: number, _cb: MobCallbacks): void {
+   732→   732→    void _cb;
+   733→   733→    const lx = Math.floor(m.x);
+   734→   734→    const ly = Math.floor(m.y + 1);
+   735→   735→    const lz = Math.floor(m.z);
+   736→   736→    const light = this.world.getLight(lx, ly, lz);
+   737→   737→    const skyL = light < 0 ? 0 : light >> 4;
+   738→   738→    const inSunlight = skyL === 15 && sunLevel > 0.82;
+   739→   739→    if (inSunlight) {
+   740→   740→      m.burnTimer += dt;
+   741→   741→      m.burning = true;
+   742→   742→      if (m.burnTimer > 1) {
+   743→   743→        m.burnTimer = 0;
+   744→   744→        this.hurtMob(m, 1, 0, 0.01);
+   745→   745→      }
+   746→   746→    } else {
+   747→   747→      m.burning = false;
+   748→   748→      m.burnTimer = 0;
+   749→   749→    }
+   750→   750→  }
+   751→   751→
+   752→   752→  private shootArrow(m: Mob, player: AABBEntity & { eyeY(): number }): void {
+   753→   753→    const ox = m.x;
+   754→   754→    const oy = m.y + 1.5;
+   755→   755→    const oz = m.z;
+   756→   756→    const tx = player.x;
+   757→   757→    const ty = player.eyeY() - 0.2;
+   758→   758→    const tz = player.z;
+   759→   759→    const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+   760→   760→    const dist = Math.hypot(dx, dy, dz);
+   761→   761→    const speed = 18;
+   762→   762→    const lead = dist / speed;
+   763→   763→    const vx = dx / dist * speed + (Math.random() - 0.5) * 1.2;
+   764→   764→    const vy = dy / dist * speed + lead * 9 + (Math.random() - 0.5) * 0.8;
+   765→   765→    const vz = dz / dist * speed + (Math.random() - 0.5) * 1.2;
+   766→   766→    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.55), this.arrowMat);
+   767→   767→    mesh.position.set(ox, oy, oz);
+   768→   768→    this.scene.add(mesh);
+   769→   769→    this.arrows.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 8, stuck: 0, mesh });
+   770→   770→    audio.bowShoot(dist);
+   771→   771→  }
+   772→   772→}
+   773→   773→
+   774→   774→function tint(mats: THREE.MeshLambertMaterial[], r: number, g: number, b: number): void {
+   775→   775→  for (const m of mats) m.color.setRGB(r, g, b);
+   776→   776→}
+   777→   777→
+   778→   778→/** idle<->walk transitions for hostile mobs far from player */
+   779→   779→function wanderAI(m: Mob, _dt: number): void {
+   780→   780→  void _dt;
+   781→   781→  if (m.state === 'chase' || m.state === 'flee') {
+   782→   782→    m.state = 'idle';
+   783→   783→    m.stateTimer = 1 + Math.random() * 2;
+   784→   784→  }
+   785→   785→  if (m.state === 'idle' && m.stateTimer <= 0) {
+   786→   786→    m.state = 'walk';
+   787→   787→    m.stateTimer = 4 + Math.random() * 5;
+   788→   788→    const a = Math.random() * Math.PI * 2;
+   789→   789→    const r = 3 + Math.random() * 6;
+   790→   790→    m.wanderX = m.x + Math.cos(a) * r;
+   791→   791→    m.wanderZ = m.z + Math.sin(a) * r;
+   792→   792→  }
+   793→   793→}
+   794→   794→

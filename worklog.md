@@ -376,3 +376,48 @@ Stage Summary:
 - PHASE 4 COMPLETE: full creative mode (fly/instant mine/infinite/water+palette/invulnerable/peaceful hostiles), DB-backed multi-world system (Prisma+API, autosave, world select/create/delete/migration), achievements screen (in-game + cross-world aggregate), MC-authentic menu flow
 - Known minor: localStorage mirror still written (offline fallback — harmless); text-seed hashing deterministic but different from MC; creative flight speed values are tuned approximations; delete confirm lacks world-icon
 - NEXT (Phase 5 per roadmap): gamepad/sprint-fov polish optional; bigger candidates: spiders + enderman mobs, mob spawn persistence in saves, enchanting placeholder→real, sprint particles, biome-specific colors (jungle grass tint), held-item block swing on place, achievements-GUI from pause verified E2E, sound for XP level-up, world rename, chest/furnace placement sounds, F5 third-person camera
+
+---
+Task ID: 8 (Phase 5 — Spiders, Endermen, Mob Persistence, F5 Camera, Polish, Rename)
+Agent: main (status-assess round)
+Task: Status assessment + agent-browser QA + Phase 5: spider+enderman mobs, mob spawn persistence in saves, F5 third-person camera, sprint particles, XP level-up sound, string→wool recipe, world rename UI
+
+Work Log:
+- QA round 0 (pre-existing build): lint pass, dev.log clean (old Ecmascript lines are stale mid-edit states; latest compiles 200), menu→world render verified, block edit + mob spawn + combat kill + XP orb + drop spawn all eval-verified, 0 console errors → verdict Phase 1-4 STABLE → proceeded to Phase 5 per roadmap
+- New items (src/game/items.ts): ROTTEN_FLESH 297 (food 2), STRING 298, SPIDER_EYE 299, ENDER_PEARL 300 — all with pixel-art icons; auto-appear in creative palette
+- Mob skins (mobSkins.ts): buildSpider (dark fur, red eye cluster, fangs, abdomen marking), buildEnderman (black + wide purple glowing eyes, jaw line)
+- Mobs (entities/mobs.ts):
+  - MobType + 'spider' | 'enderman'; MobDef flags: neutralInDay, climbs, teleports
+  - spider: 1.25×0.9 AABB, 16 HP, speed 2.15, dmg 2, drops STRING 1-2 + SPIDER_EYE 0-1, custom 8-leg model (pivots with userData.baseYaw), legs swing fore-aft (rotation.y around body)
+  - enderman: 0.55×2.75 AABB, 40 HP, speed 2.9, dmg 4, drops ENDER_PEARL, tall-thin humanoid builder, arms hang/swing (raised when provoked), purple provoked glow tint
+  - spider AI: aggressive iff (provoked || lightAt < 8) && dist<20 — neutral in daylight (MC); climbs: blockedXZ while chasing → vy 3.6 on ground / 2.8 mid-wall (wall climbing instead of jump)
+  - enderman AI: stare provocation (player look-dir dot > 0.975 within 26 blocks → provoked + screech), chase + melee; reposition-warp when provoked & dist>9 (cd 4-7s); teleport-on-hurt 55%; water burns (1 dmg/s + warp out); daylight ambient warp; teleportNear() scans surface + head-room, purple particles at both ends + warp sound
+  - MobCallbacks: + teleportParticles, + playerForward (engine passes forwardVector); MobManager.lastCb cached for out-of-loop hurt→teleport
+  - serialize()/restore(SavedMob[]) — save excludes dead, cap 28; restore sets health/yaw + spawnTimer=6 cooldown
+  - zombie now drops ROTTEN_FLESH 1-2; hostile spawn roll: zombie .36 / skeleton .28 / creeper .20 / spider .12 / enderman .04
+- Audio: spider/enderman ambient + hurt voices, enderTeleport() (descending warble), enderStare() (screech), levelUp() (bright two-note; replaces pop on XP level-up in addXP)
+- Player model (NEW entities/playerModel.ts): Steve-style box humanoid (face tex w/ eyes+hair, skin/shirt/pants/shoe materials), createPlayerModel + animatePlayerModel (limb swing, head pitch, sneak crouch, shadow blob)
+- Engine:
+  - SaveData v6: + mobs?: SavedMob[]; saveGame serializes this.mobs.serialize(); setupWorld restores via mobs.restore() (chunks not yet loaded is safe — getBlock returns AIR)
+  - cameraMode 0|1|2 public field; F5 keydown cycles (preventDefault, only when playing); updateCameraPerspective(): third-person behind/front, DDA raycast with 0.55 originPad (fix: ray used to start inside solid canopy blocks and clamp to 0.6), min dist 0.9, model visible + handGroup hidden in 3rd person, player model disposed on mode 0 / dispose()
+  - sprint dust particles (0.13s cadence, ground-tinted, spawned at feet when sprinting >3 m/s)
+  - renameWorld(id, name): PUT {name} + currentWorld store sync + fetchWorlds
+  - mobCb stored on engine (mineTick attack passes cb → enderman hurt-teleport works from melee)
+- Crafting: 4×STRING shaped 2×2 → WOOL
+- UI: WorldSelectScreen + Rename button → inline rename panel (mc-input, Enter/Esc, disabled when empty); pause menu hints now show "F5 camera"
+
+QA (agent-browser + eval-driven, all verified):
+- Spider: night spawn → chase within 5 blocks (state=chase, closed 5→1.7) ✓; neutral in daylight (light≥8 → wander) ✓; model renders w/ 8 legs + red eyes ✓
+- Enderman: stare provocation (aim at head → provoked=true + chase) ✓; hurt → teleported 7 blocks away + still provoked ✓; provoked purple glow + eyes visible ✓; model tall/thin correct ✓
+- Mob persistence: spawn 8 → saveGame → localStorage mobs[] all 8 ✓; reload → 13 restored (8 saved + 5 natural post-cooldown) ✓; cross-session: Migrated World DB save (14 mobs incl spider+enderman) → fresh browser session load → 13 restored at saved player pos ✓
+- F5: real key press → cameraMode 1 → third-person back view w/ full Steve model ✓; mode 2 front view shows face ✓; ray-origin fix verified (no more head-filling clamp under canopy)
+- Crafting: 4 string dropped → magnet pickup → inventory clicks (left pickup, 4× right-place, out take) → wool 37x1 in hotbar ✓
+- Zombie kill → 2× rotten flesh drops (blockId 297) ✓
+- Rename: select world → Rename → input "Legacy Survival" → list + DB updated live ✓
+- Death flow re-verified incidentally (AFK player killed by night mobs → death screen → respawn) ✓
+- lint passes; fresh-session console 0 errors; fixed during round: (1) accidental `mob: parts = undefined` initializer (const reassign compile error) — removed same-round, (2) third-person camera clamp inside foliage (originPad)
+
+Stage Summary:
+- PHASE 5 COMPLETE: 9 mob types total (spider w/ wall-climb + day-neutral AI, enderman w/ stare-provocation + teleport + water-burn), mobs persist in world saves across sessions, F5 3-mode camera with animated Steve player model, sprint dust, XP level-up fanfare, string→wool crafting, world rename, zombie flesh drops
+- Known minor: restored mob can pop inside an obstacle (falls/lands next tick — rare, positions are exact saved ones); enderman 2.75 height needs 3-block clearance in teleport scan (correct); headless FPS ~7-8 (software GL, real GPU fine)
+- NEXT (Phase 6 candidates per roadmap): biome-specific grass tints (jungle/swamp), achievements for new mobs ("Monster Hunter" covers them — add spider/enderman-specific ones), sheep wool color variants, mob spawn caps per-type tuning, held-item swing polish, enchanting placeholder→real, spiders/enderman in creative peaceful mode (hostiles already ignore creative player), sound for creeper fuse panic music, F5 cameraMode persisted in settings, mobile touch controls

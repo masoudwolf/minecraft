@@ -63,6 +63,11 @@ export const ITEM = {
   STEAK: 294,
   CHICKEN_COOKED: 295,
   MUTTON_COOKED: 296,
+  // mob loot
+  ROTTEN_FLESH: 297,
+  STRING: 298,
+  SPIDER_EYE: 299,
+  ENDER_PEARL: 300,
 } as const;
 
 // ─── tier stats (MC values) ───────────────────────────────────────────────────
@@ -344,6 +349,56 @@ export const ITEMS: Record<number, ItemDef> = {
     icon: (ctx) => {
       noiseRect(ctx, ['#9c5a34', '#8a4c28', '#ae6a40'], 3, 5, 10, 8, 51);
       noiseRect(ctx, ['#d8b088', '#cca078'], 4, 3, 8, 3, 53);
+    },
+  },
+  [ITEM.ROTTEN_FLESH]: {
+    id: ITEM.ROTTEN_FLESH, name: 'Rotten Flesh', food: 2,
+    icon: (ctx) => {
+      noiseRect(ctx, ['#8a5c3c', '#7a4c30', '#9c6a48'], 2, 4, 12, 9, 57);
+      // rot patches
+      ctx.fillStyle = '#5c7a34';
+      ctx.fillRect(4, 6, 2, 2); ctx.fillRect(9, 8, 3, 2); ctx.fillRect(6, 10, 2, 1);
+      ctx.fillStyle = '#6e4820';
+      ctx.fillRect(2, 12, 12, 1); ctx.fillRect(2, 4, 12, 1);
+    },
+  },
+  [ITEM.STRING]: {
+    id: ITEM.STRING, name: 'String',
+    icon: (ctx) => {
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(4, 2, 1, 1); ctx.fillRect(5, 3, 1, 1); ctx.fillRect(6, 4, 1, 1);
+      ctx.fillRect(7, 5, 1, 1); ctx.fillRect(8, 6, 1, 1); ctx.fillRect(9, 7, 1, 1);
+      ctx.fillRect(10, 8, 1, 1); ctx.fillRect(9, 9, 1, 1); ctx.fillRect(8, 10, 1, 1);
+      ctx.fillRect(7, 11, 1, 1); ctx.fillRect(6, 12, 1, 1); ctx.fillRect(5, 13, 1, 1);
+      ctx.fillStyle = '#c8c8c8';
+      ctx.fillRect(5, 2, 1, 1); ctx.fillRect(6, 3, 1, 1); ctx.fillRect(7, 4, 1, 1);
+      ctx.fillRect(8, 5, 1, 1); ctx.fillRect(9, 6, 1, 1); ctx.fillRect(10, 7, 1, 1);
+    },
+  },
+  [ITEM.SPIDER_EYE]: {
+    id: ITEM.SPIDER_EYE, name: 'Spider Eye',
+    icon: (ctx) => {
+      // red eye with slit pupil
+      noiseRect(ctx, ['#a82a2a', '#962222', '#ba3a3a'], 4, 4, 8, 8, 61);
+      ctx.fillStyle = '#d46a6a';
+      ctx.fillRect(5, 5, 2, 2);
+      ctx.fillStyle = '#1a0808';
+      ctx.fillRect(7, 5, 2, 6);
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(7, 4, 1, 1); ctx.fillRect(8, 11, 1, 1);
+    },
+  },
+  [ITEM.ENDER_PEARL]: {
+    id: ITEM.ENDER_PEARL, name: 'Ender Pearl',
+    icon: (ctx) => {
+      noiseRect(ctx, ['#1a6a58', '#125446', '#227a66'], 4, 4, 8, 8, 67);
+      // dark rim + teal shine
+      ctx.fillStyle = '#0a3630';
+      ctx.fillRect(5, 4, 6, 1); ctx.fillRect(4, 5, 1, 6); ctx.fillRect(11, 5, 1, 6); ctx.fillRect(5, 11, 6, 1);
+      ctx.fillStyle = '#5ac8a8';
+      ctx.fillRect(6, 6, 2, 1); ctx.fillRect(5, 7, 1, 2);
+      ctx.fillStyle = '#0e4038';
+      ctx.fillRect(8, 8, 2, 2);
     },
   },
 };

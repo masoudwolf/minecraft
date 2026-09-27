@@ -44,6 +44,8 @@ export function WorldSelectScreen() {
   const bg = useMenuBackground();
   const [selected, setSelected] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameText, setRenameText] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -91,7 +93,7 @@ export function WorldSelectScreen() {
           {!loading && worlds.map((w) => (
             <button
               key={w.id}
-              onClick={() => { audio.click(); setSelected(w.id); setConfirmDelete(false); }}
+              onClick={() => { audio.click(); setSelected(w.id); setConfirmDelete(false); setRenaming(false); }}
               onDoubleClick={() => play(w)}
               className="mb-2 flex w-full items-center gap-3 border-2 p-2 text-left transition-colors"
               style={{
@@ -152,9 +154,46 @@ export function WorldSelectScreen() {
               <McButton width="w-40" onClick={() => { audio.click(); setConfirmDelete(false); }}>Cancel</McButton>
             </div>
           </div>
+        ) : renaming && sel ? (
+          <div className="w-full border-2 border-[#4a7a8a] bg-black/60 p-3">
+            <div className="mb-2 text-center text-[13px] text-[#d0e8f0]" style={{ fontFamily: 'var(--font-mc)' }}>
+              Rename World
+            </div>
+            <input
+              className="mc-input mb-3"
+              value={renameText}
+              maxLength={32}
+              autoFocus
+              onChange={(e) => setRenameText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameText.trim()) {
+                  void getEngine()?.renameWorld(sel.id, renameText);
+                  setRenaming(false);
+                } else if (e.key === 'Escape') {
+                  setRenaming(false);
+                }
+              }}
+              aria-label="New world name"
+            />
+            <div className="flex justify-center gap-2">
+              <McButton
+                variant="primary"
+                width="w-40"
+                disabled={!renameText.trim()}
+                onClick={() => {
+                  void getEngine()?.renameWorld(sel.id, renameText);
+                  setRenaming(false);
+                }}
+              >
+                Rename
+              </McButton>
+              <McButton width="w-40" onClick={() => { audio.click(); setRenaming(false); }}>Cancel</McButton>
+            </div>
+          </div>
         ) : (
           <div className="flex w-full justify-center gap-2">
             <McButton variant="primary" disabled={!sel} onClick={() => { if (sel) play(sel); }}>Play Selected World</McButton>
+            <McButton disabled={!sel} onClick={() => { audio.click(); setRenameText(sel?.name ?? ''); setRenaming(true); }}>Rename</McButton>
             <McButton disabled={!sel} onClick={() => { audio.click(); setConfirmDelete(true); }}>Delete</McButton>
           </div>
         )}

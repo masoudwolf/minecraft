@@ -63,6 +63,7 @@ export const RECIPES: Recipe[] = [
   shaped(3, 3, [P, P, P, P, 0, P, P, P, P], BLOCK.CHEST),
   shaped(1, 2, [ITEM.COAL, S], BLOCK.TORCH, 4),
   shaped(3, 2, [W, W, W, P, P, P], BLOCK.BED),
+  shaped(2, 2, [ITEM.STRING, ITEM.STRING, ITEM.STRING, ITEM.STRING], BLOCK.WOOL),
   // ── wooden tools ──
   pickaxe(P, ITEM.WOOD_PICKAXE),
   axe(P, ITEM.WOOD_AXE),

@@ -6,7 +6,8 @@ import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel } from
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
-import { MobManager } from './entities/mobs';
+import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
+import { createPlayerModel, animatePlayerModel, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, ITEM } from './items';
@@ -32,6 +33,8 @@ interface SaveData {
   achievements?: string[];
   gameMode?: GameMode;
   flying?: boolean;
+  /** persisted live mobs (Phase 5) */
+  mobs?: SavedMob[];
 }
 
 export class Game {
@@ -81,6 +84,13 @@ export class Game {
   private target: RayHit | null = null;
   private running = false;
   private disposed = false;
+  /** camera perspective: 0 = first person, 1 = third back, 2 = third front (F5) */
+  cameraMode: 0 | 1 | 2 = 0;
+  private playerModel: PlayerModelParts | null = null;
+  private modelWalkPhase = 0;
+  private sprintFxTimer = 0;
+  /** latest mob callbacks (mining attack → hurt→teleport chain) */
+  private mobCb: MobCallbacks | null = null;
 
   // inventory / crafting / containers
   private craft2: HotbarSlot[] = Array.from({ length: 4 }, () => ({ blockId: 0, count: 0 }));
@@ -288,6 +298,25 @@ export class Game {
     } catch { /* ignore */ }
   }
 
+  /** rename a DB world (world select screen) */
+  async renameWorld(id: string, name: string): Promise<void> {
+    const clean = name.trim().slice(0, 32);
+    if (!clean) return;
+    try {
+      await fetch(`/api/worlds/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: clean }),
+      });
+      if (this.currentWorldId === id) {
+        this.currentWorldName = clean;
+        useGameStore.getState().setCurrentWorld(id, clean);
+      }
+      await this.fetchWorlds();
+      audio.click();
+    } catch { /* ignore */ }
+  }
+
   private setupWorld(seed: number, save: SaveData | null, gameMode: GameMode = 'survival'): void {
     // clear previous world if any
     if (this.world) {
@@ -305,6 +334,7 @@ export class Game {
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
+    if (save?.mobs && Array.isArray(save.mobs)) this.mobs.restore(save.mobs);
     this.xpOrbs = new XPOrbManager(this.scene, this.world);
     this.blockEnts = new BlockEntityManager(this.world);
     this.player = new Player(this.camera);
@@ -433,6 +463,7 @@ export class Game {
       achievements: this.achievements.serialize(),
       gameMode: this.player.gameMode,
       flying: this.player.flying,
+      mobs: this.mobs ? this.mobs.serialize() : [],
     };
     const json = JSON.stringify(save);
     try {
@@ -476,6 +507,14 @@ export class Game {
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
     const st = useGameStore.getState();
+    if (e.code === 'F5') {
+      if (st.screen === 'playing') {
+        e.preventDefault(); // don't reload the page mid-game
+        this.cameraMode = ((this.cameraMode + 1) % 3) as 0 | 1 | 2;
+        audio.click();
+      }
+      return;
+    }
     if (st.inv.open && st.screen === 'playing') {
       if (e.code === 'KeyE' || e.code === 'Escape') { e.preventDefault(); this.closeInventory(); return; }
       if (e.code.startsWith('Digit')) {
@@ -624,7 +663,7 @@ export class Game {
         this.startSwing();
         const kx = hit.mob.x - this.player.x;
         const kz = hit.mob.z - this.player.z;
-        const killed = this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz);
+        const killed = this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz, this.mobCb ?? undefined);
         if (killed && hit.mob.def.hostile) this.achievements.unlock('monsterHunter');
         this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
         this.damageTool(heldTool && heldTool.type !== 'sword' ? 2 : 1);
@@ -1377,6 +1416,56 @@ export class Game {
     this.handGroup.position.y += Math.abs(sway) * 0.8;
   }
 
+  /** F5 camera modes: hand/body visibility + third-person camera placement (wall-clipped safe) */
+  private updateCameraPerspective(dt: number): void {
+    const p = this.player;
+    if (this.cameraMode > 0) {
+      if (!this.playerModel) this.playerModel = createPlayerModel(this.scene);
+      const hSpeed = Math.hypot(p.entity.vx, p.entity.vz);
+      const moving = Math.min(1, hSpeed / 4.3);
+      if (p.entity.onGround && hSpeed > 0.4) {
+        this.modelWalkPhase += dt * Math.min(9, hSpeed * 1.9);
+      }
+      animatePlayerModel(this.playerModel, p.x, p.y, p.z, p.yaw, p.pitch, this.modelWalkPhase, moving, p.sneaking, p.dead, 0);
+      this.handGroup.visible = false;
+    } else {
+      if (this.playerModel) {
+        this.scene.remove(this.playerModel.group);
+        this.scene.remove(this.playerModel.shadow);
+        this.playerModel = null;
+      }
+      this.handGroup.visible = true;
+      return;
+    }
+    // reposition the camera behind (mode 1) or in front (mode 2) of the eye
+    const eyeY = p.eyeY();
+    const cosP = Math.cos(p.pitch);
+    const back = new THREE.Vector3(
+      Math.sin(p.yaw) * cosP,
+      -Math.sin(p.pitch),
+      Math.cos(p.yaw) * cosP,
+    );
+    const dist = 4;
+    // start the ray slightly away from the eye so it doesn't start inside a solid block
+    const originPad = 0.55;
+    if (this.cameraMode === 1) {
+      const hit = raycast(this.world, p.x + back.x * originPad, eyeY + back.y * originPad, p.z + back.z * originPad, back.x, back.y, back.z, dist - originPad + 0.3);
+      const d = hit ? Math.max(0.9, originPad + hit.dist - 0.35) : dist;
+      this.camera.position.set(p.x + back.x * d, eyeY + back.y * d, p.z + back.z * d);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = p.yaw;
+      this.camera.rotation.x = p.pitch;
+    } else {
+      const fwd = new THREE.Vector3(-back.x, -back.y, -back.z);
+      const hit = raycast(this.world, p.x + fwd.x * originPad, eyeY + fwd.y * originPad, p.z + fwd.z * originPad, fwd.x, fwd.y, fwd.z, dist - originPad + 0.3);
+      const d = hit ? Math.max(0.9, originPad + hit.dist - 0.35) : dist;
+      this.camera.position.set(p.x + fwd.x * d, eyeY + fwd.y * d, p.z + fwd.z * d);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = p.yaw + Math.PI;
+      this.camera.rotation.x = -p.pitch;
+    }
+  }
+
   // ── chunk streaming ────────────────────────────────────────────────────────
   private streamChunks(): void {
     const R = this.settings.renderDistance;
@@ -1474,11 +1563,13 @@ export class Game {
     audio.orb();
     let xp = this.player.xp + value;
     let level = this.player.level;
+    let leveled = false;
     while (xp >= this.xpToNext(level)) {
       xp -= this.xpToNext(level);
       level++;
-      audio.pop();
+      leveled = true;
     }
+    if (leveled) audio.levelUp();
     this.player.xp = xp;
     this.player.level = level;
     this.syncHUD();
@@ -1632,6 +1723,7 @@ export class Game {
 
     // camera
     p.applyCamera(this.settings.fov, 8, dt);
+    this.updateCameraPerspective(dt);
 
     // cooldowns
     this.placeCooldown -= dt;
@@ -1713,13 +1805,8 @@ export class Game {
     // mobs
     if (this.mobs) {
       const eyeY = p.eyeY();
-      this.mobs.update(dt, {
-        x: p.x, y: p.y, z: p.z,
-        vx: 0, vy: 0, vz: 0,
-        width: 0.6, height: 1.8,
-        onGround: p.onGround, inWater: p.inWater,
-        eyeY: () => eyeY,
-      }, this.sky.sunLevel, {
+      const fwd = p.forwardVector();
+      this.mobCb = {
         damagePlayer: (amount, fx, fz) => {
           if (amount <= 0 || p.isCreative) return; // creative: hostiles can't touch you
           p.damage(amount);
@@ -1750,11 +1837,44 @@ export class Game {
         fireParticle: (fx2, fy2, fz2) => {
           this.particles.spawnParticle(fx2, fy2, fz2, (Math.random() - 0.5) * 0.6, 1.6 + Math.random(), (Math.random() - 0.5) * 0.6, [1, 0.45, 0.1], 0.09, 0.5, -2);
         },
+        teleportParticles: (tx, ty, tz) => {
+          for (let i = 0; i < 14; i++) {
+            this.particles.spawnParticle(
+              tx + (Math.random() - 0.5) * 0.9, ty + (Math.random() - 0.5) * 1.6, tz + (Math.random() - 0.5) * 0.9,
+              (Math.random() - 0.5) * 2.6, (Math.random() - 0.5) * 2.6, (Math.random() - 0.5) * 2.6,
+              Math.random() < 0.5 ? [0.62, 0.32, 0.86] : [0.84, 0.56, 0.96],
+              0.06, 0.7, -0.4,
+            );
+          }
+        },
+        playerForward: { x: fwd.x, y: fwd.y, z: fwd.z },
         playerX: p.x,
         playerY: p.y,
         playerZ: p.z,
         playerCreative: p.isCreative,
-      });
+      };
+      this.mobs.update(dt, {
+        x: p.x, y: p.y, z: p.z,
+        vx: 0, vy: 0, vz: 0,
+        width: 0.6, height: 1.8,
+        onGround: p.onGround, inWater: p.inWater,
+        eyeY: () => eyeY,
+      }, this.sky.sunLevel, this.mobCb);
+    }
+
+    // sprint dust particles at the player's feet
+    this.sprintFxTimer -= dt;
+    if (p.sprinting && p.entity.onGround && Math.hypot(p.entity.vx, p.entity.vz) > 3 && this.sprintFxTimer <= 0) {
+      this.sprintFxTimer = 0.13;
+      const below = this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.4), Math.floor(p.z));
+      const bdef = getBlockDef(below);
+      const bc = bdef ? tileAvgColor(Array.isArray(bdef.tiles) ? bdef.tiles[2] : bdef.tiles) : [0.75, 0.75, 0.75];
+      this.particles.spawnParticle(
+        p.x + (Math.random() - 0.5) * 0.45, p.y + 0.08, p.z + (Math.random() - 0.5) * 0.45,
+        (Math.random() - 0.5) * 0.8 - p.entity.vx * 0.14, 1.1 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8 - p.entity.vz * 0.14,
+        [Math.min(1, bc[0] * 0.85 + 0.15), Math.min(1, bc[1] * 0.85 + 0.15), Math.min(1, bc[2] * 0.85 + 0.15)],
+        0.08, 0.45, -1,
+      );
     }
 
     // sky + fog + lighting uniforms
@@ -1880,6 +2000,11 @@ export class Game {
         this.world.unloadChunk(cx, cz);
       }
       this.scene.remove(this.world.group);
+    }
+    if (this.playerModel) {
+      this.scene.remove(this.playerModel.group);
+      this.scene.remove(this.playerModel.shadow);
+      this.playerModel = null;
     }
     this.particles?.dispose();
     this.drops?.clear();

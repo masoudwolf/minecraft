@@ -144,6 +144,8 @@ class AudioManager {
       case 'cluck': this.tone(520 + Math.random() * 200, 0.07, v, 'square', 700); break;
       case 'groan': this.tone(95 + Math.random() * 25, 0.65, v * 1.3, 'sawtooth', 68); this.noiseBurst(220, 0.5, v * 0.5, 'lowpass'); break;
       case 'rattle': this.noiseBurst(1800, 0.14, v * 0.8, 'highpass', 3); setTimeout(() => this.noiseBurst(1400, 0.12, v * 0.6, 'highpass', 3), 110); break;
+      case 'spider': this.noiseBurst(2400, 0.16, v * 0.7, 'bandpass', 4, 0.8); setTimeout(() => this.noiseBurst(2000, 0.1, v * 0.5, 'bandpass', 4, 0.8), 130); break;
+      case 'enderman': this.tone(210 + Math.random() * 40, 0.5, v * 0.9, 'sine', 130); this.noiseBurst(700, 0.35, v * 0.3, 'bandpass', 6, 0.5); break;
       case 'hiss': break; // creepers are silent until fuse
     }
   }
@@ -158,6 +160,8 @@ class AudioManager {
       case 'groan': this.tone(110, 0.4, v * 1.2, 'sawtooth', 75); break;
       case 'rattle': this.noiseBurst(2000, 0.18, v, 'highpass', 2.5); break;
       case 'hiss': this.noiseBurst(900, 0.2, v, 'bandpass', 1.5); break;
+      case 'spider': this.noiseBurst(2600, 0.18, v, 'bandpass', 3, 0.6); break;
+      case 'enderman': this.tone(320, 0.3, v, 'sine', 90); this.noiseBurst(900, 0.25, v * 0.5, 'bandpass', 5, 0.4); break;
     }
   }
 
@@ -179,6 +183,27 @@ class AudioManager {
     const v = this.withDistance(0.3, dist);
     this.noiseBurst(1200, 0.1, v, 'bandpass', 2, 0.4);
     this.tone(400, 0.08, v * 0.5, 'square', 700);
+  }
+
+  /** enderman warp: eerie descending warble */
+  enderTeleport(): void {
+    this.tone(900, 0.35, 0.22, 'sine', 140);
+    this.tone(620, 0.3, 0.14, 'sawtooth', 110);
+    this.noiseBurst(1500, 0.3, 0.14, 'bandpass', 6, 0.15);
+  }
+
+  /** enderman provoked screech (stared at) */
+  enderStare(): void {
+    this.tone(480, 0.55, 0.26, 'sawtooth', 1150);
+    this.noiseBurst(2200, 0.5, 0.2, 'bandpass', 3, 1.6);
+    setTimeout(() => this.tone(1150, 0.4, 0.18, 'sawtooth', 420), 160);
+  }
+
+  /** XP level-up: bright rising two-note */
+  levelUp(): void {
+    this.tone(520, 0.1, 0.2, 'square', 520);
+    setTimeout(() => this.tone(780, 0.28, 0.22, 'square', 780), 110);
+    setTimeout(() => this.tone(1170, 0.2, 0.14, 'sine', 1170), 240);
   }
 
   eat(): void {

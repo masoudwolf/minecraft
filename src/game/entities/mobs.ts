@@ -6,7 +6,7 @@ import { getMobSkins } from './mobSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
-export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton';
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman';
 
 interface MobDef {
   hostile: boolean;
@@ -17,7 +17,13 @@ interface MobDef {
   /** contact/attack damage to player */
   damage: number;
   drops: { id: number; min: number; max: number }[];
-  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle';
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman';
+  /** spiders are neutral in daylight (still hostile in dark / when provoked) */
+  neutralInDay?: boolean;
+  /** spiders climb walls when chasing */
+  climbs?: boolean;
+  /** endermen teleport */
+  teleports?: boolean;
   builder: (skins: ReturnType<typeof getMobSkins>) => MobParts;
 }
 
@@ -47,10 +53,24 @@ interface Mob extends AABBEntity {
   burnTimer: number;
   burning: boolean;
   fuse: number;          // creeper
+  /** enderman: has been provoked (stared at / hit) */
+  provoked: boolean;
+  /** enderman teleport cooldown */
+  teleportCd: number;
+  /** enderman water damage tick */
+  waterHurtT: number;
   dead: boolean;
   deathT: number;
   wanderX: number;
   wanderZ: number;
+}
+
+/** serialized mob for world saves */
+export interface SavedMob {
+  type: string;
+  x: number; y: number; z: number;
+  health: number;
+  yaw: number;
 }
 
 interface Arrow {
@@ -168,7 +188,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   },
   zombie: {
     hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.9, damage: 3,
-    drops: [], sound: 'groan',
+    drops: [{ id: ITEM.ROTTEN_FLESH, min: 1, max: 2 }], sound: 'groan',
     builder: (s) => humanoid(s),
   },
   creeper: {
@@ -197,6 +217,78 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
     drops: [], sound: 'rattle',
     builder: (s) => humanoid(s, true),
+  },
+  spider: {
+    hostile: true, width: 1.25, height: 0.9, health: 16, speed: 2.15, damage: 2,
+    drops: [{ id: ITEM.STRING, min: 1, max: 2 }, { id: ITEM.SPIDER_EYE, min: 0, max: 1 }], sound: 'spider',
+    neutralInDay: true, climbs: true,
+    builder: (s) => {
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const group = new THREE.Group();
+      // abdomen (back) + thorax (front) — flat wide body
+      const abdomen = boxPart(0.8, 0.45, 0.8, mats[1], 'body');
+      abdomen.position.set(0, 0.55, -0.34);
+      group.add(abdomen);
+      const head = boxPart(0.52, 0.44, 0.5, mats[0], 'head');
+      head.position.set(0, 0.55, 0.5);
+      group.add(head);
+      // 8 legs: 4 per side, thin boxes angled out from pivots on the body
+      const legs: THREE.Mesh[] = [];
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 4; i++) {
+          const pivot = new THREE.Group();
+          pivot.position.set(side * 0.36, 0.58, -0.42 + i * 0.26);
+          // base outward yaw spread
+          const baseYaw = side * (0.9 - Math.abs(i - 1.5) * 0.22);
+          pivot.rotation.y = baseYaw;
+          pivot.userData.baseYaw = baseYaw;
+          const leg = boxPart(0.62, 0.09, 0.09, mats[2], 'limb');
+          leg.position.set(side * 0.31, -0.06, 0);
+          pivot.add(leg);
+          // knee tip angled down
+          const tip = boxPart(0.34, 0.08, 0.08, mats[2], 'limb');
+          tip.position.set(side * 0.24, -0.16, 0);
+          pivot.add(tip);
+          group.add(pivot);
+          legs.push(pivot as unknown as THREE.Mesh);
+        }
+      }
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+    },
+  },
+  enderman: {
+    hostile: true, width: 0.55, height: 2.75, health: 40, speed: 2.9, damage: 4,
+    drops: [{ id: ITEM.ENDER_PEARL, min: 1, max: 1 }], sound: 'enderman',
+    teleports: true, neutralInDay: true,
+    builder: (s) => {
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const group = new THREE.Group();
+      const body = boxPart(0.42, 0.8, 0.26, mats[1], 'body');
+      body.position.y = 1.75;
+      group.add(body);
+      const head = boxPart(0.46, 0.42, 0.46, mats[0], 'head');
+      head.position.y = 2.44;
+      group.add(head);
+      const legs: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const leg = boxPart(0.13, 1.35, 0.13, mats[2], 'limb');
+        leg.position.set(sx * 0.11, 0.675, 0);
+        group.add(leg);
+        legs.push(leg);
+      }
+      const arms: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * 0.29, 2.1, 0);
+        const arm = boxPart(0.11, 1.25, 0.11, mats[2], 'limb');
+        arm.position.y = -0.62;
+        pivot.add(arm);
+        group.add(pivot);
+        arms.push(arm);
+        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+      }
+      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+    },
   },
 };
 
@@ -233,6 +325,10 @@ export interface MobCallbacks {
   explodeParticles: (x: number, y: number, z: number) => void;
   deathParticles: (x: number, y: number, z: number) => void;
   fireParticle: (x: number, y: number, z: number) => void;
+  /** purple burst for enderman teleport (both ends) */
+  teleportParticles: (x: number, y: number, z: number) => void;
+  /** unit forward vector of the player's look direction (enderman stare check) */
+  playerForward: { x: number; y: number; z: number };
   playerX: number;
   playerY: number;
   playerZ: number;
@@ -248,6 +344,8 @@ export class MobManager {
   private spawnTimer = 0;
   private arrowMat: THREE.MeshLambertMaterial;
   private time = 0;
+  /** most recent callbacks (for hurt→teleport outside update loop) */
+  private lastCb: MobCallbacks | null = null;
 
   constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void }) {
     this.scene = scene;
@@ -285,6 +383,37 @@ export class MobManager {
     return best;
   }
 
+  /** serialize live mobs for the world save (excludes dying) */
+  serialize(): SavedMob[] {
+    const out: SavedMob[] = [];
+    for (const m of this.mobs) {
+      if (m.dead) continue;
+      out.push({
+        type: m.type,
+        x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2),
+        health: Math.max(1, Math.round(m.health)),
+        yaw: +m.yaw.toFixed(2),
+      });
+      if (out.length >= 28) break;
+    }
+    return out;
+  }
+
+  /** restore mobs from a save; suppresses the spawn burst right after */
+  restore(list: SavedMob[]): void {
+    for (const s of list) {
+      if (!(s.type in MOB_DEFS)) continue;
+      if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z)) continue;
+      const m = this.spawn(s.type as MobType, s.x, s.y, s.z);
+      if (m) {
+        m.health = Math.max(1, Math.min(m.def.health, Math.round(s.health)));
+        m.yaw = Number.isFinite(s.yaw) ? s.yaw : m.yaw;
+        m.targetYaw = m.yaw;
+      }
+    }
+    this.spawnTimer = 6;
+  }
+
   private spawn(type: MobType, x: number, y: number, z: number): Mob | null {
     const def = MOB_DEFS[type];
     const skins = getMobSkins(type);
@@ -317,6 +446,7 @@ export class MobManager {
       hurtT: 0, attackCd: 0, ambientCd: 3 + Math.random() * 6,
       burnTimer: 0, burning: false,
       fuse: -1, dead: false, deathT: 0,
+      provoked: false, teleportCd: 0, waterHurtT: 0,
       wanderX: x, wanderZ: z,
     };
     mob.targetYaw = mob.yaw;
@@ -359,7 +489,7 @@ export class MobManager {
 
     if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
       const roll = Math.random();
-      const type: MobType = roll < 0.45 ? 'zombie' : roll < 0.75 ? 'skeleton' : 'creeper';
+      const type: MobType = roll < 0.36 ? 'zombie' : roll < 0.64 ? 'skeleton' : roll < 0.84 ? 'creeper' : roll < 0.96 ? 'spider' : 'enderman';
       this.spawn(type, x, sy + 1, z);
     } else if (wantPassive) {
       const roll = Math.random();
@@ -372,7 +502,7 @@ export class MobManager {
     }
   }
 
-  hurtMob(mob: Mob, dmg: number, kx: number, kz: number): boolean {
+  hurtMob(mob: Mob, dmg: number, kx: number, kz: number, cb?: MobCallbacks): boolean {
     if (mob.dead) return false;
     mob.health -= dmg;
     mob.hurtT = 0.4;
@@ -383,11 +513,17 @@ export class MobManager {
     audio.mobHurt(mob.def.sound);
     if (mob.def.hostile) {
       mob.state = 'chase';
+      if (mob.type === 'spider' || mob.type === 'enderman') mob.provoked = true;
     } else {
       mob.state = 'flee';
       mob.stateTimer = 4;
       mob.wanderX = mob.x + (mob.x - kx) * 10;
       mob.wanderZ = mob.z + (mob.z - kz) * 10;
+    }
+    // endermen often warp away when hurt (MC behavior)
+    const ecb = cb ?? this.lastCb;
+    if (mob.type === 'enderman' && !mob.dead && ecb && Math.random() < 0.55) {
+      this.teleportNear(mob, mob.x, mob.z, 7, 15, ecb);
     }
     if (mob.health <= 0) {
       mob.dead = true;
@@ -396,6 +532,45 @@ export class MobManager {
       return true;
     }
     return false;
+  }
+
+  /** enderman teleport: find a valid surface spot within [minR,maxR] of (cx,cz) */
+  private teleportNear(m: Mob, cx: number, cz: number, minR: number, maxR: number, cb: MobCallbacks): boolean {
+    const ox = m.x, oy = m.y, oz = m.z;
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = minR + Math.random() * (maxR - minR);
+      const x = Math.floor(cx + Math.cos(a) * r);
+      const z = Math.floor(cz + Math.sin(a) * r);
+      let sy = -1;
+      for (let y = 95; y > 2; y--) {
+        const id = this.world.getBlock(x, y, z);
+        if (id !== 0 && !isWaterId(id)) { sy = y; break; }
+      }
+      if (sy < 3) continue;
+      // head room for full height
+      const top = Math.ceil(m.def.height);
+      let clear = true;
+      for (let yy = sy + 1; yy <= sy + top; yy++) {
+        if (this.world.getBlock(x, yy, z) !== 0) { clear = false; break; }
+      }
+      if (!clear) continue;
+      m.x = x + 0.5; m.y = sy + 1; m.z = z + 0.5;
+      m.vx = 0; m.vy = 0; m.vz = 0;
+      m.state = 'idle'; m.stateTimer = 1;
+      cb.teleportParticles(ox, oy + m.height * 0.4, oz);
+      cb.teleportParticles(m.x, m.y + m.height * 0.4, m.z);
+      audio.enderTeleport();
+      return true;
+    }
+    return false;
+  }
+
+  /** effective light (0..15) at a mob's position */
+  private lightAt(m: Mob, sunLevel: number): number {
+    const l = this.world.getLight(Math.floor(m.x), Math.floor(m.y + 0.5), Math.floor(m.z));
+    if (l < 0) return 15;
+    return Math.max(l & 15, (l >> 4) * sunLevel);
   }
 
   /** creeper explosion */
@@ -417,7 +592,7 @@ export class MobManager {
       if (m.dead) continue;
       const d = Math.hypot(m.x - x, m.y - y, m.z - z);
       if (d < R * 2 && m.type !== 'creeper') {
-        this.hurtMob(m, Math.max(1, Math.round(14 * (1 - d / (R * 2)))), m.x - x, m.z - z);
+        this.hurtMob(m, Math.max(1, Math.round(14 * (1 - d / (R * 2)))), m.x - x, m.z - z, cb);
       }
     }
     const pd = Math.hypot(cb.playerX - x, cb.playerY - y, cb.playerZ - z);
@@ -429,6 +604,7 @@ export class MobManager {
 
   update(dt: number, player: AABBEntity & { eyeY(): number }, sunLevel: number, cb: MobCallbacks): void {
     this.time += dt;
+    this.lastCb = cb;
     // ── spawning ──
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -583,6 +759,97 @@ export class MobManager {
             else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
           }
         }
+      } else if (m.type === 'spider') {
+        // spiders are neutral in bright light unless provoked (MC behavior)
+        const light = this.lightAt(m, sunLevel);
+        const aggressive = (m.provoked || light < 8) && !cb.playerCreative;
+        if (aggressive && distToPlayer < 20) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed;
+          if (distToPlayer < 2.1 && m.attackCd <= 0) {
+            m.attackCd = 1.2;
+            cb.damagePlayer(m.def.damage, m.x, m.z);
+            audio.zombieAttack();
+          }
+        } else {
+          if (m.state === 'chase') { m.state = 'idle'; m.stateTimer = 2; }
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.5; }
+          }
+        }
+      } else if (m.type === 'enderman') {
+        // water burns endermen — take damage + warp out
+        if (m.inWater) {
+          m.waterHurtT += dt;
+          if (m.waterHurtT > 1) {
+            m.waterHurtT = 0;
+            this.hurtMob(m, 1, 0, 0.01, cb);
+          }
+          if (!m.dead && Math.random() < 0.6) {
+            this.teleportNear(m, cb.playerX, cb.playerZ, 8, 16, cb);
+          }
+        }
+        if (m.dead) continue;
+        // stare provocation: player looking at the enderman within ~13° cone
+        if (!m.provoked && !cb.playerCreative) {
+          const dx = m.x - cb.playerX;
+          const dy = (m.y + m.height * 0.85) - (cb.playerY + 1.62);
+          const dz = m.z - cb.playerZ;
+          const len = Math.hypot(dx, dy, dz);
+          if (len < 26 && len > 0.5) {
+            const dot = (dx * cb.playerForward.x + dy * cb.playerForward.y + dz * cb.playerForward.z) / len;
+            if (dot > 0.975) {
+              m.provoked = true;
+              m.teleportCd = 2;
+              audio.enderStare();
+            }
+          }
+        }
+        if (m.provoked && !cb.playerCreative) {
+          m.state = 'chase';
+          m.teleportCd -= dt;
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed;
+          if (distToPlayer < 2.2 && m.attackCd <= 0) {
+            m.attackCd = 1.0;
+            cb.damagePlayer(m.def.damage, m.x, m.z);
+            audio.zombieAttack();
+          }
+          // reposition closer via warp when far
+          if (m.teleportCd <= 0 && distToPlayer > 9) {
+            m.teleportCd = 4 + Math.random() * 3;
+            this.teleportNear(m, player.x, player.z, 4, 8, cb);
+          }
+        } else {
+          m.teleportCd -= dt;
+          if (m.teleportCd <= 0) {
+            m.teleportCd = 12 + Math.random() * 14;
+            // endermen dislike daylight — occasionally warp away
+            if (sunLevel > 0.8 && Math.random() < 0.5) {
+              this.teleportNear(m, m.x, m.z, 8, 18, cb);
+            }
+          }
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.4; }
+          }
+        }
       } else if (m.type === 'creeper') {
         if (m.fuse >= 0) {
           // fused: flash + wait
@@ -636,11 +903,15 @@ export class MobManager {
       if (m.type === 'chicken') m.vy = Math.max(m.vy, -3.2);
       moveEntity(this.world, m, dt);
 
-      // jump when blocked (or climb 1 block)
-      if (moveSpeed > 0 && m.onGround) {
+      // jump when blocked — spiders climb instead (even mid-wall while chasing)
+      if (moveSpeed > 0) {
         const blockedXZ = Math.hypot(m.x - prevX, m.z - prevZ) < moveSpeed * dt * 0.3;
         if (blockedXZ) {
-          m.vy = 8.4;
+          if (m.def.climbs && m.state === 'chase') {
+            m.vy = Math.max(m.vy, m.onGround ? 3.6 : 2.8);
+          } else if (m.onGround) {
+            m.vy = 8.4;
+          }
         }
       }
       if (m.inWater) {
@@ -661,7 +932,18 @@ export class MobManager {
       m.walkPhase += hSpeed * dt * 3.2;
       const swing = Math.sin(m.walkPhase * 2.4) * Math.min(1, hSpeed / m.def.speed) * 0.65;
       const legs = m.parts.legs;
-      if (legs.length === 4) {
+      if (m.type === 'spider') {
+        // 8 sideways legs: fore-aft pivot swing (rotation.y around body) + slight bob
+        const amp = 0.45 * Math.min(1, hSpeed / m.def.speed);
+        for (let li = 0; li < legs.length; li++) {
+          const pivot = legs[li] as unknown as THREE.Object3D & { userData: { baseYaw?: number } };
+          const base = pivot.userData.baseYaw ?? 0;
+          const idx = li % 4;
+          const phase = m.walkPhase * 2.6 + idx * 1.5 + (li < 4 ? 0 : Math.PI * 0.5);
+          pivot.rotation.y = base + Math.sin(phase) * amp;
+          pivot.rotation.x = Math.cos(phase) * amp * 0.35;
+        }
+      } else if (legs.length === 4) {
         legs[0].rotation.x = swing;
         legs[3].rotation.x = swing;
         legs[1].rotation.x = -swing;
@@ -670,16 +952,30 @@ export class MobManager {
         legs[0].rotation.x = swing;
         if (legs[1]) legs[1].rotation.x = -swing;
       }
-      // zombie arms forward
+      // arms: zombie reaches forward; enderman hangs/swings (raised when provoked)
       for (const arm of m.parts.arms) {
         const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
-        if (pivot) {
+        if (!pivot) continue;
+        if (m.type === 'zombie') {
           pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
           pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
+        } else if (m.type === 'enderman') {
+          if (m.provoked) {
+            pivot.rotation.x = -1.15 + Math.sin(m.walkPhase * 2.4) * 0.1;
+            pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.04;
+          } else {
+            pivot.rotation.x = Math.sin(m.walkPhase * 2.4) * 0.35;
+            pivot.rotation.z = 0;
+          }
         }
       }
       // head bob
       m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
+      // enderman glows purple when provoked
+      if (m.type === 'enderman' && m.hurtT <= 0) {
+        if (m.provoked) tint(m.parts.materials, 1, 0.72, 1.12);
+        else tint(m.parts.materials, 1, 1, 1);
+      }
 
       // shadow
       m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
@@ -728,8 +1024,7 @@ export class MobManager {
     }
   }
 
-  private updateBurning(m: Mob, dt: number, sunLevel: number, _cb: MobCallbacks): void {
-    void _cb;
+  private updateBurning(m: Mob, dt: number, sunLevel: number, cb: MobCallbacks): void {
     const lx = Math.floor(m.x);
     const ly = Math.floor(m.y + 1);
     const lz = Math.floor(m.z);
@@ -741,7 +1036,7 @@ export class MobManager {
       m.burning = true;
       if (m.burnTimer > 1) {
         m.burnTimer = 0;
-        this.hurtMob(m, 1, 0, 0.01);
+        this.hurtMob(m, 1, 0, 0.01, cb);
       }
     } else {
       m.burning = false;
