@@ -146,6 +146,8 @@ class AudioManager {
       case 'rattle': this.noiseBurst(1800, 0.14, v * 0.8, 'highpass', 3); setTimeout(() => this.noiseBurst(1400, 0.12, v * 0.6, 'highpass', 3), 110); break;
       case 'spider': this.noiseBurst(2400, 0.16, v * 0.7, 'bandpass', 4, 0.8); setTimeout(() => this.noiseBurst(2000, 0.1, v * 0.5, 'bandpass', 4, 0.8), 130); break;
       case 'enderman': this.tone(210 + Math.random() * 40, 0.5, v * 0.9, 'sine', 130); this.noiseBurst(700, 0.35, v * 0.3, 'bandpass', 6, 0.5); break;
+      case 'villager': this.tone(230 + Math.random() * 60, 0.22, v * 1.1, 'square', 150); setTimeout(() => this.tone(190 + Math.random() * 40, 0.16, v * 0.9, 'square', 130), 170); break;
+      case 'mooshroom': this.tone(150 + Math.random() * 30, 0.45, v * 1.2, 'sawtooth', 95); break;
       case 'hiss': break; // creepers are silent until fuse
     }
   }
@@ -162,7 +164,29 @@ class AudioManager {
       case 'hiss': this.noiseBurst(900, 0.2, v, 'bandpass', 1.5); break;
       case 'spider': this.noiseBurst(2600, 0.18, v, 'bandpass', 3, 0.6); break;
       case 'enderman': this.tone(320, 0.3, v, 'sine', 90); this.noiseBurst(900, 0.25, v * 0.5, 'bandpass', 5, 0.4); break;
+      case 'villager': this.tone(200, 0.3, v, 'square', 140); break;
+      case 'mooshroom': this.tone(170, 0.3, v, 'sawtooth', 110); break;
     }
+  }
+
+  /** villager trade: cheerful "hmm!" + coin clink */
+  trade(): void {
+    this.tone(320, 0.14, 0.2, 'square', 210);
+    setTimeout(() => this.tone(430, 0.18, 0.18, 'square', 260), 120);
+    setTimeout(() => this.noiseBurst(3200, 0.08, 0.12, 'highpass', 2), 240);
+  }
+
+  /** bonemeal sprinkle: soft fizz + pop */
+  bonemeal(): void {
+    this.noiseBurst(1500, 0.25, 0.16, 'highpass', 0.8, 0.6);
+    setTimeout(() => this.tone(520, 0.1, 0.12, 'sine', 640), 140);
+  }
+
+  /** lightning crack at the strike point */
+  lightningStrike(dist = 0): void {
+    const v = Math.max(0.1, 0.5 - dist / 120);
+    this.noiseBurst(2800, 0.3, v, 'highpass', 0.6, 0.9);
+    this.noiseBurst(180, 0.7, v * 0.9, 'lowpass', 0.5);
   }
 
   zombieAttack(): void {

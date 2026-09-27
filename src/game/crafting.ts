@@ -86,6 +86,8 @@ export const RECIPES: Recipe[] = [
   shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),
   // arrow: flint over stick over feather (1-wide column) → 4
   shaped(1, 3, [F, S, FE], ITEM.ARROW, 4),
+  // bone meal: 1 bone → 3 (shapeless, MC ratio)
+  shapeless([ITEM.BONE], ITEM.BONEMEAL, 3),
   // ── wooden tools ──
   pickaxe(P, ITEM.WOOD_PICKAXE),
   axe(P, ITEM.WOOD_AXE),

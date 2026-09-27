@@ -21,6 +21,10 @@ export const ACHIEVEMENTS: Record<string, AchievementDef> = {
   ironBelly: { id: 'ironBelly', title: 'Iron Belly', desc: 'Eat a steak to survive', iconTile: 45 },
   sleepTight: { id: 'sleepTight', title: 'Sweet Dreams', desc: 'Sleep in a bed through the night', iconTile: 49 },
   lightItUp: { id: 'lightItUp', title: 'Let There Be Light', desc: 'Place a torch', iconTile: 38 },
+  // phase 8
+  sniperDuel: { id: 'sniperDuel', title: 'Sniper Duel', desc: 'Kill a mob with an arrow from over 12 blocks', iconTile: 23 },
+  trader: { id: 'trader', title: 'The Trader', desc: 'Trade with a villager', iconTile: 40 },
+  gardener: { id: 'gardener', title: 'Growth Spurt', desc: 'Fertilize the land with bone meal', iconTile: 45 },
 };
 
 export class AchievementManager {

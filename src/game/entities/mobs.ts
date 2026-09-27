@@ -6,7 +6,7 @@ import { getMobSkins } from './mobSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
-export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman';
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'mooshroom';
 
 interface MobDef {
   hostile: boolean;
@@ -17,7 +17,7 @@ interface MobDef {
   /** contact/attack damage to player */
   damage: number;
   drops: { id: number; min: number; max: number }[];
-  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman';
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'mooshroom';
   /** spiders are neutral in daylight (still hostile in dark / when provoked) */
   neutralInDay?: boolean;
   /** spiders climb walls when chasing */
@@ -301,6 +301,49 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
+  villager: {
+    hostile: false, width: 0.6, height: 1.95, health: 20, speed: 0.85, damage: 0,
+    drops: [], sound: 'villager',
+    builder: (s) => {
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const group = new THREE.Group();
+      // robe torso
+      const body = boxPart(0.56, 0.72, 0.32, mats[1], 'body');
+      body.position.y = 1.08;
+      group.add(body);
+      // robe skirt over legs
+      const skirt = boxPart(0.54, 0.42, 0.3, mats[1], 'body');
+      skirt.position.y = 0.51;
+      group.add(skirt);
+      // head + long nose
+      const head = boxPart(0.5, 0.5, 0.5, mats[0], 'head');
+      head.position.y = 1.69;
+      group.add(head);
+      if (s.extra) {
+        const nose = boxPart(0.13, 0.26, 0.11, partMat(s.extra), 'nose');
+        nose.position.set(0, 1.63, 0.31);
+        group.add(nose);
+      }
+      // crossed arms: single horizontal box on the chest
+      const armsBox = boxPart(0.58, 0.16, 0.16, mats[2], 'arm');
+      armsBox.position.set(0, 1.26, 0.24);
+      group.add(armsBox);
+      // short legs under the skirt
+      const legs: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const leg = boxPart(0.2, 0.32, 0.2, mats[2], 'limb');
+        leg.position.set(sx * 0.12, 0.16, 0);
+        group.add(leg);
+        legs.push(leg);
+      }
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+    },
+  },
+  mooshroom: {
+    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'mooshroom',
+    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+  },
 };
 
 // ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
@@ -347,6 +390,8 @@ export interface MobCallbacks {
   playerCreative: boolean;
   /** explosions chain-ignite TNT blocks in the blast (engine primes them) */
   igniteTnt?: (x: number, y: number, z: number) => void;
+  /** a player arrow killed a mob — arg: distance from shooter (achievements) */
+  killByPlayer?: (dist: number) => void;
 }
 
 export class MobManager {
@@ -501,6 +546,24 @@ export class MobManager {
     const skyL = l >> 4;
     const blkL = l & 15;
     const effLight = Math.max(blkL, skyL * sunLevel);
+
+    // villagers live on village grounds (planks / cobblestone); mooshrooms on mycelium
+    if (groundId === BLOCK.PLANKS || groundId === BLOCK.COBBLESTONE) {
+      const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
+      if (villagerCount < 5 && skyL >= 9 && sunLevel > 0.55) {
+        const herd = 1 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < herd; i++) this.spawn('villager', x + (Math.random() - 0.5) * 2, sy + 1, z + (Math.random() - 0.5) * 2);
+      }
+      return;
+    }
+    if (groundId === BLOCK.MYCELIUM) {
+      const passiveNow = passiveCount + this.mobs.filter((m) => m.type === 'mooshroom').length;
+      if (passiveNow < 12 && skyL >= 9 && sunLevel > 0.55) {
+        const herd = 1 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < herd; i++) this.spawn('mooshroom', x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3);
+      }
+      return;
+    }
 
     const wantHostile = hostileCount < 12 && (effLight < 6);
     const wantPassive = passiveCount < 10 && skyL >= 9 && sunLevel > 0.55 && (groundId === BLOCK.GRASS || groundId === BLOCK.SNOW_GRASS);
@@ -1065,7 +1128,10 @@ export class MobManager {
               a.z > m.z - m.width / 2 - 0.15 && a.z < m.z + m.width / 2 + 0.15
             ) {
               const klen = Math.hypot(a.vx, a.vz) || 1;
+              const shooterDist = Math.hypot(a.x - cb.playerX, a.y - cb.playerY, a.z - cb.playerZ);
               this.hurtMob(m, a.dmg, (a.vx / klen) * 4.5, (a.vz / klen) * 4.5, cb);
+              // hurtMob sets dead=true immediately on lethal damage
+              if (m.dead) cb.killByPlayer?.(shooterDist);
               a.life = 0;
               done = true;
               break;

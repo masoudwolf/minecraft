@@ -1,9 +1,12 @@
 'use client';
 
 // ─── Pause menu + settings + death screen + loading + debug overlay ──────────
+import { useEffect } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
 import { audio } from '@/game/audio';
+import { VILLAGER_TRADES } from '@/game/trades';
+import { slotIconUrl, slotName } from './slotIcon';
 import { McButton, useMenuBackground } from './ui';
 
 export function PauseMenu() {
@@ -169,6 +172,121 @@ export function LoadingScreen() {
       </div>
       <div className="mt-3 text-xs text-[#ccc]" style={{ fontFamily: 'var(--font-mc)' }}>
         {Math.round(progress * 100)}%
+      </div>
+    </div>
+  );
+}
+
+// ─── Villager trade panel (MC trading GUI style) ─────────────────────────────
+const PANEL_BG = '#c6c6c6';
+const SLOT_BG = '#8b8b8b';
+
+export function TradePanel() {
+  // Escape closes (engine also handles while locked; this covers unlocked clicks)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') { e.preventDefault(); getEngine()?.closeTrade(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
+      {/* dim world slightly */}
+      <div className="absolute inset-0 bg-black/25" onMouseDown={() => getEngine()?.closeTrade()} />
+
+      {/* panel */}
+      <div
+        className="relative z-10 w-[min(94vw,470px)] p-4"
+        style={{
+          background: PANEL_BG,
+          border: '2px solid #000',
+          boxShadow: 'inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555, 0 0 0 2px rgba(0,0,0,0.5)',
+        }}
+      >
+        {/* ── header: villager face + title ── */}
+        <div className="mb-3 flex items-center gap-3">
+          <div
+            className="relative h-10 w-10 shrink-0 border-2 border-black bg-[#c8a07a]"
+            style={{ boxShadow: 'inset 2px 2px 0 rgba(255,255,255,0.35), inset -2px -2px 0 rgba(0,0,0,0.3)' }}
+            aria-hidden
+          >
+            <div className="absolute left-[20%] top-[30%] h-[9%] w-[60%] bg-[#5c4428]" />
+            <div className="absolute left-[24%] top-[42%] h-[14%] w-[13%] bg-[#3a7a34]" />
+            <div className="absolute right-[24%] top-[42%] h-[14%] w-[13%] bg-[#3a7a34]" />
+            <div className="absolute left-[42%] top-[46%] h-[30%] w-[16%] bg-[#a8845e]" />
+            <div className="absolute bottom-[10%] left-[36%] h-[7%] w-[28%] bg-[#8a6848]" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[15px]" style={{ fontFamily: 'var(--font-mc)', color: '#3f3f3f' }}>
+              Villager
+            </div>
+            <div className="text-[10px] text-[#5a5a5a]" style={{ fontFamily: 'var(--font-mc)' }}>
+              Hmmm! Take a look at my wares…
+            </div>
+          </div>
+        </div>
+
+        {/* ── trade rows ── */}
+        <div className="flex flex-col gap-[6px]">
+          {VILLAGER_TRADES.map((offer, i) => {
+            const giveIcon = slotIconUrl(offer.give.id);
+            const getIcon = slotIconUrl(offer.get.id);
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-3 px-2 py-2"
+                style={{ boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff', background: '#8b8b8b' }}
+              >
+                {/* give slot */}
+                <div
+                  className="relative flex h-[40px] w-[40px] shrink-0 items-center justify-center"
+                  style={{ background: SLOT_BG, boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+                  title={slotName(offer.give.id)}
+                >
+                  {giveIcon && <img src={giveIcon} alt={slotName(offer.give.id)} className="h-[32px] w-[32px] object-contain" style={{ imageRendering: 'pixelated' }} />}
+                  <span className="absolute bottom-0 right-0.5 text-[11px] font-bold text-white" style={{ textShadow: '1px 1px 0 #000' }}>
+                    {offer.give.count}
+                  </span>
+                </div>
+                {/* arrow */}
+                <div aria-hidden className="text-xl leading-none text-[#3f3f3f]">→</div>
+                {/* get slot */}
+                <div
+                  className="relative flex h-[40px] w-[40px] shrink-0 items-center justify-center"
+                  style={{ background: SLOT_BG, boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
+                  title={slotName(offer.get.id)}
+                >
+                  {getIcon && <img src={getIcon} alt={slotName(offer.get.id)} className="h-[32px] w-[32px] object-contain" style={{ imageRendering: 'pixelated' }} />}
+                  <span className="absolute bottom-0 right-0.5 text-[11px] font-bold text-white" style={{ textShadow: '1px 1px 0 #000' }}>
+                    {offer.get.count}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1 truncate text-[11px] text-[#2a2a2a]" style={{ fontFamily: 'var(--font-mc)' }}>
+                  {slotName(offer.get.id)}
+                </div>
+                <button
+                  className="mc-btn shrink-0 px-3 py-1.5 text-[11px] text-white"
+                  style={{
+                    fontFamily: 'var(--font-mc)',
+                    border: '2px solid #000',
+                    background: '#5d7a3c',
+                    boxShadow: 'inset 2px 2px 0 rgba(255,255,255,0.35), inset -2px -2px 0 rgba(0,0,0,0.35)',
+                    textShadow: '2px 2px 0 rgba(0,0,0,0.6)',
+                  }}
+                  onClick={() => { audio.click(); getEngine()?.executeTrade(i); }}
+                >
+                  Trade
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 text-center text-[10px] text-[#5a5a5a]" style={{ fontFamily: 'var(--font-mc)' }}>
+          Esc to close
+        </div>
       </div>
     </div>
   );

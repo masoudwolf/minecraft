@@ -99,6 +99,8 @@ export const ITEM = {
   ARROW: 318,
   BONE: 319,
   FLINT: 320,
+  // farming (phase 8)
+  BONEMEAL: 321,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -558,6 +560,22 @@ export const ITEMS: Record<number, ItemDef> = {
       ctx.fillRect(6, 6, 2, 1); ctx.fillRect(5, 7, 1, 2);
       ctx.fillStyle = '#0e4038';
       ctx.fillRect(8, 8, 2, 2);
+    },
+  },
+  [ITEM.BONEMEAL]: {
+    id: ITEM.BONEMEAL, name: 'Bone Meal',
+    icon: (ctx) => {
+      // white powder pile
+      ctx.fillStyle = '#ececdc';
+      ctx.fillRect(4, 9, 8, 4);
+      ctx.fillRect(5, 7, 6, 2);
+      ctx.fillRect(6, 6, 4, 1);
+      ctx.fillStyle = '#d8d8c4';
+      px(ctx, 5, 10, '#d8d8c4'); px(ctx, 9, 11, '#d8d8c4'); px(ctx, 7, 8, '#d8d8c4');
+      ctx.fillStyle = '#c0c0a8';
+      px(ctx, 6, 12, '#c0c0a8'); px(ctx, 10, 12, '#c0c0a8');
+      // sparkle
+      px(ctx, 8, 4, '#ffffff'); px(ctx, 5, 5, '#f6f6ea');
     },
   },
 };

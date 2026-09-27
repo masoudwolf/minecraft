@@ -77,6 +77,8 @@ export class WeatherSystem {
   private rnd: () => number;
   /** biome query injected by engine (player pos → biome) */
   biomeAt: (x: number, z: number) => Biome;
+  /** engine callback: lightning bolt visual at the strike point (ground level) */
+  onStrike?: (x: number, y: number, z: number) => void;
 
   constructor(scene: THREE.Scene, seed: number, biomeAt: (x: number, z: number) => Biome) {
     this.rnd = (() => {
@@ -180,11 +182,17 @@ export class WeatherSystem {
     if (this.state === 'thunder' && this.intensity > 0.6) {
       this.thunderTimer -= dt;
       if (this.thunderTimer <= 0 && this.flashBlinks === 0) {
-        // strike! start blink sequence
+        // strike! pick a strike point near the camera + start blink sequence
+        const ang = this.rnd() * Math.PI * 2;
+        const dist = 8 + this.rnd() * 26;
+        const sx = camX + Math.cos(ang) * dist;
+        const sz = camZ + Math.sin(ang) * dist;
+        const gy = groundY(sx, sz);
         this.flashBlinks = 2 + Math.floor(this.rnd() * 3);
         this.flash = 1;
         this.thunderTimer = 3 + this.rnd() * 7;
         audio.thunder(this.rnd() * 0.75);
+        this.onStrike?.(sx, gy, sz);
       }
     }
     // flash decay + blink

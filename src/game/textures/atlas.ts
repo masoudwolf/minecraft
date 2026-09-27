@@ -578,6 +578,81 @@ export function getAtlas(): AtlasData {
   p = T(58); drawWool(ctx, p[0], p[1], rnd, ['#8a6a4a', '#7c5e40', '#9a7a56', '#6a5034', '#92724e']);   // brown wool
   p = T(59); drawWool(ctx, p[0], p[1], rnd, ['#3a3a3a', '#303030', '#444444', '#282828', '#3e3e3e']);   // black wool
 
+  // ── phase 8: mushroom biome tiles 60-66 ──
+  p = T(60);                                                                                             // mycelium top
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#8a7290', '#7e687e', '#947c9a', '#74607a', '#9c849e'], rnd);
+    // purple speckle threads
+    for (let i = 0; i < 14; i++) {
+      const x = Math.floor(rnd() * 15), y = Math.floor(rnd() * 15);
+      px(ctx, p[0] + x, p[1] + y, '#b09ab4');
+      if (rnd() > 0.5) px(ctx, p[0] + x + 1, p[1] + y, '#6a566e');
+    }
+  }
+  p = T(61);                                                                                             // mycelium side
+  {
+    noiseFill(ctx, p[0], p[1], 16, 5, ['#8a7290', '#7e687e', '#947c9a', '#74607a'], rnd);
+    noiseFill(ctx, p[0], p[1] + 5, 16, 11, DIRT, rnd);
+    for (let i = 0; i < 5; i++) px(ctx, p[0] + Math.floor(rnd() * 16), p[1] + 5, '#9c849e');
+  }
+  p = T(62);                                                                                             // mushroom stem
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#d8d0c0', '#cec6b4', '#e2dacb'], rnd);
+    for (let i = 0; i < 6; i++) {
+      const x = Math.floor(rnd() * 15), y = Math.floor(rnd() * 15);
+      px(ctx, p[0] + x, p[1] + y, '#b8b0a0'); px(ctx, p[0] + x, p[1] + y + 1, '#c0b8a8');
+    }
+  }
+  p = T(63);                                                                                             // red mushroom cap
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#c22a22', '#b02420', '#d13a2e'], rnd);
+    // white spots
+    for (let i = 0; i < 5; i++) {
+      const x = 1 + Math.floor(rnd() * 13), y = 1 + Math.floor(rnd() * 13);
+      ctx.fillStyle = '#f0e8e0';
+      ctx.fillRect(p[0] + x, p[1] + y, 2, 2);
+      if (rnd() > 0.5) px(ctx, p[0] + x + 2, p[1] + y + 1, '#f0e8e0');
+    }
+  }
+  p = T(64);                                                                                             // brown mushroom cap
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#9c7448', '#8e683e', '#a88154'], rnd);
+    for (let i = 0; i < 8; i++) px(ctx, p[0] + Math.floor(rnd() * 16), p[1] + Math.floor(rnd() * 16), '#7a5834');
+    for (let i = 0; i < 6; i++) px(ctx, p[0] + Math.floor(rnd() * 16), p[1] + Math.floor(rnd() * 16), '#c09868');
+  }
+  p = T(65);                                                                                             // small red mushroom
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    // stalk
+    ctx.fillStyle = '#e0d8c8';
+    ctx.fillRect(p[0] + 7, p[1] + 9, 2, 6);
+    px(ctx, p[0] + 7, p[1] + 9, '#c8c0b0');
+    // cap
+    ctx.fillStyle = '#c22a22';
+    ctx.fillRect(p[0] + 4, p[1] + 6, 8, 3);
+    ctx.fillRect(p[0] + 5, p[1] + 5, 6, 1);
+    ctx.fillStyle = '#e85048';
+    ctx.fillRect(p[0] + 5, p[1] + 6, 6, 1);
+    ctx.fillStyle = '#f0e8e0';
+    px(ctx, p[0] + 6, p[1] + 6, '#f0e8e0'); px(ctx, p[0] + 9, p[1] + 7, '#f0e8e0');
+    ctx.fillStyle = '#8a1810';
+    ctx.fillRect(p[0] + 4, p[1] + 8, 8, 1);
+  }
+  p = T(66);                                                                                             // small brown mushroom
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    ctx.fillStyle = '#d8d0c0';
+    ctx.fillRect(p[0] + 7, p[1] + 9, 2, 6);
+    px(ctx, p[0] + 7, p[1] + 9, '#c0b8a8');
+    ctx.fillStyle = '#9c7448';
+    ctx.fillRect(p[0] + 5, p[1] + 6, 6, 3);
+    ctx.fillRect(p[0] + 6, p[1] + 5, 4, 1);
+    ctx.fillStyle = '#c09868';
+    ctx.fillRect(p[0] + 6, p[1] + 6, 4, 1);
+    ctx.fillStyle = '#6e4e2c';
+    ctx.fillRect(p[0] + 5, p[1] + 8, 6, 1);
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

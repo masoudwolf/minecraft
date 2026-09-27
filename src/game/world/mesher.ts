@@ -79,6 +79,7 @@ const BIOME_TINTS: Record<Biome, [number, number, number]> = {
   desert: [0.88, 0.9, 0.5],
   snowy: [0.84, 0.94, 0.9],
   mountains: [0.85, 0.95, 0.88],
+  mushroom: [0.72, 0.62, 0.78], // muted lavender-gray (mycelium biome has little grass)
 };
 const TINT_WHITE: [number, number, number] = [1, 1, 1];
 

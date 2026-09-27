@@ -87,6 +87,13 @@ export const BLOCK = {
   WOOL_GRAY: 52,
   WOOL_BROWN: 53,
   WOOL_BLACK: 54,
+  // ── phase 8: mushroom biome ──
+  MYCELIUM: 55,
+  MUSHROOM_STEM: 56,
+  MUSHROOM_RED_CAP: 57,
+  MUSHROOM_BROWN_CAP: 58,
+  MUSHROOM_RED: 59,
+  MUSHROOM_BROWN: 60,
 } as const;
 
 export const FLOW_MAX = 7;
@@ -121,6 +128,8 @@ export const TILE = {
   wool: 48, bed_top: 49, bed_side: 50,
   sugarcane: 51, dead_bush: 52, lily_pad: 53, jungle_log_side: 54, jungle_leaves: 55,
   wool_light_gray: 56, wool_gray: 57, wool_brown: 58, wool_black: 59,
+  mycelium_top: 60, mycelium_side: 61, mushroom_stem: 62,
+  mushroom_red: 63, mushroom_brown: 64, mushroom_red_small: 65, mushroom_brown_small: 66,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -188,6 +197,14 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.WOOL_GRAY]: { id: BLOCK.WOOL_GRAY, name: 'Gray Wool', tiles: TILE.wool_gray, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
   [BLOCK.WOOL_BROWN]: { id: BLOCK.WOOL_BROWN, name: 'Brown Wool', tiles: TILE.wool_brown, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
   [BLOCK.WOOL_BLACK]: { id: BLOCK.WOOL_BLACK, name: 'Black Wool', tiles: TILE.wool_black, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
+
+  // ── phase 8: mushroom biome ──
+  [BLOCK.MYCELIUM]: { id: BLOCK.MYCELIUM, name: 'Mycelium', tiles: t(TILE.mycelium_side, TILE.mycelium_side, TILE.mycelium_top, TILE.dirt, TILE.mycelium_side, TILE.mycelium_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'grass' },
+  [BLOCK.MUSHROOM_STEM]: { id: BLOCK.MUSHROOM_STEM, name: 'Mushroom Stem', tiles: t(TILE.mushroom_stem, TILE.mushroom_stem, TILE.mushroom_stem, TILE.mushroom_stem, TILE.mushroom_stem, TILE.mushroom_stem), solid: true, opaque: true, hardness: 0.4, tool: 'axe', sound: 'wood' },
+  [BLOCK.MUSHROOM_RED_CAP]: { id: BLOCK.MUSHROOM_RED_CAP, name: 'Red Mushroom Block', tiles: TILE.mushroom_red, solid: true, opaque: true, hardness: 0.4, tool: 'axe', drop: BLOCK.MUSHROOM_RED, sound: 'wood' },
+  [BLOCK.MUSHROOM_BROWN_CAP]: { id: BLOCK.MUSHROOM_BROWN_CAP, name: 'Brown Mushroom Block', tiles: TILE.mushroom_brown, solid: true, opaque: true, hardness: 0.4, tool: 'axe', drop: BLOCK.MUSHROOM_BROWN, sound: 'wood' },
+  [BLOCK.MUSHROOM_RED]: { id: BLOCK.MUSHROOM_RED, name: 'Red Mushroom', tiles: TILE.mushroom_red_small, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+  [BLOCK.MUSHROOM_BROWN]: { id: BLOCK.MUSHROOM_BROWN, name: 'Brown Mushroom', tiles: TILE.mushroom_brown_small, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
 };
 
 /** flowing water defs share appearance with source water */
@@ -234,6 +251,10 @@ export function waterReplaceable(id: number): boolean {
   if (d.needsGround && !d.solid) return true;
   if (id === BLOCK.SUGARCANE || id === BLOCK.LILY_PAD) return true;
   return false;
+}
+/** giant mushroom cap block for a small mushroom id (bonemeal growth) */
+export function mushroomCapId(smallId: number): number {
+  return smallId === BLOCK.MUSHROOM_BROWN ? BLOCK.MUSHROOM_BROWN_CAP : BLOCK.MUSHROOM_RED_CAP;
 }
 /** effective collision/render height of a block cell (1 = full cube) */
 export function blockHeight(id: number): number {

@@ -12,6 +12,7 @@ import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, ITEM } from './items';
 import { matchRecipe, freshDur } from './crafting';
+import { VILLAGER_TRADES } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
@@ -46,6 +47,13 @@ interface PrimedTnt {
   t: number;
   mesh: THREE.Mesh;
   overlay: THREE.Mesh;
+}
+
+/** lightning bolt visual (thunderstorm strike) */
+interface LightningBolt {
+  group: THREE.Group;
+  mats: THREE.MeshBasicMaterial[];
+  t: number;
 }
 
 export class Game {
@@ -107,6 +115,8 @@ export class Game {
   private bowDrawSoundT = 0;
   /** latest mob callbacks (mining attack → hurt→teleport chain) */
   private mobCb: MobCallbacks | null = null;
+  /** active lightning bolts (thunderstorm visuals) */
+  private lightningBolts: LightningBolt[] = [];
 
   // inventory / crafting / containers
   private craft2: HotbarSlot[] = Array.from({ length: 4 }, () => ({ blockId: 0, count: 0 }));
@@ -358,6 +368,8 @@ export class Game {
     this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
     this.weather?.dispose();
     this.weather = new WeatherSystem(this.scene, seed, (wx, wz) => this.world.terrain.biomeAt(wx, wz));
+    this.weather.onStrike = (sx, sy, sz) => this.spawnLightningBolt(sx, sy, sz);
+    this.clearLightningBolts();
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
@@ -555,6 +567,11 @@ export class Game {
       }
       return;
     }
+    // trade panel open: Escape closes it
+    if (st.tradeOpen && st.screen === 'playing') {
+      if (e.code === 'Escape' || e.code === 'KeyE') { e.preventDefault(); this.closeTrade(); return; }
+      return;
+    }
     if (st.screen !== 'playing') return;
     this.keys.add(e.code);
     if (e.code === 'KeyE') { e.preventDefault(); this.openInventory(false); return; }
@@ -623,6 +640,7 @@ export class Game {
     // unlocked: pause only if a real lock session just ended (>500ms).
     // flash-engage/disengage cycles (headless, alt-tab quirks) must not pause the game.
     if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
+    if (useGameStore.getState().tradeOpen) return; // villager trade panel: world keeps running
     if (
       this.hadLock &&
       performance.now() - this.lockHeldAt > 500 &&
@@ -643,10 +661,10 @@ export class Game {
 
   private onContextMenu = (e: Event): void => e.preventDefault();
 
-  /** RMB: draw bow when held, otherwise interact/place */
+  /** RMB press: bow charge / villager trade / bone meal fertilize / block interaction / place */
   private rightClick(): void {
-    const slot = this.player.hotbar[this.player.selected];
-    if (slot && slot.count > 0 && isBowItem(slot.blockId)) {
+    const held = this.player.hotbar[this.player.selected];
+    if (held && held.count > 0 && isBowItem(held.blockId)) {
       if (!this.bowCharging) {
         if (this.player.isCreative || this.countItem(ITEM.ARROW) > 0) {
           this.bowCharging = true;
@@ -658,7 +676,256 @@ export class Game {
       }
       return;
     }
+    // villager: open the trade panel (within reach, not sneaking)
+    if (this.target && !this.player.sneaking) {
+      const p = this.player;
+      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+      const dir = p.forwardVector();
+      const hit = this.mobs?.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      if (hit && hit.mob.type === 'villager') {
+        this.openTrade();
+        return;
+      }
+    }
+    // bone meal: fertilize the target block
+    if (held && held.count > 0 && held.blockId === ITEM.BONEMEAL && this.target) {
+      const t = this.target;
+      const targetId = this.world.getBlock(t.x, t.y, t.z);
+      if (this.fertilize(t.x, t.y, t.z, targetId)) {
+        held.count--;
+        if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+        this.syncHUD();
+        this.updateHandMesh();
+        this.placeCooldown = 0.25;
+        this.startSwing();
+      }
+      return;
+    }
     this.placeBlock();
+  }
+
+  /** apply bone meal to a block; returns true when consumed */
+  private fertilize(x: number, y: number, z: number, id: number): boolean {
+    const greens: [number, number][] = [[0.5, 0.95, 0.4], [0.65, 1, 0.5], [0.4, 0.85, 0.35]] as unknown as [number, number][];
+    void greens;
+    // grass: sprout tall grass + flowers around (MC-like scatter)
+    if (id === BLOCK.GRASS) {
+      let planted = 0;
+      for (let i = 0; i < 14 && planted < 5; i++) {
+        const bx = x + Math.floor(Math.random() * 5) - 2;
+        const bz = z + Math.floor(Math.random() * 5) - 2;
+        const by = y + 1;
+        if (this.world.getBlock(bx, by, bz) !== BLOCK.AIR) continue;
+        if (this.world.getBlock(bx, y, bz) !== BLOCK.GRASS) continue;
+        const r = Math.random();
+        const block = r < 0.72 ? BLOCK.TALL_GRASS : r < 0.86 ? BLOCK.FLOWER_RED : BLOCK.FLOWER_YELLOW;
+        this.world.setBlock(bx, by, bz, block);
+        planted++;
+      }
+      if (planted > 0) {
+        this.fertilizeFx(x, y + 1, z);
+        this.achievements.unlock('gardener');
+        return true;
+      }
+      return false;
+    }
+    // mycelium: sprout small mushrooms
+    if (id === BLOCK.MYCELIUM) {
+      let planted = 0;
+      for (let i = 0; i < 12 && planted < 4; i++) {
+        const bx = x + Math.floor(Math.random() * 5) - 2;
+        const bz = z + Math.floor(Math.random() * 5) - 2;
+        const by = y + 1;
+        if (this.world.getBlock(bx, by, bz) !== BLOCK.AIR) continue;
+        if (this.world.getBlock(bx, y, bz) !== BLOCK.MYCELIUM) continue;
+        this.world.setBlock(bx, by, bz, Math.random() < 0.5 ? BLOCK.MUSHROOM_RED : BLOCK.MUSHROOM_BROWN);
+        planted++;
+      }
+      if (planted > 0) {
+        this.fertilizeFx(x, y + 1, z);
+        this.achievements.unlock('gardener');
+        return true;
+      }
+      return false;
+    }
+    // small mushroom: chance to grow a giant one
+    if (id === BLOCK.MUSHROOM_RED || id === BLOCK.MUSHROOM_BROWN) {
+      if (Math.random() < 0.55 && this.growGiantMushroom(x, y, z, id)) {
+        this.fertilizeFx(x, y, z);
+        this.achievements.unlock('gardener');
+        return true;
+      }
+      this.showToast('The mushroom refuses to grow');
+      return false;
+    }
+    this.showToast('Bone meal has no effect here');
+    return false;
+  }
+
+  private fertilizeFx(x: number, y: number, z: number): void {
+    audio.bonemeal();
+    for (let i = 0; i < 12; i++) {
+      this.particles.spawnParticle(
+        x + 0.5 + (Math.random() - 0.5) * 1.6, y + Math.random() * 0.8, z + 0.5 + (Math.random() - 0.5) * 1.6,
+        (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8,
+        [0.55, 0.9, 0.45], 0.055, 0.55, -0.6,
+      );
+    }
+  }
+
+  /** grow a giant mushroom from a small one (bonemeal); returns false when blocked */
+  private growGiantMushroom(x: number, y: number, z: number, smallId: number): boolean {
+    const below = this.world.getBlock(x, y - 1, z);
+    if (below !== BLOCK.MYCELIUM && below !== BLOCK.DIRT && below !== BLOCK.GRASS) return false;
+    const capId = smallId === BLOCK.MUSHROOM_BROWN ? BLOCK.MUSHROOM_BROWN_CAP : BLOCK.MUSHROOM_RED_CAP;
+    const height = 4 + Math.floor(Math.random() * 3); // 4..6
+    // clearance check
+    for (let dy = 1; dy <= height + 1; dy++) {
+      if (y + dy >= WORLD_HEIGHT) return false;
+      const cell = this.world.getBlock(x, y + dy, z);
+      if (cell !== BLOCK.AIR && !isLiquid(cell)) return false;
+    }
+    // stem (replaces the small mushroom at the base)
+    this.world.setBlock(x, y, z, BLOCK.MUSHROOM_STEM);
+    for (let dy = 1; dy <= height; dy++) this.world.setBlock(x, y + dy, z, BLOCK.MUSHROOM_STEM);
+    const topY = y + height;
+    if (smallId === BLOCK.MUSHROOM_RED) {
+      for (let dx = -2; dx <= 2; dx++)
+        for (let dz = -2; dz <= 2; dz++) {
+          if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+          this.setIfAir(x + dx, topY, z + dz, capId);
+        }
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dz = -1; dz <= 1; dz++)
+          this.setIfAir(x + dx, topY + 1, z + dz, capId);
+    } else {
+      for (let dx = -2; dx <= 2; dx++)
+        for (let dz = -2; dz <= 2; dz++) {
+          if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+          this.setIfAir(x + dx, topY - 1, z + dz, capId);
+        }
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dz = -1; dz <= 1; dz++)
+          this.setIfAir(x + dx, topY, z + dz, capId);
+      this.setIfAir(x, topY + 1, z, capId);
+    }
+    return true;
+  }
+
+  private setIfAir(x: number, y: number, z: number, id: number): void {
+    if (y < 0 || y >= WORLD_HEIGHT) return;
+    const cur = this.world.getBlock(x, y, z);
+    if (cur === BLOCK.AIR || isLiquid(cur)) this.world.setBlock(x, y, z, id);
+  }
+
+  // ── villager trading ────────────────────────────────────────────────────────
+  openTrade(): void {
+    audio.click();
+    useGameStore.getState().setTradeOpen(true);
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  closeTrade(): void {
+    const st = useGameStore.getState();
+    if (!st.tradeOpen) return;
+    st.setTradeOpen(false);
+    if (st.screen === 'playing') this.requestLock();
+  }
+
+  /** execute a villager trade offer (validated server-side… er, engine-side) */
+  executeTrade(index: number): void {
+    const offer = VILLAGER_TRADES[index];
+    if (!offer) return;
+    if (this.countItem(offer.give.id) < offer.give.count) {
+      this.showToast('Not enough ' + this.itemLabel(offer.give.id));
+      return;
+    }
+    this.consumeItem(offer.give.id, offer.give.count);
+    const leftover = addToSlots(this.player.hotbar, offer.get.id, offer.get.count, freshDur(offer.get.id));
+    if (leftover > 0) addToSlots(this.player.main, offer.get.id, leftover, freshDur(offer.get.id));
+    audio.trade();
+    this.achievements.unlock('trader');
+    this.showToast('Traded for ' + this.itemLabel(offer.get.id) + ' ×' + offer.get.count);
+    this.syncHUD();
+    this.syncInventory();
+  }
+
+  private itemLabel(id: number): string {
+    return isItemId(id) ? (getItemDef(id)?.name ?? 'item') : (getBlockDef(id)?.name ?? 'block');
+  }
+
+  // ── lightning (weather thunderstorm callback) ─────────────────────────────
+  private spawnLightningBolt(x: number, y: number, z: number): void {
+    const group = new THREE.Group();
+    const mats: THREE.MeshBasicMaterial[] = [];
+    const segments = 5;
+    const totalH = 42;
+    const segH = totalH / segments;
+    let px = x, pz = z;
+    for (let i = 0; i < segments; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false });
+      mats.push(mat);
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.16 + Math.random() * 0.1, segH, 0.16 + Math.random() * 0.1), mat);
+      const nx = px + (i === 0 ? 0 : (Math.random() - 0.5) * 2.2);
+      const nz = pz + (i === 0 ? 0 : (Math.random() - 0.5) * 2.2);
+      seg.position.set((px + nx) / 2 - x, y + segH * (i + 0.5), (pz + nz) / 2 - z);
+      seg.rotation.y = Math.random() * Math.PI;
+      group.add(seg);
+      px = nx; pz = nz;
+    }
+    group.position.set(x, y, z);
+    this.scene.add(group);
+    this.lightningBolts.push({ group, mats, t: 0.42 });
+    // impact effects + damage
+    this.particles.burstLand(x, y + 0.4, z, [1, 0.95, 0.7], 18);
+    for (let i = 0; i < 8; i++) {
+      this.particles.spawnParticle(
+        x + (Math.random() - 0.5) * 1.4, y + 0.5 + Math.random() * 1.4, z + (Math.random() - 0.5) * 1.4,
+        (Math.random() - 0.5) * 2, 2 + Math.random() * 2, (Math.random() - 0.5) * 2,
+        [1, 0.85, 0.35], 0.08, 0.5, -1,
+      );
+    }
+    audio.lightningStrike(Math.hypot(this.player.x - x, this.player.z - z));
+    // shockwave damage: mobs + player within 3 blocks
+    if (this.mobCb) {
+      for (const m of this.mobs.mobs) {
+        if (m.dead) continue;
+        const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+        if (d < 3) this.mobs.hurtMob(m, 5, (m.x - x) / (d || 1) * 3, (m.z - z) / (d || 1) * 3, this.mobCb);
+      }
+    }
+    const pd = Math.hypot(this.player.x - x, this.player.y - y, this.player.z - z);
+    if (pd < 3.2 && !this.player.isCreative) {
+      this.player.damage(Math.max(1, Math.round(6 - pd * 1.6)));
+      audio.hurt();
+    }
+  }
+
+  private updateLightning(dt: number): void {
+    for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
+      const b = this.lightningBolts[i];
+      b.t -= dt;
+      const flicker = b.t > 0 ? (Math.sin(b.t * 60) > -0.3 ? 0.95 : 0.25) : 0;
+      for (const m of b.mats) m.opacity = Math.max(0, flicker * Math.min(1, b.t * 4));
+      if (b.t <= 0) {
+        this.scene.remove(b.group);
+        for (const seg of b.group.children) {
+          const mesh = seg as THREE.Mesh;
+          mesh.geometry.dispose();
+        }
+        for (const m of b.mats) m.dispose();
+        this.lightningBolts.splice(i, 1);
+      }
+    }
+  }
+
+  private clearLightningBolts(): void {
+    for (const b of this.lightningBolts) {
+      this.scene.remove(b.group);
+      for (const seg of b.group.children) (seg as THREE.Mesh).geometry.dispose();
+      for (const m of b.mats) m.dispose();
+    }
+    this.lightningBolts = [];
   }
 
   /** RMB released: fire the arrow (charge ≥ 0.14) or cancel */
@@ -2076,6 +2343,8 @@ export class Game {
     this.blockEnts.tick(dt);
     // primed TNT fuses + explosions
     this.updatePrimedTnt(dt);
+    // lightning bolt visuals (thunderstorm)
+    this.updateLightning(dt);
     // fluid simulation + plant growth
     this.world.tickFluids(dt);
     // ambient plant growth: sample random columns near the player and tick canes/cacti
@@ -2175,6 +2444,9 @@ export class Game {
         playerZ: p.z,
         playerCreative: p.isCreative,
         igniteTnt: (tx, ty, tz) => this.igniteTNT(tx, ty, tz, 0.25 + Math.random() * 0.7),
+        killByPlayer: (dist) => {
+          if (dist >= 12) this.achievements.unlock('sniperDuel');
+        },
       };
       this.mobs.update(dt, {
         x: p.x, y: p.y, z: p.z,
@@ -2355,6 +2627,7 @@ export class Game {
     }
     this.particles?.dispose();
     this.weather?.dispose();
+    this.clearLightningBolts();
     this.drops?.clear();
     this.mobs?.clear();
     this.renderer.dispose();

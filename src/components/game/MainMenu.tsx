@@ -55,7 +55,7 @@ export function MainMenu() {
 
       {/* footer */}
       <div className="absolute bottom-3 left-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
-        VoxelCraft 0.6.0 — Phase 4: Creative, Multi-World &amp; Achievements
+        VoxelCraft 0.8.0 — Phase 8: Villages, Villagers &amp; Mushroom Biomes
       </div>
       <div className="absolute bottom-3 right-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
         Fan project — not affiliated with Mojang

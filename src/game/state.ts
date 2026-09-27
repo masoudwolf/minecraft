@@ -96,6 +96,8 @@ interface GameStore {
   inv: InvUIState;
   /** MC-style advancement popup (top-right) */
   advancement: { title: string; desc: string; icon: string } | null;
+  /** villager trade panel open (playing screen only) */
+  tradeOpen: boolean;
   /** known worlds (menu list) */
   worlds: WorldMeta[];
   /** id of the world currently being played */
@@ -111,6 +113,7 @@ interface GameStore {
   setToast: (t: string | null) => void;
   setInv: (inv: Partial<InvUIState>) => void;
   setAdvancement: (a: { title: string; desc: string; icon: string } | null) => void;
+  setTradeOpen: (v: boolean) => void;
   setWorlds: (w: WorldMeta[]) => void;
   setCurrentWorld: (id: string | null, name: string) => void;
 }
@@ -145,6 +148,7 @@ export const useGameStore = create<GameStore>((set) => ({
   toast: null,
   inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, creative: false, armor: [null, null, null, null] },
   advancement: null,
+  tradeOpen: false,
   worlds: [],
   currentWorldId: null,
   currentWorldName: '',
@@ -162,6 +166,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setToast: (t) => set({ toast: t }),
   setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
   setAdvancement: (a) => set({ advancement: a }),
+  setTradeOpen: (v) => set({ tradeOpen: v }),
   setWorlds: (w) => set({ worlds: w }),
   setCurrentWorld: (id, name) => set({ currentWorldId: id, currentWorldName: name }),
 }));

@@ -9,7 +9,7 @@ import { WorldSelectScreen, CreateWorldScreen } from './WorldMenu';
 import { AchievementsScreen } from './AchievementsScreen';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
-import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen } from './Overlays';
+import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen, TradePanel } from './Overlays';
 import { InventoryScreen } from './InventoryScreen';
 
 export default function GameRoot() {
@@ -17,6 +17,7 @@ export default function GameRoot() {
   const screen = useGameStore((s) => s.screen);
   const prevScreen = useGameStore((s) => s.prevScreen);
   const invOpen = useGameStore((s) => s.inv.open);
+  const tradeOpen = useGameStore((s) => s.tradeOpen);
   const debugVisible = useGameStore((s) => s.debugVisible);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function GameRoot() {
         </>
       )}
       {screen === 'playing' && invOpen && <InventoryScreen />}
+      {screen === 'playing' && tradeOpen && !invOpen && <TradePanel />}
       {screen === 'menu' && <MainMenu />}
       {screen === 'worlds' && <WorldSelectScreen />}
       {screen === 'createWorld' && <CreateWorldScreen />}

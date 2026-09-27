@@ -13,7 +13,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-export type Biome = 'plains' | 'forest' | 'desert' | 'snowy' | 'mountains' | 'jungle' | 'swamp';
+export type Biome = 'plains' | 'forest' | 'desert' | 'snowy' | 'mountains' | 'jungle' | 'swamp' | 'mushroom';
 
 export class TerrainGenerator {
   private n2Height: (x: number, y: number) => number;
@@ -60,6 +60,8 @@ export class TerrainGenerator {
     const humid = this.fbm2(this.n2Humid, wx, z, 2, 1 / 380);
     const m = this.fbm2(this.n2Mountains, x, z, 2, 1 / 260);
     if (m > 0.52) return 'mountains';
+    // mushroom islands: rare mid-elevation warm-humid pockets (below mountain threshold)
+    if (m > 0.415 && m <= 0.52 && temp > -0.05 && temp < 0.38 && humid > 0.30) return 'mushroom';
     if (temp > 0.42 && humid < 0.05) return 'desert';
     if (temp > 0.30 && humid > 0.42) return 'jungle';
     if (temp < -0.42) return 'snowy';
@@ -97,22 +99,25 @@ export class TerrainGenerator {
   }
 
   /** deterministic tree info for a column, or null */
-  treeAt(x: number, z: number): { type: 'oak' | 'spruce' | 'jungle' | 'swamp'; height: number } | null {
+  treeAt(x: number, z: number): { type: 'oak' | 'spruce' | 'jungle' | 'swamp' | 'mushroom_red' | 'mushroom_brown'; height: number } | null {
     const h = this.heightAt(x, z);
     if (h <= SEA_LEVEL) return null;
     const biome = this.biomeAt(x, z);
-    const density = biome === 'forest' ? 0.028 : biome === 'plains' ? 0.004 : biome === 'snowy' ? 0.012 : biome === 'mountains' ? 0.006 : biome === 'jungle' ? 0.05 : biome === 'swamp' ? 0.012 : 0;
+    const density = biome === 'forest' ? 0.028 : biome === 'plains' ? 0.004 : biome === 'snowy' ? 0.012 : biome === 'mountains' ? 0.006 : biome === 'jungle' ? 0.05 : biome === 'swamp' ? 0.012 : biome === 'mushroom' ? 0.016 : 0;
     if (density === 0) return null;
     const hash = this.hash2(x, z, 0);
     if (hash > density) return null;
-    let type: 'oak' | 'spruce' | 'jungle' | 'swamp' = 'oak';
+    let type: 'oak' | 'spruce' | 'jungle' | 'swamp' | 'mushroom_red' | 'mushroom_brown' = 'oak';
     if (biome === 'snowy') type = 'spruce';
     else if (biome === 'jungle') type = 'jungle';
     else if (biome === 'swamp') type = 'swamp';
+    else if (biome === 'mushroom') type = this.hash2(x, z, 9) < 0.45 ? 'mushroom_brown' : 'mushroom_red';
     const hv = Math.floor(hash * 1000);
     const height = type === 'oak' ? 4 + (hv % 3)
       : type === 'spruce' ? 6 + (hv % 3)
       : type === 'jungle' ? 9 + (hv % 5)
+      : type === 'mushroom_red' ? 4 + (hv % 2)
+      : type === 'mushroom_brown' ? 5 + (hv % 3)
       : 5 + (hv % 3);
     return { type, height };
   }
@@ -142,6 +147,9 @@ export class TerrainGenerator {
     } else if (biome === 'desert') {
       if (r < 0.006) return { block: BLOCK.CACTUS, h: 1 + (Math.abs(hash) % 3) };
       if (r < 0.012) return { block: BLOCK.DEAD_BUSH, h: 1 };
+    } else if (biome === 'mushroom') {
+      // small mushrooms sprout across the mycelium
+      if (r < 0.020) return { block: hash & 1 ? BLOCK.MUSHROOM_RED : BLOCK.MUSHROOM_BROWN, h: 1 };
     }
     return null;
   }
@@ -159,7 +167,7 @@ export class TerrainGenerator {
         const biome = this.biomeAt(wx, wz);
 
         for (let y = 0; y < WORLD_HEIGHT; y++) {
-          let block = BLOCK.AIR;
+          let block: number = BLOCK.AIR;
 
           if (y === 0 || (y < 3 && ((wx * 31 + wz * 17 + y * 7) % 3 === 0))) {
             block = BLOCK.BEDROCK;
@@ -171,6 +179,7 @@ export class TerrainGenerator {
             if (h <= SEA_LEVEL + 1) block = biome === 'desert' ? BLOCK.SAND : BLOCK.SAND;
             else if (biome === 'desert') block = BLOCK.SAND;
             else if (biome === 'snowy') block = BLOCK.SNOW_GRASS;
+            else if (biome === 'mushroom') block = BLOCK.MYCELIUM;
             else if (biome === 'mountains' && h > SEA_LEVEL + 34) block = BLOCK.SNOW_GRASS;
             else if (biome === 'mountains' && h > SEA_LEVEL + 22) block = BLOCK.STONE;
             else block = BLOCK.GRASS;
@@ -211,6 +220,9 @@ export class TerrainGenerator {
       }
     }
 
+    // village structures (plains): deterministic per chunk — house / well / farm
+    this.placeVillageStructures(data, cx, cz);
+
     // decorations: flowers / tall grass / cactus / dead bush (in-chunk only, 1 column wide)
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -220,7 +232,7 @@ export class TerrainGenerator {
         if (!dec) continue;
         const ground = this.heightAt(wx, wz);
         const below = data[blockIndex(lx, ground, lz)];
-        const supports = below === BLOCK.GRASS || below === BLOCK.SNOW_GRASS || below === BLOCK.SAND;
+        const supports = below === BLOCK.GRASS || below === BLOCK.SNOW_GRASS || below === BLOCK.SAND || below === BLOCK.MYCELIUM;
         if (!supports) continue;
         // place stack (cactus can be 1-3 tall), only into air
         for (let dy = 1; dy <= dec.h; dy++) {
@@ -282,7 +294,7 @@ export class TerrainGenerator {
     }
   }
 
-  private setLocal(data: Uint8Array, cx: number, cz: number, wx: number, y: number, wz: number, block: BLOCK, replaceSolid: boolean): void {
+  private setLocal(data: Uint8Array, cx: number, cz: number, wx: number, y: number, wz: number, block: number, replaceSolid: boolean): void {
     const lx = wx - cx * CHUNK_SIZE;
     const lz = wz - cz * CHUNK_SIZE;
     if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
@@ -291,9 +303,194 @@ export class TerrainGenerator {
     data[idx] = block;
   }
 
-  private placeTree(data: Uint8Array, lx: number, groundH: number, lz: number, tree: { type: 'oak' | 'spruce' | 'jungle' | 'swamp'; height: number }, cx: number, cz: number): void {
+  /** place a village structure in this chunk (plains only, fully in-chunk): house / well / farm */
+  private placeVillageStructures(data: Uint8Array, cx: number, cz: number): void {
+    const x0 = cx * CHUNK_SIZE;
+    const z0 = cz * CHUNK_SIZE;
+    const midX = x0 + CHUNK_SIZE / 2, midZ = z0 + CHUNK_SIZE / 2;
+    const midBiome = this.biomeAt(Math.floor(midX), Math.floor(midZ));
+    if (midBiome !== 'plains') return;
+    const v = this.hash2(cx, cz, 500);
+    // spacing: skip this chunk if the previous chunk in x won the roll (avoid wall-to-wall villages)
+    if (v >= 0.105) return;
+    if (cx % 2 === 0 && this.hash2(cx - 1, cz, 500) < 0.105) return;
+
+    if (v < 0.055) {
+      // ── house: 7x7 footprint, plank walls, log corners, glass windows, torch ──
+      const ox = 2 + Math.floor(this.hash2(cx, cz, 501) * 7); // 2..8
+      const oz = 2 + Math.floor(this.hash2(cx, cz, 502) * 7);
+      // flatness gate
+      let hMin = 999, hMax = -999;
+      for (const [dx, dz] of [[0, 0], [6, 0], [0, 6], [6, 6]] as [number, number][]) {
+        const h = this.heightAt(x0 + ox + dx, z0 + oz + dz);
+        if (h <= SEA_LEVEL + 1) return;
+        hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+      }
+      if (hMax - hMin > 3) return;
+      const floorY = hMax;
+      const wallTop = floorY + 4;
+      const setF = (lx: number, y: number, lz: number, block: number): void => {
+        const idx = blockIndex(lx, y, lz);
+        data[idx] = block;
+      };
+      const setIf = (lx: number, y: number, lz: number, block: number, replaceSolid: boolean): void => {
+        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+        if (!replaceSolid) {
+          const cur = data[blockIndex(lx, y, lz)];
+          if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
+        }
+        data[blockIndex(lx, y, lz)] = block;
+      };
+      // clear the volume (kill trees inside), then build
+      for (let lx = 0; lx < 7; lx++)
+        for (let lz = 0; lz < 7; lz++)
+          for (let y = floorY + 1; y <= wallTop + 1; y++)
+            setF(ox + lx, y, oz + lz, BLOCK.AIR);
+      // foundation + cobble floor
+      for (let lx = 0; lx < 7; lx++)
+        for (let lz = 0; lz < 7; lz++) {
+          setF(ox + lx, floorY, oz + lz, BLOCK.COBBLESTONE);
+          const ground = this.heightAt(x0 + ox + lx, z0 + oz + lz);
+          for (let y = ground; y < floorY && y > ground - 12; y++) setIf(ox + lx, y, oz + lz, BLOCK.COBBLESTONE, true);
+        }
+      // walls: planks with log corners
+      for (let y = floorY + 1; y <= wallTop; y++) {
+        for (let i = 0; i < 7; i++) {
+          const isCorner = (i === 0 || i === 6);
+          // -z wall (door side), +z, -x, +x
+          const doorCols = i >= 3 && i <= 3;
+          if (y <= floorY + 2 && doorCols) {
+            setIf(ox + i, y, oz, BLOCK.AIR, true); // doorway (2 tall)
+          } else {
+            setIf(ox + i, y, oz, BLOCK.PLANKS, true);
+          }
+          setIf(ox + i, y, oz + 6, BLOCK.PLANKS, true);
+          const glassRow = y === floorY + 2;
+          setIf(ox, y, oz + i, glassRow && i >= 2 && i <= 4 ? BLOCK.GLASS : BLOCK.PLANKS, true);
+          setIf(ox + 6, y, oz + i, glassRow && i >= 2 && i <= 4 ? BLOCK.GLASS : BLOCK.PLANKS, true);
+          // corners = logs
+          if (isCorner) {
+            setIf(ox, y, oz, BLOCK.LOG, true);
+            setIf(ox + 6, y, oz, BLOCK.LOG, true);
+            setIf(ox, y, oz + 6, BLOCK.LOG, true);
+            setIf(ox + 6, y, oz + 6, BLOCK.LOG, true);
+          }
+        }
+      }
+      // flat roof: spruce log rim + planks
+      for (let lx = 0; lx < 7; lx++)
+        for (let lz = 0; lz < 7; lz++) {
+          const rim = lx === 0 || lx === 6 || lz === 0 || lz === 6;
+          setIf(ox + lx, wallTop + 1, oz + lz, rim ? BLOCK.SPRUCE_LOG : BLOCK.PLANKS, true);
+        }
+      // interior torch on the floor (light + cozy)
+      setIf(ox + 5, floorY + 1, oz + 5, BLOCK.TORCH, true);
+      return;
+    }
+
+    if (v < 0.075) {
+      // ── well: 3x3 cobble ring, water center, log posts + cobble roof ──
+      const ox = 4 + Math.floor(this.hash2(cx, cz, 503) * 8);
+      const oz = 4 + Math.floor(this.hash2(cx, cz, 504) * 8);
+      const gy = this.heightAt(x0 + ox + 1, z0 + oz + 1);
+      if (gy <= SEA_LEVEL + 1) return;
+      const setIf = (lx: number, y: number, lz: number, block: number, replaceSolid: boolean): void => {
+        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+        if (!replaceSolid) {
+          const cur = data[blockIndex(lx, y, lz)];
+          if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
+        }
+        data[blockIndex(lx, y, lz)] = block;
+      };
+      for (let dx = 0; dx < 3; dx++)
+        for (let dz = 0; dz < 3; dz++) {
+          const rim = dx === 0 || dx === 2 || dz === 0 || dz === 2;
+          setIf(ox + dx, gy, oz + dz, rim ? BLOCK.COBBLESTONE : BLOCK.WATER, true);
+          setIf(ox + dx, gy - 1, oz + dz, BLOCK.COBBLESTONE, true);
+        }
+      for (const [dx, dz] of [[0, 0], [2, 0], [0, 2], [2, 2]] as [number, number][]) {
+        setIf(ox + dx, gy + 1, oz + dz, BLOCK.SPRUCE_LOG, true);
+        setIf(ox + dx, gy + 2, oz + dz, BLOCK.SPRUCE_LOG, true);
+      }
+      for (let dx = 0; dx < 3; dx++)
+        for (let dz = 0; dz < 3; dz++)
+          setIf(ox + dx, gy + 3, oz + dz, BLOCK.COBBLESTONE, true);
+      return;
+    }
+
+    // ── farm: 6x4 tilled field with water trench + sugarcane + corner torches ──
+    {
+      const ox = 2 + Math.floor(this.hash2(cx, cz, 505) * 8);
+      const oz = 2 + Math.floor(this.hash2(cx, cz, 506) * 8);
+      let hMin = 999, hMax = -999;
+      for (const [dx, dz] of [[0, 0], [5, 0], [0, 3], [5, 3]] as [number, number][]) {
+        const h = this.heightAt(x0 + ox + dx, z0 + oz + dz);
+        if (h <= SEA_LEVEL) return;
+        hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+      }
+      if (hMax - hMin > 2) return;
+      const gy = hMax;
+      const setIf = (lx: number, y: number, lz: number, block: number, replaceSolid: boolean): void => {
+        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+        if (!replaceSolid) {
+          const cur = data[blockIndex(lx, y, lz)];
+          if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
+        }
+        data[blockIndex(lx, y, lz)] = block;
+      };
+      for (let dx = 0; dx < 6; dx++)
+        for (let dz = 0; dz < 4; dz++) {
+          const trench = dz === 1 && dx >= 1 && dx <= 4;
+          setIf(ox + dx, gy, oz + dz, trench ? BLOCK.WATER : BLOCK.DIRT, true);
+          setIf(ox + dx, gy + 1, oz + dz, BLOCK.AIR, true);
+          setIf(ox + dx, gy + 2, oz + dz, BLOCK.AIR, true);
+          // sugarcane rows flanking the trench
+          if (dz === 0 || dz === 2) {
+            if (this.hash2(x0 + ox + dx, z0 + oz + dz, 507) < 0.65)
+              setIf(ox + dx, gy + 1, oz + dz, BLOCK.SUGARCANE, false);
+          }
+        }
+      // corner log posts with torches
+      for (const [dx, dz] of [[0, 0], [5, 0], [0, 3], [5, 3]] as [number, number][]) {
+        setIf(ox + dx, gy + 1, oz + dz, BLOCK.SPRUCE_LOG, true);
+        setIf(ox + dx, gy + 2, oz + dz, BLOCK.TORCH, true);
+      }
+    }
+  }
+
+  private placeTree(data: Uint8Array, lx: number, groundH: number, lz: number, tree: { type: 'oak' | 'spruce' | 'jungle' | 'swamp' | 'mushroom_red' | 'mushroom_brown'; height: number }, cx: number, cz: number): void {
     const wx = cx * CHUNK_SIZE + lx;
     const wz = cz * CHUNK_SIZE + lz;
+    if (tree.type === 'mushroom_red' || tree.type === 'mushroom_brown') {
+      const capId = tree.type === 'mushroom_red' ? BLOCK.MUSHROOM_RED_CAP : BLOCK.MUSHROOM_BROWN_CAP;
+      const topY = groundH + tree.height;
+      // stem
+      for (let y = groundH + 1; y <= topY; y++)
+        this.setLocal(data, cx, cz, wx, y, wz, BLOCK.MUSHROOM_STEM, true);
+      if (tree.type === 'mushroom_red') {
+        // red: flat 5x5 cap at top + solid dome cap layer above (MC style)
+        for (let dx = -2; dx <= 2; dx++)
+          for (let dz = -2; dz <= 2; dz++) {
+            if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+            this.setLocal(data, cx, cz, wx + dx, topY, wz + dz, capId, false);
+          }
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dz = -1; dz <= 1; dz++)
+            this.setLocal(data, cx, cz, wx + dx, topY + 1, wz + dz, capId, false);
+      } else {
+        // brown: rounded cap ring around the top (MC style — cap sits ON the stem)
+        for (let dx = -2; dx <= 2; dx++)
+          for (let dz = -2; dz <= 2; dz++) {
+            if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+            this.setLocal(data, cx, cz, wx + dx, topY - 1, wz + dz, capId, false);
+          }
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dz = -1; dz <= 1; dz++)
+            this.setLocal(data, cx, cz, wx + dx, topY, wz + dz, capId, false);
+        this.setLocal(data, cx, cz, wx, topY + 1, wz, capId, false);
+      }
+      return;
+    }
     if (tree.type === 'oak' || tree.type === 'swamp') {
       const topY = groundH + tree.height;
       for (let y = groundH + 1; y <= topY; y++)
@@ -343,7 +540,7 @@ export class TerrainGenerator {
     }
   }
 
-  private oreAt(x: number, y: number, z: number): BLOCK {
+  private oreAt(x: number, y: number, z: number): number {
     // deterministic hash-based vein placement
     let hash = Math.imul(x * 374761393 + y * 668265263 + z * 2147483647 ^ this.seed, 1274126177);
     hash ^= hash >>> 16;
