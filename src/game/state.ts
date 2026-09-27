@@ -1,5 +1,6 @@
 // ─── Global game state (zustand) — bridge between engine and React UI ────────
 import { create } from 'zustand';
+import type { InvSlot } from './inventory';
 
 export type Screen = 'menu' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead';
 
@@ -26,13 +27,24 @@ export interface Settings {
 }
 
 export interface HUDState {
-  hotbar: { blockId: number; count: number }[];
+  hotbar: { blockId: number; count: number; dur?: number }[];
   selected: number;
   health: number;
   hunger: number;
   underwater: boolean;
   loadingProgress: number;
   loadingLabel: string;
+}
+
+/** snapshot pushed by engine for the inventory screen */
+export interface InvUIState {
+  open: boolean;
+  table: boolean; // 3x3 crafting table mode
+  hotbar: InvSlot[];
+  main: InvSlot[];
+  craft: InvSlot[]; // 4 (2x2) or 9 (3x3)
+  craftOut: InvSlot | null;
+  cursor: InvSlot | null;
 }
 
 interface GameStore {
@@ -44,6 +56,7 @@ interface GameStore {
   settings: Settings;
   hud: HUDState;
   toast: string | null;
+  inv: InvUIState;
 
   setScreen: (s: Screen) => void;
   setHasSave: (v: boolean) => void;
@@ -52,6 +65,7 @@ interface GameStore {
   updateSettings: (s: Partial<Settings>) => void;
   setHud: (h: Partial<HUDState>) => void;
   setToast: (t: string | null) => void;
+  setInv: (inv: Partial<InvUIState>) => void;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -81,6 +95,7 @@ export const useGameStore = create<GameStore>((set) => ({
   settings: DEFAULT_SETTINGS,
   hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '' },
   toast: null,
+  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null },
 
   setScreen: (s) => set((st) => ({ screen: s, prevScreen: st.screen })),
   setHasSave: (v) => set({ hasSave: v }),
@@ -93,6 +108,7 @@ export const useGameStore = create<GameStore>((set) => ({
   }),
   setHud: (h) => set((st) => ({ hud: { ...st.hud, ...h } })),
   setToast: (t) => set({ toast: t }),
+  setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
 }));
 
 export function saveSettings(s: Settings): void {

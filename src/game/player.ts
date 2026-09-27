@@ -6,6 +6,7 @@ import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPE
 export interface HotbarSlot {
   blockId: number; // 0 = empty
   count: number;
+  dur?: number; // remaining durability (tools)
 }
 
 export class Player {
@@ -26,6 +27,8 @@ export class Player {
   hurtCooldown = 0;
 
   hotbar: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
+  /** main inventory 27 slots (hotbar is slots 0..8) */
+  main: HotbarSlot[] = Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
   selected = 0;
 
   private camera: THREE.PerspectiveCamera;

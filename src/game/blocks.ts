@@ -11,10 +11,14 @@ export interface BlockDef {
   cutout?: boolean;        // leaves/glass — rendered with alphaTest
   hardness: number;        // seconds to break by hand
   tool?: 'pickaxe' | 'axe' | 'shovel' | 'sword';
+  /** minimum tool tier required to harvest (0 = bare hands ok) */
+  minTier?: number;
   drop?: number | null;    // block id dropped (default: itself)
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
 }
+
+import { ITEM } from './items';
 
 export const BLOCK = {
   AIR: 0,
@@ -72,10 +76,10 @@ function logTiles(sideTile: number, topTile: number): number[] {
 }
 
 export const BLOCKS: Record<number, BlockDef> = {
-  [BLOCK.STONE]: { id: BLOCK.STONE, name: 'Stone', tiles: TILE.stone, solid: true, opaque: true, hardness: 1.5, tool: 'pickaxe', drop: BLOCK.COBBLESTONE, sound: 'stone' },
+  [BLOCK.STONE]: { id: BLOCK.STONE, name: 'Stone', tiles: TILE.stone, solid: true, opaque: true, hardness: 1.5, tool: 'pickaxe', minTier: 1, drop: BLOCK.COBBLESTONE, sound: 'stone' },
   [BLOCK.GRASS]: { id: BLOCK.GRASS, name: 'Grass Block', tiles: t(TILE.grass_side, TILE.grass_side, TILE.grass_top, TILE.dirt, TILE.grass_side, TILE.grass_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'grass' },
   [BLOCK.DIRT]: { id: BLOCK.DIRT, name: 'Dirt', tiles: TILE.dirt, solid: true, opaque: true, hardness: 0.5, tool: 'shovel', sound: 'dirt' },
-  [BLOCK.COBBLESTONE]: { id: BLOCK.COBBLESTONE, name: 'Cobblestone', tiles: TILE.cobblestone, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.COBBLESTONE]: { id: BLOCK.COBBLESTONE, name: 'Cobblestone', tiles: TILE.cobblestone, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', minTier: 1, sound: 'stone' },
   [BLOCK.PLANKS]: { id: BLOCK.PLANKS, name: 'Oak Planks', tiles: TILE.planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
   [BLOCK.SAND]: { id: BLOCK.SAND, name: 'Sand', tiles: TILE.sand, solid: true, opaque: true, hardness: 0.5, tool: 'shovel', sound: 'sand' },
   [BLOCK.GRAVEL]: { id: BLOCK.GRAVEL, name: 'Gravel', tiles: TILE.gravel, solid: true, opaque: true, hardness: 0.6, tool: 'shovel', sound: 'dirt' },
@@ -83,10 +87,10 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.LEAVES]: { id: BLOCK.LEAVES, name: 'Oak Leaves', tiles: TILE.leaves, solid: true, opaque: false, cutout: true, hardness: 0.2, tool: 'sword', drop: null, sound: 'grass' },
   [BLOCK.WATER]: { id: BLOCK.WATER, name: 'Water', tiles: TILE.water, solid: false, opaque: false, liquid: true, hardness: 100, sound: 'dirt' },
   [BLOCK.GLASS]: { id: BLOCK.GLASS, name: 'Glass', tiles: TILE.glass, solid: true, opaque: false, cutout: true, hardness: 0.4, drop: null, sound: 'glass' },
-  [BLOCK.COAL_ORE]: { id: BLOCK.COAL_ORE, name: 'Coal Ore', tiles: TILE.coal_ore, solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', sound: 'stone' },
-  [BLOCK.IRON_ORE]: { id: BLOCK.IRON_ORE, name: 'Iron Ore', tiles: TILE.iron_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', sound: 'stone' },
-  [BLOCK.GOLD_ORE]: { id: BLOCK.GOLD_ORE, name: 'Gold Ore', tiles: TILE.gold_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', sound: 'stone' },
-  [BLOCK.DIAMOND_ORE]: { id: BLOCK.DIAMOND_ORE, name: 'Diamond Ore', tiles: TILE.diamond_ore, solid: true, opaque: true, hardness: 3.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.COAL_ORE]: { id: BLOCK.COAL_ORE, name: 'Coal Ore', tiles: TILE.coal_ore, solid: true, opaque: true, hardness: 2.5, tool: 'pickaxe', minTier: 1, drop: ITEM.COAL, sound: 'stone' },
+  [BLOCK.IRON_ORE]: { id: BLOCK.IRON_ORE, name: 'Iron Ore', tiles: TILE.iron_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', minTier: 2, drop: ITEM.IRON_INGOT, sound: 'stone' },
+  [BLOCK.GOLD_ORE]: { id: BLOCK.GOLD_ORE, name: 'Gold Ore', tiles: TILE.gold_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', minTier: 3, drop: ITEM.GOLD_INGOT, sound: 'stone' },
+  [BLOCK.DIAMOND_ORE]: { id: BLOCK.DIAMOND_ORE, name: 'Diamond Ore', tiles: TILE.diamond_ore, solid: true, opaque: true, hardness: 3.5, tool: 'pickaxe', minTier: 3, drop: ITEM.DIAMOND, sound: 'stone' },
   [BLOCK.BEDROCK]: { id: BLOCK.BEDROCK, name: 'Bedrock', tiles: TILE.bedrock, solid: true, opaque: true, hardness: Infinity, sound: 'stone' },
   [BLOCK.SNOW_GRASS]: { id: BLOCK.SNOW_GRASS, name: 'Snowy Grass', tiles: t(TILE.grass_snow_side, TILE.grass_snow_side, TILE.snow, TILE.dirt, TILE.grass_snow_side, TILE.grass_snow_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'grass' },
   [BLOCK.SANDSTONE]: { id: BLOCK.SANDSTONE, name: 'Sandstone', tiles: t(TILE.sandstone, TILE.sandstone, TILE.sandstone_top, TILE.sandstone_top, TILE.sandstone, TILE.sandstone), solid: true, opaque: true, hardness: 1.6, tool: 'pickaxe', sound: 'stone' },
@@ -100,7 +104,7 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.SNOW_BLOCK]: { id: BLOCK.SNOW_BLOCK, name: 'Snow Block', tiles: TILE.snow, solid: true, opaque: true, hardness: 0.4, tool: 'shovel', sound: 'sand' },
   [BLOCK.BOOKSHELF]: { id: BLOCK.BOOKSHELF, name: 'Bookshelf', tiles: t(TILE.bookshelf, TILE.bookshelf, TILE.planks, TILE.planks, TILE.bookshelf, TILE.bookshelf), solid: true, opaque: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
   [BLOCK.MOSSY_COBBLE]: { id: BLOCK.MOSSY_COBBLE, name: 'Mossy Cobblestone', tiles: TILE.mossy_cobble, solid: true, opaque: true, hardness: 2.0, tool: 'pickaxe', sound: 'stone' },
-  [BLOCK.OBSIDIAN]: { id: BLOCK.OBSIDIAN, name: 'Obsidian', tiles: TILE.obsidian, solid: true, opaque: true, hardness: 12, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.OBSIDIAN]: { id: BLOCK.OBSIDIAN, name: 'Obsidian', tiles: TILE.obsidian, solid: true, opaque: true, hardness: 12, tool: 'pickaxe', minTier: 5, sound: 'stone' },
 };
 
 export function getBlockDef(id: number): BlockDef | undefined {

@@ -3,9 +3,8 @@
 // ─── HUD: crosshair, hotbar, hearts, toast, underwater overlay ───────────────
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/game/state';
-import { getBlockDef } from '@/game/blocks';
-import { isItemId, getItemIcon, getItemDef } from '@/game/items';
-import { getBlockIcon } from '@/game/textures/atlas';
+import { isItemId, getToolDef } from '@/game/items';
+import { slotIconUrl, slotName } from './slotIcon';
 import { Heart } from './ui';
 
 export function HUD() {
@@ -74,18 +73,10 @@ export function HUD() {
         {/* hotbar */}
         <div className="flex" style={{ background: 'rgba(0,0,0,0.35)', border: '2px solid rgba(0,0,0,0.8)', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.15)' }}>
           {hud.hotbar.map((slot, i) => {
-            let icon: string | null = null;
-            let name = '';
-            if (slot.blockId > 0 && isItemId(slot.blockId)) {
-              icon = getItemIcon(slot.blockId);
-              name = 'item';
-            } else if (slot.blockId > 0) {
-              const def = getBlockDef(slot.blockId);
-              if (def) {
-                icon = getBlockIcon(def.id, Array.isArray(def.tiles) ? def.tiles[2] : def.tiles, Array.isArray(def.tiles) ? def.tiles[4] : def.tiles);
-                name = def.name;
-              }
-            }
+            const icon = slotIconUrl(slot.blockId);
+            const tool = slot.blockId > 0 && isItemId(slot.blockId) ? getToolDef(slot.blockId) : undefined;
+            const durRatio = tool && slot.dur !== undefined ? slot.dur / tool.dur : 1;
+            const showDur = !!tool && slot.dur !== undefined && slot.dur < tool.dur;
             const selected = hud.selected === i;
             return (
               <div
@@ -98,7 +89,7 @@ export function HUD() {
                   zIndex: selected ? 2 : 1,
                 }}
               >
-                {icon && <img src={icon} alt={name} className="h-[36px] w-[36px]" style={{ imageRendering: 'pixelated' }} draggable={false} />}
+                {icon && <img src={icon} alt={slotName(slot.blockId)} className="h-[36px] w-[36px]" style={{ imageRendering: 'pixelated' }} draggable={false} />}
                 {slot.count > 1 && (
                   <span
                     className="absolute bottom-0 right-0.5 text-[13px] font-bold text-white"
@@ -106,6 +97,17 @@ export function HUD() {
                   >
                     {slot.count}
                   </span>
+                )}
+                {showDur && (
+                  <div className="absolute bottom-[3px] left-[3px] h-[3px] w-[34px] bg-black/80">
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${Math.max(5, durRatio * 100)}%`,
+                        background: `hsl(${Math.round(durRatio * 115)}, 85%, 45%)`,
+                      }}
+                    />
+                  </div>
                 )}
               </div>
             );
@@ -124,9 +126,7 @@ function SelectedName() {
   const slot = hud.hotbar[hud.selected];
   const blockId = slot?.blockId ?? 0;
   if (blockId <= 0) return null;
-  const name = isItemId(blockId)
-    ? (getItemDef(blockId)?.name ?? '')
-    : (getBlockDef(blockId)?.name ?? '');
+  const name = slotName(blockId);
   if (!name) return null;
   return <FadeText key={`${hud.selected}:${blockId}`} text={name} />;
 }

@@ -1,0 +1,1007 @@
+     1→// ─── Game engine: orchestrates renderer, world, player, UI bridge ────────────
+     2→import * as THREE from 'three';
+     3→import { World } from './world/world';
+     4→import { Player, type HotbarSlot } from './player';
+     5→import { BLOCK, getBlockDef, isLiquid } from './blocks';
+     6→import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
+     7→import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
+     8→import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
+     9→import { MobManager } from './entities/mobs';
+    10→import { getItemDef, isItemId } from './items';
+    11→import { ParticleSystem } from './particles';
+    12→import { SkySystem, getTimeLabel } from './sky';
+    13→import { audio, type MaterialSound } from './audio';
+    14→import { getAtlas, getCrackTextures, tileAvgColor } from './textures/atlas';
+    15→import { getItemIconCanvas } from './items';
+    16→import { useGameStore } from './state';
+    17→
+    18→const SAVE_KEY = 'voxelcraft.save';
+    19→
+    20→interface SaveData {
+    21→  seed: number;
+    22→  time: number;
+    23→  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; selected: number };
+    24→  edits: Record<string, Record<number, number>>;
+    25→}
+    26→
+    27→export class Game {
+    28→  canvas: HTMLCanvasElement;
+    29→  renderer: THREE.WebGLRenderer;
+    30→  scene: THREE.Scene;
+    31→  camera: THREE.PerspectiveCamera;
+    32→  world!: World;
+    33→  player!: Player;
+    34→  drops!: DropManager;
+    35→  mobs!: MobManager;
+    36→  particles!: ParticleSystem;
+    37→  sky!: SkySystem;
+    38→
+    39→  private raf = 0;
+    40→  private lastTime = 0;
+    41→  private accumulator = 0;
+    42→  private keys = new Set<string>();
+    43→  private mining = false;
+    44→  private mineProgress = 0;
+    45→  private mineTarget: RayHit | null = null;
+    46→  private placeCooldown = 0;
+    47→  private attackCooldown = 0;
+    48→  private eatCooldown = 0;
+    49→  private hungerRegenTimer = 0;
+    50→  private starveTimer = 0;
+    51→  private swingT = 0;
+    52→  private swingActive = false;
+    53→  private stepTimer = 0;
+    54→  private wasInWater = false;
+    55→  private wasOnGround = true;
+    56→  private prevVy = 0;
+    57→  private saveTimer = 0;
+    58→  private fpsAccum = 0;
+    59→  private fpsFrames = 0;
+    60→  private fps = 60;
+    61→  private debugTimer = 0;
+    62→  private target: RayHit | null = null;
+    63→  private running = false;
+    64→  private disposed = false;
+    65→
+    66→  private highlight: THREE.LineSegments;
+    67→  private crackMesh: THREE.Mesh;
+    68→  private crackMats: THREE.MeshBasicMaterial[];
+    69→  private handGroup: THREE.Group;
+    70→  private handMesh: THREE.Mesh | null = null;
+    71→  private handBlockId = -1;
+    72→  private sunLight: THREE.DirectionalLight;
+    73→  private ambient: THREE.HemisphereLight;
+    74→
+    75→  private settings = useGameStore.getState().settings;
+    76→  private storeUnsub: () => void;
+    77→
+    78→  constructor(canvas: HTMLCanvasElement) {
+    79→    this.canvas = canvas;
+    80→    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    81→    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    82→    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    83→    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    84→
+    85→    this.scene = new THREE.Scene();
+    86→    this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, 900);
+    87→
+    88→    // entity lighting (Lambert drops / hand)
+    89→    this.ambient = new THREE.HemisphereLight(0xffffff, 0x666666, 0.9);
+    90→    this.scene.add(this.ambient);
+    91→    this.sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    92→    this.sunLight.position.set(0.4, 1, 0.3);
+    93→    this.scene.add(this.sunLight);
+    94→
+    95→    // block highlight wireframe
+    96→    const hlGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
+    97→    this.highlight = new THREE.LineSegments(hlGeo, new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.6 }));
+    98→    this.highlight.visible = false;
+    99→    this.scene.add(this.highlight);
+   100→
+   101→    // crack overlay
+   102→    const cracks = getCrackTextures();
+   103→    this.crackMats = cracks.map((tex) => new THREE.MeshBasicMaterial({
+   104→      map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+   105→    }));
+   106→    this.crackMesh = new THREE.Mesh(new THREE.BoxGeometry(1.004, 1.004, 1.004), this.crackMats[0]);
+   107→    this.crackMesh.visible = false;
+   108→    this.scene.add(this.crackMesh);
+   109→
+   110→    // hand (held item)
+   111→    this.handGroup = new THREE.Group();
+   112→    this.camera.add(this.handGroup);
+   113→    this.scene.add(this.camera);
+   114→
+   115→    // settings subscription
+   116→    this.storeUnsub = useGameStore.subscribe((state) => {
+   117→      this.settings = state.settings;
+   118→      audio.setVolume(this.settings.volume);
+   119→      this.applySkyFog();
+   120→      this.sky.cloudsEnabled = this.settings.clouds;
+   121→    });
+   122→
+   123→    this.bindEvents();
+   124→
+   125→    // QA/debug handle (used by automated testing)
+   126→    (window as unknown as { __voxel?: Game }).__voxel = this;
+   127→  }
+   128→
+   129→  // ── game start / save / load ───────────────────────────────────────────────
+   130→  async newGame(): Promise<void> {
+   131→    const seed = Math.floor(Math.random() * 2147483647);
+   132→    this.setupWorld(seed, null);
+   133→    await this.preloadSpawn();
+   134→    localStorage.removeItem(SAVE_KEY);
+   135→    useGameStore.getState().setHasSave(false);
+   136→    this.enterPlaying();
+   137→  }
+   138→
+   139→  async continueGame(): Promise<void> {
+   140→    const raw = localStorage.getItem(SAVE_KEY);
+   141→    const save: SaveData | null = raw ? JSON.parse(raw) : null;
+   142→    if (!save) { await this.newGame(); return; }
+   143→    this.setupWorld(save.seed, save);
+   144→    await this.preloadSpawn();
+   145→    this.enterPlaying();
+   146→  }
+   147→
+   148→  private setupWorld(seed: number, save: SaveData | null): void {
+   149→    // clear previous world if any
+   150→    if (this.world) {
+   151→      for (const key of Array.from(this.world.chunks.keys())) {
+   152→        const [cx, cz] = key.split(',').map(Number);
+   153→        this.world.unloadChunk(cx, cz);
+   154→      }
+   155→    }
+   156→    this.drops?.clear();
+   157→    this.mobs?.clear();
+   158→    this.world = new World(seed, save?.edits);
+   159→    this.scene.add(this.world.group);
+   160→    this.sky = new SkySystem(this.scene, seed);
+   161→    this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
+   162→    this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
+   163→    this.particles = new ParticleSystem(this.scene);
+   164→    this.mobs = new MobManager(this.scene, this.world);
+   165→    this.player = new Player(this.camera);
+   166→
+   167→    // spawn position
+   168→    let sx = 8, sz = 8;
+   169→    this.world.ensureChunk(0, 0);
+   170→    let sy = this.world.surfaceY(sx, sz);
+   171→    let attempts = 0;
+   172→    while ((sy <= 40 || sy === 0) && attempts < 24) {
+   173→      sx += 12; sz += 5; attempts++;
+   174→      this.world.ensureChunk(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE));
+   175→      sy = this.world.surfaceY(sx, sz);
+   176→    }
+   177→    if (save) {
+   178→      this.player.entity.x = save.player.x;
+   179→      this.player.entity.y = save.player.y;
+   180→      this.player.entity.z = save.player.z;
+   181→      this.player.yaw = save.player.yaw;
+   182→      this.player.pitch = save.player.pitch;
+   183→      this.player.health = save.player.health;
+   184→      this.player.hotbar = save.player.hotbar;
+   185→      this.player.selected = save.player.selected;
+   186→      this.player.fallStartY = save.player.y;
+   187→    } else {
+   188→      this.player.entity.x = sx + 0.5;
+   189→      this.player.entity.y = sy + 1.2;
+   190→      this.player.entity.z = sz + 0.5;
+   191→      this.player.fallStartY = this.player.entity.y;
+   192→    }
+   193→    this.updateHandMesh(true);
+   194→    this.syncHUD(true);
+   195→    this.applySkyFog();
+   196→  }
+   197→
+   198→  private async preloadSpawn(): Promise<void> {
+   199→    const store = useGameStore.getState();
+   200→    store.setScreen('loading');
+   201→    const pcx = Math.floor(this.player.entity.x / CHUNK_SIZE);
+   202→    const pcz = Math.floor(this.player.entity.z / CHUNK_SIZE);
+   203→    const dataR = 2;
+   204→    const jobs: [number, number][] = [];
+   205→    for (let dx = -dataR; dx <= dataR; dx++)
+   206→      for (let dz = -dataR; dz <= dataR; dz++)
+   207→        jobs.push([pcx + dx, pcz + dz]);
+   208→    jobs.sort((a, b) => (Math.abs(a[0] - pcx) + Math.abs(a[1] - pcz)) - (Math.abs(b[0] - pcx) + Math.abs(b[1] - pcz)));
+   209→
+   210→    for (let i = 0; i < jobs.length; i++) {
+   211→      this.world.ensureChunk(jobs[i][0], jobs[i][1]);
+   212→      if (i % 3 === 0) {
+   213→        const p = i / jobs.length;
+   214→        useGameStore.getState().setHud({ loadingProgress: p, loadingLabel: 'Generating world…' });
+   215→        await this.nextFrame();
+   216→      }
+   217→    }
+   218→    // mesh immediate area
+   219→    for (let dx = -1; dx <= 1; dx++) {
+   220→      for (let dz = -1; dz <= 1; dz++) {
+   221→        const c = this.world.getChunk(pcx + dx, pcz + dz);
+   222→        if (c) this.world.buildMesh(c);
+   223→      }
+   224→    }
+   225→    useGameStore.getState().setHud({ loadingProgress: 1, loadingLabel: 'Building terrain…' });
+   226→    await this.nextFrame();
+   227→  }
+   228→
+   229→  private nextFrame(): Promise<void> {
+   230→    return new Promise((r) => requestAnimationFrame(() => r()));
+   231→  }
+   232→
+   233→  private enterPlaying(): void {
+   234→    useGameStore.getState().setHud({ loadingProgress: 1 });
+   235→    useGameStore.getState().setScreen('playing');
+   236→    this.running = true;
+   237→    this.lastTime = performance.now();
+   238→    this.requestLock();
+   239→    if (!this.raf) this.loop();
+   240→  }
+   241→
+   242→  requestLock(): void {
+   243→    if (document.pointerLockElement !== this.canvas) {
+   244→      void this.canvas.requestPointerLock();
+   245→    }
+   246→  }
+   247→
+   248→  saveGame(): void {
+   249→    if (!this.world || !this.player) return;
+   250→    const edits: Record<string, Record<number, number>> = {};
+   251→    for (const [key, map] of this.world.edits) {
+   252→      const obj: Record<number, number> = {};
+   253→      for (const [idx, id] of map) obj[idx] = id;
+   254→      edits[key] = obj;
+   255→    }
+   256→    const save: SaveData = {
+   257→      seed: this.world.terrain.getSeed(),
+   258→      time: this.sky.time,
+   259→      player: {
+   260→        x: this.player.entity.x, y: this.player.entity.y, z: this.player.entity.z,
+   261→        yaw: this.player.yaw, pitch: this.player.pitch,
+   262→        health: this.player.health,
+   263→        hotbar: this.player.hotbar,
+   264→        selected: this.player.selected,
+   265→      },
+   266→      edits,
+   267→    };
+   268→    try {
+   269→      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+   270→      useGameStore.getState().setHasSave(true);
+   271→    } catch { /* quota */ }
+   272→  }
+   273→
+   274→  quitToMenu(): void {
+   275→    this.saveGame();
+   276→    this.running = false;
+   277→    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+   278→    useGameStore.getState().setScreen('menu');
+   279→  }
+   280→
+   281→  // ── input ──────────────────────────────────────────────────────────────────
+   282→  private onKeyDown = (e: KeyboardEvent): void => {
+   283→    if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
+   284→    if (useGameStore.getState().screen !== 'playing') return;
+   285→    this.keys.add(e.code);
+   286→    if (e.code.startsWith('Digit')) {
+   287→      const n = parseInt(e.code.slice(5), 10);
+   288→      if (n >= 1 && n <= 9) { this.player.selected = n - 1; this.syncHUD(); this.updateHandMesh(); }
+   289→    }
+   290→    if (e.code === 'KeyQ') this.dropSelected();
+   291→    if (e.code === 'Space') e.preventDefault();
+   292→  };
+   293→
+   294→  private onKeyUp = (e: KeyboardEvent): void => {
+   295→    this.keys.delete(e.code);
+   296→  };
+   297→
+   298→  private onMouseMove = (e: MouseEvent): void => {
+   299→    if (document.pointerLockElement !== this.canvas || useGameStore.getState().screen !== 'playing') return;
+   300→    const sens = 0.0022 * this.settings.sensitivity;
+   301→    const mx = Math.max(-60, Math.min(60, e.movementX));
+   302→    const my = Math.max(-60, Math.min(60, e.movementY));
+   303→    this.player.yaw -= mx * sens;
+   304→    this.player.pitch -= my * sens;
+   305→    this.player.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.player.pitch));
+   306→  };
+   307→
+   308→  private onMouseDown = (e: MouseEvent): void => {
+   309→    if (useGameStore.getState().screen !== 'playing') return;
+   310→    if (document.pointerLockElement !== this.canvas) { this.requestLock(); return; }
+   311→    audio.resume();
+   312→    if (e.button === 0) { this.mining = true; this.startSwing(); }
+   313→    else if (e.button === 2) { this.placeBlock(); }
+   314→    else if (e.button === 1) { e.preventDefault(); this.pickBlock(); }
+   315→  };
+   316→
+   317→  private onMouseUp = (e: MouseEvent): void => {
+   318→    if (e.button === 0) { this.mining = false; this.mineProgress = 0; }
+   319→  };
+   320→
+   321→  private onWheel = (e: WheelEvent): void => {
+   322→    if (useGameStore.getState().screen !== 'playing') return;
+   323→    const dir = e.deltaY > 0 ? 1 : -1;
+   324→    this.player.selected = (this.player.selected + dir + 9) % 9;
+   325→    this.syncHUD();
+   326→    this.updateHandMesh();
+   327→  };
+   328→
+   329→  private onPointerLockChange = (): void => {
+   330→    if (document.pointerLockElement !== this.canvas && useGameStore.getState().screen === 'playing' && !this.player?.dead) {
+   331→      useGameStore.getState().setScreen('paused');
+   332→      this.saveGame();
+   333→    }
+   334→  };
+   335→
+   336→  private onResize = (): void => {
+   337→    this.camera.aspect = window.innerWidth / window.innerHeight;
+   338→    this.camera.updateProjectionMatrix();
+   339→    this.renderer.setSize(window.innerWidth, window.innerHeight);
+   340→  };
+   341→
+   342→  private onContextMenu = (e: Event): void => e.preventDefault();
+   343→
+   344→  private bindEvents(): void {
+   345→    window.addEventListener('keydown', this.onKeyDown);
+   346→    window.addEventListener('keyup', this.onKeyUp);
+   347→    window.addEventListener('mousemove', this.onMouseMove);
+   348→    window.addEventListener('mouseup', this.onMouseUp);
+   349→    window.addEventListener('resize', this.onResize);
+   350→    document.addEventListener('pointerlockchange', this.onPointerLockChange);
+   351→    this.canvas.addEventListener('mousedown', this.onMouseDown);
+   352→    this.canvas.addEventListener('wheel', this.onWheel, { passive: true });
+   353→    this.canvas.addEventListener('contextmenu', this.onContextMenu);
+   354→  }
+   355→
+   356→  private unbindEvents(): void {
+   357→    window.removeEventListener('keydown', this.onKeyDown);
+   358→    window.removeEventListener('keyup', this.onKeyUp);
+   359→    window.removeEventListener('mousemove', this.onMouseMove);
+   360→    window.removeEventListener('mouseup', this.onMouseUp);
+   361→    window.removeEventListener('resize', this.onResize);
+   362→    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+   363→    this.canvas.removeEventListener('mousedown', this.onMouseDown);
+   364→    this.canvas.removeEventListener('wheel', this.onWheel);
+   365→    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+   366→  }
+   367→
+   368→  // ── interaction ────────────────────────────────────────────────────────────
+   369→  private updateTarget(): void {
+   370→    const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
+   371→    const dir = this.player.forwardVector();
+   372→    this.target = raycast(this.world, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 4.5);
+   373→    if (this.target) {
+   374→      this.highlight.visible = true;
+   375→      this.highlight.position.set(this.target.x + 0.5, this.target.y + 0.5, this.target.z + 0.5);
+   376→    } else {
+   377→      this.highlight.visible = false;
+   378→    }
+   379→  }
+   380→
+   381→  private mineTick(dt: number): void {
+   382→    // mob attack takes priority over mining
+   383→    if (this.mining && this.attackCooldown <= 0) {
+   384→      const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
+   385→      const dir = this.player.forwardVector();
+   386→      const hit = this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+   387→      if (hit) {
+   388→        this.attackCooldown = 0.42;
+   389→        this.startSwing();
+   390→        const kx = hit.mob.x - this.player.x;
+   391→        const kz = hit.mob.z - this.player.z;
+   392→        this.mobs.hurtMob(hit.mob, 2, kx, kz);
+   393→        this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
+   394→        this.crackMesh.visible = false;
+   395→        return;
+   396→      }
+   397→    }
+   398→    if (!this.mining || !this.target) { this.crackMesh.visible = false; return; }
+   399→    // target changed? reset progress
+   400→    const t = this.target;
+   401→    if (!this.mineTarget || this.mineTarget.x !== t.x || this.mineTarget.y !== t.y || this.mineTarget.z !== t.z) {
+   402→      this.mineTarget = t;
+   403→      this.mineProgress = 0;
+   404→    }
+   405→    const def = getBlockDef(t.id);
+   406→    if (!def || def.hardness === Infinity) { this.crackMesh.visible = false; return; }
+   407→    this.mineProgress += dt / def.hardness;
+   408→
+   409→    // dig sound + swing loop
+   410→    this.stepTimer += dt;
+   411→    if (this.stepTimer > 0.24) {
+   412→      this.stepTimer = 0;
+   413→      audio.dig((def.sound ?? 'stone') as MaterialSound);
+   414→      this.startSwing();
+   415→    }
+   416→
+   417→    if (this.mineProgress >= 1) {
+   418→      // break!
+   419→      const col = tileAvgColor(Array.isArray(def.tiles) ? def.tiles[2] : def.tiles);
+   420→      this.particles.burstBlockBreak(t.x, t.y, t.z, col);
+   421→      audio.breakBlock((def.sound ?? 'stone') as MaterialSound);
+   422→      const dropId = def.drop === undefined ? t.id : def.drop;
+   423→      if (dropId && dropId > 0) {
+   424→        this.drops.spawn(dropId, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+   425→      }
+   426→      this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+   427→      this.mineProgress = 0;
+   428→      this.mineTarget = null;
+   429→      this.crackMesh.visible = false;
+   430→      return;
+   431→    }
+   432→    // crack overlay
+   433→    const stage = Math.min(9, Math.floor(this.mineProgress * 10));
+   434→    this.crackMesh.material = this.crackMats[stage];
+   435→    this.crackMesh.visible = true;
+   436→    this.crackMesh.position.set(t.x + 0.5, t.y + 0.5, t.z + 0.5);
+   437→  }
+   438→
+   439→  private placeBlock(): void {
+   440→    if (!this.target || this.placeCooldown > 0) return;
+   441→    const slot = this.player.hotbar[this.player.selected];
+   442→    if (!slot || slot.blockId === 0 || slot.count <= 0) return;
+   443→    // eating food items
+   444→    if (isItemId(slot.blockId)) {
+   445→      const itemDef = getItemDef(slot.blockId);
+   446→      if (itemDef?.food && this.player.hunger < 19.6 && this.eatCooldown <= 0) {
+   447→        this.eatCooldown = 1.4;
+   448→        this.player.hunger = Math.min(20, this.player.hunger + itemDef.food);
+   449→        audio.eat();
+   450→        window.setTimeout(() => audio.burp(), 700);
+   451→        this.startSwing();
+   452→        slot.count--;
+   453→        if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+   454→        this.syncHUD();
+   455→        this.updateHandMesh();
+   456→      }
+   457→      return;
+   458→    }
+   459→    const bx = this.target.x + this.target.nx;
+   460→    const by = this.target.y + this.target.ny;
+   461→    const bz = this.target.z + this.target.nz;
+   462→    if (by < 0 || by >= WORLD_HEIGHT) return;
+   463→    const existing = this.world.getBlock(bx, by, bz);
+   464→    if (existing !== BLOCK.AIR && !isLiquid(existing)) return;
+   465→    // don't place inside player
+   466→    if (aabbIntersectsBlock(this.player.entity, bx, by, bz)) return;
+   467→    const def = getBlockDef(slot.blockId);
+   468→    this.world.setBlock(bx, by, bz, slot.blockId);
+   469→    audio.place((def?.sound ?? 'stone') as MaterialSound);
+   470→    this.placeCooldown = 0.22;
+   471→    this.startSwing();
+   472→    slot.count--;
+   473→    if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+   474→    this.syncHUD();
+   475→    this.updateHandMesh();
+   476→  }
+   477→
+   478→  private pickBlock(): void {
+   479→    if (!this.target) return;
+   480→    // find slot with this block or put in current slot
+   481→    const hotbar = this.player.hotbar;
+   482→    for (let i = 0; i < 9; i++) {
+   483→      if (hotbar[i].blockId === this.target.id && hotbar[i].count > 0) {
+   484→        this.player.selected = i;
+   485→        this.syncHUD();
+   486→        this.updateHandMesh();
+   487→        return;
+   488→      }
+   489→    }
+   490→    hotbar[this.player.selected] = { blockId: this.target.id, count: Math.max(1, hotbar[this.player.selected].count) };
+   491→    this.syncHUD();
+   492→    this.updateHandMesh();
+   493→  }
+   494→
+   495→  private dropSelected(): void {
+   496→    const slot = this.player.hotbar[this.player.selected];
+   497→    if (!slot || slot.count <= 0) return;
+   498→    const eye = new THREE.Vector3(this.player.x, this.player.eyeY() - 0.3, this.player.z);
+   499→    const dir = this.player.forwardVector();
+   500→    this.drops.spawn(slot.blockId, eye.x + dir.x * 0.4, eye.y, eye.z + dir.z * 0.4, 1);
+   501→    slot.count--;
+   502→    if (slot.count <= 0) slot.blockId = 0;
+   503→    this.syncHUD();
+   504→    this.updateHandMesh();
+   505→  }
+   506→
+   507→  private tryPickup(stack: ItemStack): boolean {
+   508→    const hotbar = this.player.hotbar;
+   509→    // stack into existing
+   510→    for (let i = 0; i < 9; i++) {
+   511→      if (hotbar[i].blockId === stack.blockId && hotbar[i].count > 0 && hotbar[i].count < 64) {
+   512→        const take = Math.min(stack.count, 64 - hotbar[i].count);
+   513→        hotbar[i].count += take;
+   514→        stack.count -= take;
+   515→        if (stack.count <= 0) { audio.pop(); this.syncHUD(); return true; }
+   516→      }
+   517→    }
+   518→    // empty slot
+   519→    for (let i = 0; i < 9; i++) {
+   520→      if (hotbar[i].count <= 0) {
+   521→        hotbar[i] = { blockId: stack.blockId, count: stack.count };
+   522→        audio.pop();
+   523→        this.syncHUD();
+   524→        this.updateHandMesh();
+   525→        return true;
+   526→      }
+   527→    }
+   528→    return false;
+   529→  }
+   530→
+   531→  private showToast(text: string): void {
+   532→    const store = useGameStore.getState();
+   533→    store.setToast(text);
+   534→    window.setTimeout(() => {
+   535→      if (useGameStore.getState().toast === text) store.setToast(null);
+   536→    }, 1400);
+   537→  }
+   538→
+   539→  // ── hand model ─────────────────────────────────────────────────────────────
+   540→  private updateHandMesh(force = false): void {
+   541→    const slot = this.player?.hotbar[this.player.selected];
+   542→    const id = slot && slot.count > 0 ? slot.blockId : 0;
+   543→    if (id === this.handBlockId && !force) return;
+   544→    this.handBlockId = id;
+   545→    if (this.handMesh) {
+   546→      this.handGroup.remove(this.handMesh);
+   547→      this.handMesh.geometry.dispose();
+   548→      this.handMesh = null;
+   549→    }
+   550→    if (id > 0 && isItemId(id)) {
+   551→      const tex = new THREE.CanvasTexture(getItemIconCanvas(id));
+   552→      tex.magFilter = THREE.NearestFilter;
+   553→      tex.minFilter = THREE.NearestFilter;
+   554→      tex.generateMipmaps = false;
+   555→      tex.colorSpace = THREE.SRGBColorSpace;
+   556→      const geo = new THREE.PlaneGeometry(0.42, 0.42);
+   557→      this.handMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+   558→    } else if (id > 0) {
+   559→      const geo = createBlockGeometry(id, 0.42);
+   560→      this.handMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: getAtlas().texture }));
+   561→    } else {
+   562→      // arm
+   563→      const geo = new THREE.BoxGeometry(0.16, 0.16, 0.5);
+   564→      this.handMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xd8a17b }));
+   565→    }
+   566→    this.handGroup.add(this.handMesh);
+   567→  }
+   568→
+   569→  private startSwing(): void {
+   570→    if (!this.swingActive) {
+   571→      this.swingActive = true;
+   572→      this.swingT = 1;
+   573→    }
+   574→  }
+   575→
+   576→  private animateHand(dt: number): void {
+   577→    if (!this.handMesh) return;
+   578→    if (this.swingActive) {
+   579→      this.swingT -= dt * 4.2;
+   580→      if (this.swingT <= 0) { this.swingT = 0; this.swingActive = false; }
+   581→    }
+   582→    const s = this.swingT;
+   583→    const swingCurve = Math.sin(s * Math.PI);
+   584→    this.handGroup.position.set(0.42 - swingCurve * 0.18, -0.42 + swingCurve * 0.12, -0.65 - swingCurve * 0.18);
+   585→    this.handGroup.rotation.set(-swingCurve * 1.15, 0.62 - swingCurve * 0.5, swingCurve * 0.28);
+   586→    // walk sway
+   587→    const sway = Math.sin(this.player.bobPhase) * 0.012;
+   588→    this.handGroup.position.x += sway;
+   589→    this.handGroup.position.y += Math.abs(sway) * 0.8;
+   590→  }
+   591→
+   592→  // ── chunk streaming ────────────────────────────────────────────────────────
+   593→  private streamChunks(): void {
+   594→    const R = this.settings.renderDistance;
+   595→    const pcx = Math.floor(this.player.entity.x / CHUNK_SIZE);
+   596→    const pcz = Math.floor(this.player.entity.z / CHUNK_SIZE);
+   597→
+   598→    const t0 = performance.now();
+   599→    // generate data (spiral by distance), budget ~6ms
+   600→    outer:
+   601→    for (let r = 0; r <= R + 1; r++) {
+   602→      for (let dx = -r; dx <= r; dx++) {
+   603→        for (let dz = -r; dz <= r; dz++) {
+   604→          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+   605→          const key = chunkKey(pcx + dx, pcz + dz);
+   606→          if (!this.world.chunks.has(key)) {
+   607→            this.world.ensureChunk(pcx + dx, pcz + dz);
+   608→            if (performance.now() - t0 > 6) break outer;
+   609→          }
+   610→        }
+   611→      }
+   612→    }
+   613→
+   614→    // mesh chunks with all 4 neighbors' data, budget ~7ms
+   615→    const t1 = performance.now();
+   616→    outer2:
+   617→    for (let r = 0; r <= R; r++) {
+   618→      for (let dx = -r; dx <= r; dx++) {
+   619→        for (let dz = -r; dz <= r; dz++) {
+   620→          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+   621→          const chunk = this.world.getChunk(pcx + dx, pcz + dz);
+   622→          if (chunk && chunk.hasData && chunk.needsMesh) {
+   623→            const n = this.world.getChunk(pcx + dx + 1, pcz + dz);
+   624→            const s = this.world.getChunk(pcx + dx - 1, pcz + dz);
+   625→            const e = this.world.getChunk(pcx + dx, pcz + dz + 1);
+   626→            const w = this.world.getChunk(pcx + dx, pcz + dz - 1);
+   627→            if (n?.hasData && s?.hasData && e?.hasData && w?.hasData) {
+   628→              this.world.buildMesh(chunk);
+   629→              if (performance.now() - t1 > 7) break outer2;
+   630→            }
+   631→          }
+   632→        }
+   633→      }
+   634→    }
+   635→
+   636→    // unload far chunks occasionally
+   637→    if ((this.saveTimer % 5) < 0.016) {
+   638→      for (const key of Array.from(this.world.chunks.keys())) {
+   639→        const [cx, cz] = key.split(',').map(Number);
+   640→        if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > R + 3) {
+   641→          this.world.unloadChunk(cx, cz);
+   642→        }
+   643→      }
+   644→    }
+   645→  }
+   646→
+   647→  // ── HUD sync ───────────────────────────────────────────────────────────────
+   648→  private lastHudHealth = -1;
+   649→  private lastHudHunger = -1;
+   650→  private lastHotbarHash = '';
+   651→  private syncHUD(force = false): void {
+   652→    const store = useGameStore.getState();
+   653→    const hp = Math.ceil(this.player.health);
+   654→    const hg = Math.round(this.player.hunger);
+   655→    if (hp !== this.lastHudHealth || hg !== this.lastHudHunger || force) {
+   656→      this.lastHudHealth = hp;
+   657→      this.lastHudHunger = hg;
+   658→      store.setHud({ health: hp, hunger: hg });
+   659→    }
+   660→    const hash = this.player.hotbar.map((s) => s.blockId + ':' + s.count).join(',') + '|' + this.player.selected;
+   661→    if (hash !== this.lastHotbarHash || force) {
+   662→      this.lastHotbarHash = hash;
+   663→      store.setHud({
+   664→        hotbar: this.player.hotbar.map((s) => ({ ...s })),
+   665→        selected: this.player.selected,
+   666→      });
+   667→    }
+   668→  }
+   669→
+   670→  // ── main loop ──────────────────────────────────────────────────────────────
+   671→  private loop = (): void => {
+   672→    if (this.disposed) return;
+   673→    this.raf = requestAnimationFrame(this.loop);
+   674→    const now = performance.now();
+   675→    let dt = (now - this.lastTime) / 1000;
+   676→    this.lastTime = now;
+   677→    if (dt > 0.25) dt = 0.25;
+   678→
+   679→    // fps
+   680→    this.fpsAccum += dt;
+   681→    this.fpsFrames++;
+   682→    if (this.fpsAccum >= 0.5) {
+   683→      this.fps = Math.round(this.fpsFrames / this.fpsAccum);
+   684→      this.fpsAccum = 0;
+   685→      this.fpsFrames = 0;
+   686→    }
+   687→
+   688→    const screen = useGameStore.getState().screen;
+   689→    const simulate = this.running && (screen === 'playing');
+   690→
+   691→    if (simulate && this.player && this.world) {
+   692→      this.accumulator += dt;
+   693→      const step = 1 / 60;
+   694→      let steps = 0;
+   695→      while (this.accumulator >= step && steps < 5) {
+   696→        this.physicsStep(step);
+   697→        this.accumulator -= step;
+   698→        steps++;
+   699→      }
+   700→      this.frameUpdate(dt);
+   701→    } else {
+   702→      // still render (paused view behind menu)
+   703→      if (this.player && this.world && this.sky) {
+   704→        this.sky.update(0, this.camera, this.scene, 60, 130);
+   705→        this.applySkyFog();
+   706→      }
+   707→    }
+   708→
+   709→    this.renderer.render(this.scene, this.camera);
+   710→
+   711→    // debug overlay ~4Hz
+   712→    this.debugTimer += dt;
+   713→    if (this.debugTimer > 0.25 && this.player && this.world) {
+   714→      this.debugTimer = 0;
+   715→      this.updateDebug();
+   716→    }
+   717→  };
+   718→
+   719→  private physicsStep(step: number): void {
+   720→    const p = this.player;
+   721→    // input direction
+   722→    let forward = 0, strafe = 0;
+   723→    if (this.keys.has('KeyW')) forward += 1;
+   724→    if (this.keys.has('KeyS')) forward -= 1;
+   725→    if (this.keys.has('KeyA')) strafe -= 1;
+   726→    if (this.keys.has('KeyD')) strafe += 1;
+   727→    const wishJump = this.keys.has('Space');
+   728→    const wishSneak = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+   729→    p.sprinting = (this.keys.has('ControlLeft') || this.keys.has('ControlRight')) && forward > 0;
+   730→
+   731→    const wasInWater = p.entity.inWater;
+   732→    const wasOnGround = p.entity.onGround;
+   733→    const prevVy = p.entity.vy;
+   734→
+   735→    p.moveInput({ forward, strafe }, this.world, step, wishJump, wishSneak);
+   736→
+   737→    // footsteps
+   738→    if (p.entity.onGround && p.stepDistance > 2.1) {
+   739→      p.stepDistance = 0;
+   740→      const below = this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.4), Math.floor(p.z));
+   741→      const def = getBlockDef(below);
+   742→      if (def) audio.step((def.sound ?? 'stone') as MaterialSound);
+   743→    }
+   744→    // splash
+   745→    if (!wasInWater && p.entity.inWater && prevVy < -4) {
+   746→      audio.splash();
+   747→      this.particles.splash(p.x, p.y + 0.2, p.z);
+   748→    }
+   749→    // landing particles
+   750→    if (!wasOnGround && p.entity.onGround && this.prevVy < -7) {
+   751→      const below = this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.4), Math.floor(p.z));
+   752→      const def = getBlockDef(below);
+   753→      if (def) {
+   754→        const col = tileAvgColor(Array.isArray(def.tiles) ? def.tiles[2] : def.tiles);
+   755→        this.particles.burstLand(p.x, p.y, p.z, col, Math.min(14, Math.floor(-this.prevVy / 2)));
+   756→      }
+   757→    }
+   758→    this.wasInWater = p.entity.inWater;
+   759→    this.wasOnGround = p.entity.onGround;
+   760→    this.prevVy = p.entity.vy;
+   761→
+   762→    // hurt cooldown decay
+   763→    if (p.hurtCooldown > 0) p.hurtCooldown -= step;
+   764→
+   765→    // ── hunger drain ──
+   766→    if (p.sprinting && (forward !== 0 || strafe !== 0)) {
+   767→      p.hunger = Math.max(0, p.hunger - 0.085 * step);
+   768→    } else if (forward !== 0 || strafe !== 0) {
+   769→      p.hunger = Math.max(0, p.hunger - 0.012 * step);
+   770→    } else {
+   771→      p.hunger = Math.max(0, p.hunger - 0.0015 * step);
+   772→    }
+   773→    if (wishJump && p.onGround) p.hunger = Math.max(0, p.hunger - 0.05);
+   774→
+   775→    // void damage
+   776→    if (p.y < -8) {
+   777→      p.damage(4);
+   778→      p.entity.vy = 0;
+   779→      p.entity.y = -8;
+   780→    }
+   781→
+   782→    // death
+   783→    if (p.dead) {
+   784→      useGameStore.getState().setScreen('dead');
+   785→      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+   786→    }
+   787→  }
+   788→
+   789→  private frameUpdate(dt: number): void {
+   790→    const p = this.player;
+   791→
+   792→    // camera
+   793→    p.applyCamera(this.settings.fov, 8, dt);
+   794→
+   795→    // cooldowns
+   796→    this.placeCooldown -= dt;
+   797→    this.attackCooldown -= dt;
+   798→    this.eatCooldown -= dt;
+   799→
+   800→    // hunger regen / starve
+   801→    this.hungerRegenTimer += dt;
+   802→    if (this.hungerRegenTimer > 2) {
+   803→      this.hungerRegenTimer = 0;
+   804→      if (p.hunger >= 18 && p.health < p.maxHealth) {
+   805→        p.heal(1);
+   806→        p.hunger = Math.max(0, p.hunger - 0.4);
+   807→      }
+   808→    }
+   809→    this.starveTimer += dt;
+   810→    if (this.starveTimer > 3) {
+   811→      this.starveTimer = 0;
+   812→      if (p.hunger <= 0 && p.health > 2) {
+   813→        p.damage(1);
+   814→        audio.hurt();
+   815→      }
+   816→    }
+   817→
+   818→    // interaction
+   819→    this.updateTarget();
+   820→    this.mineTick(dt);
+   821→
+   822→    // drops + particles
+   823→    this.drops.update(dt, p.entity, (stack) => {
+   824→      const picked = this.tryPickup(stack);
+   825→      if (picked) {
+   826→        const name = isItemId(stack.blockId)
+   827→          ? (getItemDef(stack.blockId)?.name ?? 'Item')
+   828→          : (getBlockDef(stack.blockId)?.name ?? 'Block');
+   829→        this.showToast(name + ' ×' + stack.count);
+   830→      }
+   831→      return picked;
+   832→    });
+   833→    this.particles.update(dt);
+   834→
+   835→    // mobs
+   836→    if (this.mobs) {
+   837→      const eyeY = p.eyeY();
+   838→      this.mobs.update(dt, {
+   839→        x: p.x, y: p.y, z: p.z,
+   840→        vx: 0, vy: 0, vz: 0,
+   841→        width: 0.6, height: 1.8,
+   842→        onGround: p.onGround, inWater: p.inWater,
+   843→        eyeY: () => eyeY,
+   844→      }, this.sky.sunLevel, {
+   845→        damagePlayer: (amount, fx, fz) => {
+   846→          if (amount <= 0) return;
+   847→          p.damage(amount);
+   848→          audio.hurt();
+   849→          // knockback away from source
+   850→          const kx = p.x - fx;
+   851→          const kz = p.z - fz;
+   852→          const len = Math.hypot(kx, kz) || 1;
+   853→          p.entity.vx += (kx / len) * 6.5;
+   854→          p.entity.vz += (kz / len) * 6.5;
+   855→          p.entity.vy = Math.max(p.entity.vy, 4.2);
+   856→        },
+   857→        spawnDrop: (itemId, dx, dy, dz) => {
+   858→          this.drops.spawn(itemId, dx, dy, dz, 1);
+   859→        },
+   860→        explodeParticles: (ex, ey, ez) => {
+   861→          for (let i = 0; i < 3; i++) {
+   862→            this.particles.burstBlockBreak(ex - 0.5 + i * 0.5, ey, ez, [0.35, 0.33, 0.3]);
+   863→          }
+   864→          this.particles.burstLand(ex, ey, ez, [0.2, 0.2, 0.2], 20);
+   865→        },
+   866→        deathParticles: (dx2, dy2, dz2) => {
+   867→          this.particles.burstLand(dx2, dy2, dz2, [0.85, 0.25, 0.25], 10);
+   868→        },
+   869→        fireParticle: (fx2, fy2, fz2) => {
+   870→          this.particles.spawnParticle(fx2, fy2, fz2, (Math.random() - 0.5) * 0.6, 1.6 + Math.random(), (Math.random() - 0.5) * 0.6, [1, 0.45, 0.1], 0.09, 0.5, -2);
+   871→        },
+   872→        playerX: p.x,
+   873→        playerY: p.y,
+   874→        playerZ: p.z,
+   875→      });
+   876→    }
+   877→
+   878→    // sky + fog + lighting uniforms
+   879→    this.sky.update(dt, this.camera, this.scene, 60, 130);
+   880→    this.applySkyFog();
+   881→
+   882→    // hand animation
+   883→    this.animateHand(dt);
+   884→
+   885→    // streaming + autosave
+   886→    this.streamChunks();
+   887→    this.saveTimer += dt;
+   888→    if (this.saveTimer > 20) {
+   889→      this.saveTimer = 0;
+   890→      this.saveGame();
+   891→    }
+   892→
+   893→    // underwater check for HUD
+   894→    const camBlock = this.world.getBlock(Math.floor(this.camera.position.x), Math.floor(this.camera.position.y), Math.floor(this.camera.position.z));
+   895→    const underwater = camBlock === BLOCK.WATER;
+   896→    const st = useGameStore.getState();
+   897→    if (st.hud.underwater !== underwater) st.setHud({ underwater });
+   898→
+   899→    this.syncHUD();
+   900→  }
+   901→
+   902→  private applySkyFog(): void {
+   903→    if (!this.sky) return;
+   904→    const mats = [this.world?.getMaterial('opaque'), this.world?.getMaterial('cutout'), this.world?.getMaterial('water')];
+   905→    const fog = this.scene.fog as THREE.Fog | null;
+   906→    const underwater = this.world && this.camera.position && isLiquid(this.world.getBlock(
+   907→      Math.floor(this.camera.position.x), Math.floor(this.camera.position.y), Math.floor(this.camera.position.z)
+   908→    ));
+   909→    for (const m of mats) {
+   910→      if (!m) continue;
+   911→      m.uniforms.uSunLevel.value = this.sky.sunLevel;
+   912→      m.uniforms.uTime.value = performance.now() / 1000;
+   913→      if (underwater) {
+   914→        m.uniforms.uFogColor.value.setRGB(0.09, 0.24, 0.55);
+   915→        m.uniforms.uFogNear.value = 4;
+   916→        m.uniforms.uFogFar.value = 26;
+   917→      } else if (fog) {
+   918→        (m.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
+   919→        m.uniforms.uFogNear.value = fog.near;
+   920→        m.uniforms.uFogFar.value = fog.far;
+   921→      }
+   922→    }
+   923→    // entity lights follow sun
+   924→    this.ambient.intensity = 0.25 + this.sky.sunLevel * 0.75;
+   925→    this.sunLight.intensity = 0.15 + this.sky.sunLevel * 0.8;
+   926→    const angle = ((this.sky.time / DAY_LENGTH) - 0.25) * Math.PI * 2;
+   927→    this.sunLight.position.set(Math.cos(angle), Math.max(0.2, Math.sin(angle)), 0.3).normalize().multiplyScalar(50);
+   928→  }
+   929→
+   930→  private updateDebug(): void {
+   931→    const store = useGameStore.getState();
+   932→    if (!store.debugVisible && !store.settings.showFps) return;
+   933→    const p = this.player;
+   934→    const yawDeg = ((p.yaw * 180 / Math.PI) % 360 + 360) % 360;
+   935→    // yaw=0 looks toward -Z (north); positive yaw (mouse left) rotates toward -X (west)
+   936→    const dirs = ['north', 'north-west', 'west', 'south-west', 'south', 'south-east', 'east', 'north-east'];
+   937→    const facing = dirs[Math.round(yawDeg / 45) % 8];
+   938→    const targetName = this.target ? (getBlockDef(this.target.id)?.name ?? '—') : '—';
+   939→    store.setDebug({
+   940→      fps: this.fps,
+   941→      x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+   942→      chunkX: Math.floor(p.x / CHUNK_SIZE), chunkZ: Math.floor(p.z / CHUNK_SIZE),
+   943→      biome: this.world.terrain.biomeAt(Math.floor(p.x), Math.floor(p.z)),
+   944→      facing,
+   945→      targetBlock: targetName,
+   946→      chunks: this.world.chunks.size,
+   947→      mobs: this.mobs ? this.mobs.count : 0,
+   948→      time: getTimeLabel(this.sky.time),
+   949→      tris: this.renderer.info.render.triangles,
+   950→    });
+   951→  }
+   952→
+   953→  respawn(): void {
+   954→    // respawn at world spawn
+   955→    let sx = 8;
+   956→    const sz = 8;
+   957→    let sy = this.world.surfaceY(sx, sz);
+   958→    let attempts = 0;
+   959→    while ((sy <= 40 || sy === 0) && attempts < 12) {
+   960→      sx += 10; sy = this.world.surfaceY(sx, sz); attempts++;
+   961→    }
+   962→    this.player.respawn(sx + 0.5, sy + 1.2, sz + 0.5);
+   963→    useGameStore.getState().setScreen('playing');
+   964→    this.requestLock();
+   965→  }
+   966→
+   967→  applySettings(): void {
+   968→    const s = useGameStore.getState().settings;
+   969→    this.settings = s;
+   970→    this.camera.fov = s.fov;
+   971→    this.camera.updateProjectionMatrix();
+   972→    audio.setVolume(s.volume);
+   973→    if (this.sky) this.sky.cloudsEnabled = s.clouds;
+   974→  }
+   975→
+   976→  dispose(): void {
+   977→    this.disposed = true;
+   978→    this.running = false;
+   979→    cancelAnimationFrame(this.raf);
+   980→    this.raf = 0;
+   981→    this.unbindEvents();
+   982→    this.storeUnsub();
+   983→    if (this.world) {
+   984→      for (const key of Array.from(this.world.chunks.keys())) {
+   985→        const [cx, cz] = key.split(',').map(Number);
+   986→        this.world.unloadChunk(cx, cz);
+   987→      }
+   988→      this.scene.remove(this.world.group);
+   989→    }
+   990→    this.particles?.dispose();
+   991→    this.drops?.clear();
+   992→    this.mobs?.clear();
+   993→    this.renderer.dispose();
+   994→  }
+   995→}
+   996→
+   997→// ─── singleton accessor for UI ───────────────────────────────────────────────
+   998→let engineInstance: Game | null = null;
+   999→
+  1000→export function setEngine(g: Game | null): void {
+  1001→  engineInstance = g;
+  1002→}
+  1003→
+  1004→export function getEngine(): Game | null {
+  1005→  return engineInstance;
+  1006→}
+  1007→

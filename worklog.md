@@ -185,3 +185,40 @@ Stage Summary:
 - PHASE 2a COMPLETE: living world with 7 mob types, combat, hunger/food loop
 - Deferred to next rounds: full inventory screen (E) + crafting 2x2/3x3 + tools/tiers (Phase 2b), spider+enderman, sheep wool color, hold-to-eat animation, mob spawn persistence, clouds slightly darker at night
 - Recommended next (Task 4): inventory UI + crafting system + tools (mining speed multipliers + tool gating), then furnace/torch Phase 3
+
+---
+Task ID: 4 (Phase 2b — Inventory, Crafting, Tools)
+Agent: main (cron round 2)
+Task: Status assessment + agent-browser QA + Phase 2b: full inventory (E), 2x2/3x3 crafting, tools with tiers/durability/mining-speed/tool-gating
+
+Work Log:
+- QA round 1 (pre-existing build): menu → New World → terrain/HUD render ✓; eval-driven mining (block broke, 4 dirt drops) ✓; magnet pickup (Dirt x4 → hotbar) ✓; natural mob spawning (13 mobs incl. herds + night hostiles) ✓; no console errors; lint pass. Verdict: Phase 1+2a STABLE → proceed to Phase 2b per roadmap.
+- Files created:
+  - src/game/crafting.ts — recipe registry (26 recipes) + matcher: shapeless (log→planks) + shaped w/ bounding-box sliding + automatic mirroring (axe); needsTable(); freshDur(); grid sizes 2 and 3 supported. Recipes: planks, sticks, crafting table, furnace (8 cobble ring), full tool sets (pickaxe/axe/shovel/sword) x 5 tiers (wood/stone/iron/gold/diamond).
+  - src/game/inventory.ts — InvSlot {blockId,count,dur?}, addToSlots (merge-then-empty, maxStack-aware), isEmptySlot, cloneSlots helpers.
+  - src/components/game/InventoryScreen.tsx — authentic MC GUI: #c6c6c6 panel w/ bevel box-shadows, #8b8b8b inset-bevel slots (44px), hover white/45 overlay, count text w/ MC shadow, durability bars (green→red hsl), cursor stack follows mouse (fixed, z-50), MC-style tooltips (dark purple border), 2x2 grid (player inv) vs 3x3 (table mode), pixel-art player figure filler, arrow glyph, hint line. Left-click pick/place/swap/merge, right-click split-half/place-one, shift-click quick-move (hotbar<->main, craft→inv), output click = take, shift-click output = craft-all (loop ≤64).
+  - src/components/game/slotIcon.ts — shared icon/name resolution (block iso icon or item pixel icon) used by HUD + InventoryScreen.
+- Files updated:
+  - src/game/items.ts — +20 tool items (ids 270-289, MC stats: wood 2x/59, stone 4x/131, iron 6x/250, gold 12x/32 tier1, diamond 8x/1561), dmg per type; +materials iron/gold ingot, diamond (290-292) w/ pixel icons; procedural tool icon painters (diagonal handle + tier-colored heads); getToolDef/maxStack (tools stack 1)/isToolItem; breakInfo(def, tool) — MC formula: harvest? h*1.5/speed : h*5/speed, tool-type match required for speed+tier gating.
+  - src/game/blocks.ts — minTier added: stone/cobble 1, coal 1 (drops COAL item now), iron 2 (drops IRON_INGOT temp), gold/diamond 3, obsidian 5. (imports ITEM from items — one-way dep ok)
+  - src/game/player.ts — HotbarSlot.dur?, main inventory 27 slots.
+  - src/game/state.ts — InvUIState (open/table/hotbar/main/craft/craftOut/cursor) + setInv.
+  - src/game/engine.ts — E key opens 2x2 (playing) / closes (inv open); Esc closes; digits 1-9 swap hovered slot w/ hotbar; RMB on crafting table opens 3x3 (unless sneaking); invClick/clickSlot/shiftMove/takeCraftOutput/updateCraftOut/invHotbarSwap/setInvHover; closeInventory returns craft grid + cursor to inv (drops overflow); addToInventory hotbar→main; tryPickup uses it (works w/ main inv now); mineTick uses breakInfo (tool speeds + gating) + damageTool(1) per block, mob hit dmg = tool.dmg (sword 4-7), non-sword tools lose 2 dur on hit; damageTool breaks tool at 0 (sound + toast); syncInventory hash-guarded push to store; save format v2: player.main + dur (backward compatible).
+  - GameRoot.tsx — renders InventoryScreen while playing+invOpen (world keeps simulating, pointer unlocked, pause suppressed via onPointerLockChange guard).
+  - HUD.tsx — durability bar in hotbar, shared slotIcon.
+  - DebugOverlay — version 0.3.0.
+
+QA (agent-browser, eval-driven, all verified):
+- E opens 2x2 inv; GUI renders MC-authentic (panel, slots, player figure, hint) ✓
+- Log→Planks x4 (shapeless) ✓; Planks 2x2→Crafting Table ✓; 2-plank column→Sticks x4 (3x3) ✓; shift-click output craft-all ✓; Pickaxe pattern (3 planks top + 2 sticks) → Wooden Pickaxe dur=59 ✓
+- RMB split/place-one, cursor stack render, swap, merge, return-on-close (craft+cursor → inv, overflow drops) ✓
+- Tool speed: pickaxe breaks stone ~1.1s ✓; durability 59→56 over 3 breaks ✓; harvest gating: pickaxe→cobble drops x3 ✓, bare hand breaks stone w/ NO drop ✓
+- Living-world interruptions handled authentically: night zombies killed AFK player (death screen), respawn button works, creeper explosion destroyed test block; tools survived all cycles ✓
+- Save v2: main inventory (27) + dur persisted to localStorage; quit→title→Continue available ✓
+- lint pass, dev.log clean (200s only), no console errors
+
+Stage Summary:
+- PHASE 2b COMPLETE: full inventory + crafting progression (punch tree → planks → table → sticks → tools) + MC tool mechanics (tiers, speeds, durability, gating)
+- Design decisions: iron/gold ore drop ingots directly (furnace smelting arrives Phase 3); invOpen suppresses pause screen (world keeps running, like MC)
+- Known minor: addToSlots merges only within target list (cursor-return can leave split stacks — harmless); requestPointerLock after inv close may need a click in some browsers (ClickHint covers)
+- NEXT (Phase 3 per roadmap): torches (light-emit placement + cross-model mesher support), furnace smelting UI (iron/gold from ore, cooked food, glass), chest storage UI, water flow, more biomes (jungle/swamp), flowers/cacti cross-models, beds, XP orbs

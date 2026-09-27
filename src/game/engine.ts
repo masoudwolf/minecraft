@@ -7,7 +7,9 @@ import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager } from './entities/mobs';
-import { getItemDef, isItemId } from './items';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem } from './items';
+import { matchRecipe, freshDur } from './crafting';
+import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
 import { audio, type MaterialSound } from './audio';
@@ -20,7 +22,7 @@ const SAVE_KEY = 'voxelcraft.save';
 interface SaveData {
   seed: number;
   time: number;
-  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; selected: number };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; selected: number };
   edits: Record<string, Record<number, number>>;
 }
 
@@ -62,6 +64,15 @@ export class Game {
   private target: RayHit | null = null;
   private running = false;
   private disposed = false;
+
+  // inventory / crafting
+  private craft2: HotbarSlot[] = Array.from({ length: 4 }, () => ({ blockId: 0, count: 0 }));
+  private craft9: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
+  private craftOut: HotbarSlot | null = null;
+  private cursor: HotbarSlot | null = null;
+  private invTable = false;
+  private invHover: { area: 'hotbar' | 'main' | 'craft'; idx: number } | null = null;
+  private lastInvHash = '';
 
   private highlight: THREE.LineSegments;
   private crackMesh: THREE.Mesh;
@@ -182,6 +193,9 @@ export class Game {
       this.player.pitch = save.player.pitch;
       this.player.health = save.player.health;
       this.player.hotbar = save.player.hotbar;
+      this.player.main = save.player.main && save.player.main.length === 27
+        ? save.player.main
+        : Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
       this.player.selected = save.player.selected;
       this.player.fallStartY = save.player.y;
     } else {
@@ -261,6 +275,7 @@ export class Game {
         yaw: this.player.yaw, pitch: this.player.pitch,
         health: this.player.health,
         hotbar: this.player.hotbar,
+        main: this.player.main,
         selected: this.player.selected,
       },
       edits,
@@ -281,8 +296,18 @@ export class Game {
   // ── input ──────────────────────────────────────────────────────────────────
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
-    if (useGameStore.getState().screen !== 'playing') return;
+    const st = useGameStore.getState();
+    if (st.inv.open && st.screen === 'playing') {
+      if (e.code === 'KeyE' || e.code === 'Escape') { e.preventDefault(); this.closeInventory(); return; }
+      if (e.code.startsWith('Digit')) {
+        const n = parseInt(e.code.slice(5), 10);
+        if (n >= 1 && n <= 9 && this.invHover) this.invHotbarSwap(this.invHover.area, this.invHover.idx, n - 1);
+      }
+      return;
+    }
+    if (st.screen !== 'playing') return;
     this.keys.add(e.code);
+    if (e.code === 'KeyE') { e.preventDefault(); this.openInventory(false); return; }
     if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5), 10);
       if (n >= 1 && n <= 9) { this.player.selected = n - 1; this.syncHUD(); this.updateHandMesh(); }
@@ -327,6 +352,7 @@ export class Game {
   };
 
   private onPointerLockChange = (): void => {
+    if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
     if (document.pointerLockElement !== this.canvas && useGameStore.getState().screen === 'playing' && !this.player?.dead) {
       useGameStore.getState().setScreen('paused');
       this.saveGame();
@@ -379,6 +405,11 @@ export class Game {
   }
 
   private mineTick(dt: number): void {
+    const heldSlot = this.player.hotbar[this.player.selected];
+    const heldTool = heldSlot && heldSlot.count > 0 && isItemId(heldSlot.blockId)
+      ? getToolDef(heldSlot.blockId)
+      : undefined;
+
     // mob attack takes priority over mining
     if (this.mining && this.attackCooldown <= 0) {
       const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
@@ -389,8 +420,9 @@ export class Game {
         this.startSwing();
         const kx = hit.mob.x - this.player.x;
         const kz = hit.mob.z - this.player.z;
-        this.mobs.hurtMob(hit.mob, 2, kx, kz);
+        this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz);
         this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
+        this.damageTool(heldTool && heldTool.type !== 'sword' ? 2 : 1);
         this.crackMesh.visible = false;
         return;
       }
@@ -403,8 +435,10 @@ export class Game {
       this.mineProgress = 0;
     }
     const def = getBlockDef(t.id);
-    if (!def || def.hardness === Infinity) { this.crackMesh.visible = false; return; }
-    this.mineProgress += dt / def.hardness;
+    if (!def) { this.crackMesh.visible = false; return; }
+    const { time, harvest } = breakInfo(def, heldTool);
+    if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
+    this.mineProgress += dt / time;
 
     // dig sound + swing loop
     this.stepTimer += dt;
@@ -420,9 +454,10 @@ export class Game {
       this.particles.burstBlockBreak(t.x, t.y, t.z, col);
       audio.breakBlock((def.sound ?? 'stone') as MaterialSound);
       const dropId = def.drop === undefined ? t.id : def.drop;
-      if (dropId && dropId > 0) {
+      if (harvest && dropId && dropId > 0) {
         this.drops.spawn(dropId, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
       }
+      this.damageTool(1);
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
       this.mineProgress = 0;
       this.mineTarget = null;
@@ -438,6 +473,12 @@ export class Game {
 
   private placeBlock(): void {
     if (!this.target || this.placeCooldown > 0) return;
+    // right-click on crafting table opens the 3x3 grid (unless sneaking)
+    const targetId = this.world.getBlock(this.target.x, this.target.y, this.target.z);
+    if (targetId === BLOCK.CRAFTING_TABLE && !this.player.sneaking) {
+      this.openInventory(true);
+      return;
+    }
     const slot = this.player.hotbar[this.player.selected];
     if (!slot || slot.blockId === 0 || slot.count <= 0) return;
     // eating food items
@@ -505,27 +546,22 @@ export class Game {
   }
 
   private tryPickup(stack: ItemStack): boolean {
-    const hotbar = this.player.hotbar;
-    // stack into existing
-    for (let i = 0; i < 9; i++) {
-      if (hotbar[i].blockId === stack.blockId && hotbar[i].count > 0 && hotbar[i].count < 64) {
-        const take = Math.min(stack.count, 64 - hotbar[i].count);
-        hotbar[i].count += take;
-        stack.count -= take;
-        if (stack.count <= 0) { audio.pop(); this.syncHUD(); return true; }
-      }
+    const leftover = this.addToInventory(stack.blockId, stack.count);
+    if (leftover < stack.count) {
+      audio.pop();
+      this.syncHUD();
+      this.syncInventory();
     }
-    // empty slot
-    for (let i = 0; i < 9; i++) {
-      if (hotbar[i].count <= 0) {
-        hotbar[i] = { blockId: stack.blockId, count: stack.count };
-        audio.pop();
-        this.syncHUD();
-        this.updateHandMesh();
-        return true;
-      }
-    }
-    return false;
+    if (leftover === stack.count) return false;
+    stack.count = leftover;
+    return leftover === 0;
+  }
+
+  /** add to hotbar first, then main inventory. Returns leftover count. */
+  private addToInventory(id: number, count: number, dur?: number): number {
+    let left = addToSlots(this.player.hotbar, id, count, dur);
+    if (left > 0) left = addToSlots(this.player.main, id, left, dur);
+    return left;
   }
 
   private showToast(text: string): void {
@@ -534,6 +570,220 @@ export class Game {
     window.setTimeout(() => {
       if (useGameStore.getState().toast === text) store.setToast(null);
     }, 1400);
+  }
+
+  // ── inventory / crafting (UI calls these) ────────────────────────────────────
+  private get craftGrid(): HotbarSlot[] {
+    return this.invTable ? this.craft9 : this.craft2;
+  }
+
+  openInventory(table: boolean): void {
+    const st = useGameStore.getState();
+    if (st.screen !== 'playing' || st.inv.open) return;
+    this.mining = false;
+    this.mineProgress = 0;
+    this.keys.clear();
+    this.invTable = table;
+    this.updateCraftOut();
+    st.setInv({ open: true, table });
+    this.syncInventory(true);
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  closeInventory(): void {
+    const st = useGameStore.getState();
+    if (!st.inv.open) return;
+    // return craft grid + cursor to inventory (drop if full)
+    const p = this.player.entity;
+    for (const s of this.craftGrid) {
+      if (isEmptySlot(s)) continue;
+      const left = this.addToInventory(s.blockId, s.count, s.dur);
+      if (left > 0) this.drops.spawn(s.blockId, p.x, p.y + 1, p.z, left);
+      s.blockId = 0; s.count = 0;
+    }
+    if (this.cursor) {
+      const left = this.addToInventory(this.cursor.blockId, this.cursor.count, this.cursor.dur);
+      if (left > 0) this.drops.spawn(this.cursor.blockId, p.x, p.y + 1, p.z, left);
+      this.cursor = null;
+    }
+    this.craftOut = null;
+    this.invHover = null;
+    st.setInv({ open: false, cursor: null, craftOut: null, craft: [] });
+    this.syncHUD(true);
+    this.updateHandMesh(true);
+    this.requestLock();
+  }
+
+  setInvHover(hover: { area: 'hotbar' | 'main' | 'craft'; idx: number } | null): void {
+    this.invHover = hover;
+  }
+
+  private invHotbarSwap(area: 'hotbar' | 'main' | 'craft', idx: number, hotbarIdx: number): void {
+    const list = area === 'hotbar' ? this.player.hotbar : area === 'main' ? this.player.main : this.craftGrid;
+    if (hotbarIdx === idx && area === 'hotbar') return;
+    const a = list[idx];
+    list[idx] = this.player.hotbar[hotbarIdx];
+    this.player.hotbar[hotbarIdx] = a;
+    this.syncInventory(true);
+    this.syncHUD(true);
+    this.updateHandMesh();
+  }
+
+  invClick(area: 'hotbar' | 'main' | 'craft' | 'out', idx: number, button: 'left' | 'right', shift: boolean): void {
+    const st = useGameStore.getState();
+    if (!st.inv.open) return;
+    if (area === 'out') { this.takeCraftOutput(shift); return; }
+    const list = area === 'hotbar' ? this.player.hotbar : area === 'main' ? this.player.main : this.craftGrid;
+    if (idx < 0 || idx >= list.length) return;
+    if (shift) {
+      this.shiftMove(area, list, idx);
+    } else {
+      this.clickSlot(list, idx, button);
+    }
+    this.updateCraftOut();
+    this.syncInventory(true);
+    this.syncHUD(true);
+    this.updateHandMesh();
+  }
+
+  private clickSlot(list: HotbarSlot[], idx: number, button: 'left' | 'right'): void {
+    const slot = list[idx];
+    const cur = this.cursor;
+    if (button === 'right') {
+      if (!cur) {
+        if (isEmptySlot(slot)) return;
+        const half = Math.ceil(slot.count / 2);
+        this.cursor = { ...slot, count: half };
+        slot.count -= half;
+        if (slot.count <= 0) list[idx] = emptySlot();
+      } else {
+        if (isEmptySlot(slot)) {
+          list[idx] = { blockId: cur.blockId, count: 1, dur: cur.dur };
+          cur.count--;
+        } else if (slot.blockId === cur.blockId && slot.count < maxStack(slot.blockId)) {
+          slot.count++;
+          cur.count--;
+        } else return;
+        if (cur.count <= 0) this.cursor = null;
+      }
+      return;
+    }
+    // left click
+    if (!cur) {
+      if (isEmptySlot(slot)) return;
+      this.cursor = { ...slot };
+      list[idx] = emptySlot();
+    } else if (isEmptySlot(slot)) {
+      list[idx] = { ...cur };
+      this.cursor = null;
+    } else if (slot.blockId === cur.blockId && !isToolItem(slot.blockId)) {
+      const max = maxStack(slot.blockId);
+      const take = Math.min(cur.count, max - slot.count);
+      slot.count += take;
+      cur.count -= take;
+      if (cur.count <= 0) this.cursor = null;
+    } else {
+      list[idx] = { ...cur };
+      this.cursor = { ...slot };
+    }
+  }
+
+  private shiftMove(area: 'hotbar' | 'main' | 'craft', list: HotbarSlot[], idx: number): void {
+    const slot = list[idx];
+    if (isEmptySlot(slot)) return;
+    let left: number;
+    if (area === 'hotbar') {
+      left = addToSlots(this.player.main, slot.blockId, slot.count, slot.dur);
+    } else {
+      // main/craft -> hotbar first, then main (craft items go home)
+      left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur);
+      if (left > 0 && area === 'main') left = addToSlots(this.player.main, slot.blockId, left, slot.dur);
+    }
+    if (left <= 0) list[idx] = emptySlot();
+    else slot.count = left;
+  }
+
+  private updateCraftOut(): void {
+    const grid = this.craftGrid;
+    const size = this.invTable ? 3 : 2;
+    const ids = grid.map((s) => (isEmptySlot(s) ? 0 : s.blockId));
+    const res = matchRecipe(ids, size);
+    this.craftOut = res
+      ? { blockId: res.id, count: res.count, dur: freshDur(res.id) }
+      : null;
+  }
+
+  private takeCraftOutput(shift: boolean): void {
+    if (!this.craftOut) return;
+    const grid = this.craftGrid;
+    const consume = (): void => {
+      for (let i = 0; i < grid.length; i++) {
+        const s = grid[i];
+        if (isEmptySlot(s)) continue;
+        s.count--;
+        if (s.count <= 0) grid[i] = emptySlot();
+      }
+    };
+    if (!shift) {
+      const out = this.craftOut;
+      if (!this.cursor) {
+        this.cursor = { ...out };
+        consume();
+      } else if (this.cursor.blockId === out.blockId && !isToolItem(out.blockId) && this.cursor.count + out.count <= maxStack(out.blockId)) {
+        this.cursor.count += out.count;
+        consume();
+      } else return;
+    } else {
+      let guard = 0;
+      while (guard++ < 64) {
+        const size = this.invTable ? 3 : 2;
+        const res = matchRecipe(grid.map((s) => (isEmptySlot(s) ? 0 : s.blockId)), size);
+        if (!res) break;
+        const left = this.addToInventory(res.id, res.count, freshDur(res.id));
+        if (left > 0) {
+          const p = this.player.entity;
+          this.drops.spawn(res.id, p.x, p.y + 1, p.z, left);
+        }
+        consume();
+        audio.pop();
+      }
+    }
+    this.updateCraftOut();
+    this.syncInventory(true);
+    this.syncHUD(true);
+  }
+
+  /** consume durability from held tool; breaks it at 0 */
+  private damageTool(n: number): void {
+    const slot = this.player.hotbar[this.player.selected];
+    if (!slot || slot.count <= 0 || !isItemId(slot.blockId)) return;
+    const tool = getToolDef(slot.blockId);
+    if (!tool) return;
+    slot.dur = (slot.dur ?? tool.dur) - n;
+    if (slot.dur <= 0) {
+      this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+      audio.breakBlock('glass');
+      this.showToast('Your tool broke!');
+      this.updateHandMesh(true);
+    }
+    this.syncHUD();
+    this.syncInventory();
+  }
+
+  private syncInventory(force = false): void {
+    const st = useGameStore.getState();
+    if (!st.inv.open && !force) return;
+    const grid = this.craftGrid;
+    const hash = JSON.stringify([this.player.hotbar, this.player.main, grid, this.craftOut, this.cursor]);
+    if (hash === this.lastInvHash && !force) return;
+    this.lastInvHash = hash;
+    st.setInv({
+      hotbar: cloneSlots(this.player.hotbar),
+      main: cloneSlots(this.player.main),
+      craft: cloneSlots(grid),
+      craftOut: this.craftOut ? { ...this.craftOut } : null,
+      cursor: this.cursor ? { ...this.cursor } : null,
+    });
   }
 
   // ── hand model ─────────────────────────────────────────────────────────────

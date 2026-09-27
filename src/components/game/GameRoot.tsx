@@ -8,10 +8,12 @@ import { MainMenu } from './MainMenu';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen } from './Overlays';
+import { InventoryScreen } from './InventoryScreen';
 
 export default function GameRoot() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screen = useGameStore((s) => s.screen);
+  const invOpen = useGameStore((s) => s.inv.open);
   const debugVisible = useGameStore((s) => s.debugVisible);
 
   useEffect(() => {
@@ -35,9 +37,10 @@ export default function GameRoot() {
         <>
           <HUD />
           {debugVisible && <DebugOverlay />}
-          <ClickHint />
+          {!invOpen && <ClickHint />}
         </>
       )}
+      {screen === 'playing' && invOpen && <InventoryScreen />}
       {screen === 'menu' && <MainMenu />}
       {screen === 'loading' && <LoadingScreen />}
       {screen === 'paused' && <PauseMenu />}
