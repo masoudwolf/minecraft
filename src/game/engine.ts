@@ -548,6 +548,14 @@ export class Game {
   private lastSpaceTap = 0;
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    // OS key auto-repeat: a HELD key fires keydown ~30x/sec. Held movement keys
+    // are already in this.keys (added on the first press), so re-processing
+    // repeats would only re-trigger ONE-SHOT actions — critically the creative
+    // flight double-tap, which then toggled flight on/off while Space was held.
+    if (e.repeat) {
+      if (e.code === 'Space' || e.code === 'F3' || e.code === 'F5') e.preventDefault();
+      return;
+    }
     if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
     const st = useGameStore.getState();
     if (e.code === 'F5') {
@@ -580,12 +588,18 @@ export class Game {
       if (n >= 1 && n <= 9) { this.player.selected = n - 1; this.syncHUD(); this.updateHandMesh(); }
     }
     if (e.code === 'KeyQ') this.dropSelected();
-    // creative: double-tap space toggles flight
+    // creative: double-tap space toggles flight (fresh presses only — repeats
+    // are filtered above). Tap is consumed so a held key or a stray third tap
+    // can't chain-toggle flight back and forth.
     if (e.code === 'Space' && this.player.isCreative) {
       const now = performance.now();
       if (now - this.lastSpaceTap < 280) {
         this.player.flying = !this.player.flying;
-        if (this.player.flying) this.player.entity.vy = 0;
+        if (this.player.flying) {
+          // small liftoff impulse: guarantees the player rises even if Space is
+          // released instantly (landing-cancel only fires while vy <= 0)
+          this.player.entity.vy = Math.max(this.player.entity.vy, 3.4);
+        }
         audio.click();
         this.syncHUD(true);
         this.lastSpaceTap = 0;

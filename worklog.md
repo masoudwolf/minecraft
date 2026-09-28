@@ -606,3 +606,26 @@ Work Log:
 Stage Summary:
 - BUGFIX COMPLETE: water seams at chunk borders eliminated (world-position wave phase + top-only vertex displacement + 2-octave waves). Waterline visuals unchanged.
 - Note: BLOCK.WATER id = 10, SAND = 6 (QA column-scan gotcha); player.flying resets on ground contact in this engine — hold position via page interval when doing camera QA over water; sky.time drifts with the day cycle (re-force for daylight shots).
+---
+Task ID: 14 (Bugfix — Creative Flight Toggle Flicker While Holding Space)
+Agent: main (user-reported bugfix round)
+Task: User reported: holding Space in creative mode should ascend continuously (MC behavior) but flight kept toggling on/off while held; double-tap back-to-back should not chain-toggle.
+
+Work Log:
+- Root cause (engine.ts onKeyDown): NO `e.repeat` guard. OS key auto-repeat fires keydown ~30x/sec while held; consecutive repeats are <280ms apart, so the double-tap window matched EVERY repeat pair → `flying = !flying` toggled on each repeat → flight flickered on/off while holding Space. Also fixed the same latent bug class for all one-shot keys (KeyE inventory open/close flicker, F3/F5 rapid cycling, Q drop spam) via one guard.
+- FIX 1 (engine.ts): top-of-handler guard `if (e.repeat) { if (Space/F3/F5) preventDefault(); return; }` — held movement keys already live in this.keys (added on the first fresh press), so repeats carried no needed state; only one-shot actions were being re-triggered. Double-tap now only sees DISTINCT fresh presses, exactly like MC.
+- FIX 2 (engine.ts double-tap block): engage-flight now applies a liftoff impulse `vy = max(vy, 3.4)` (replaced `vy = 0` which could instantly re-cancel flight via the landing guard `onGround && vy <= 0` if Space was released within a frame of the toggle). Tap still consumed on toggle (lastSpaceTap=0) so stray third taps can't chain-toggle.
+- Verified physics path untouched: flight ascent/descent still driven by keys.has('Space'/'Shift') in moveInput (player.ts) — holding rises, landing cancels when descending.
+- QA harness lessons: agent-browser CLI roundtrip between `keydown`/`keyup` commands exceeds the 280ms double-tap window (can't test double-tap with two CLI key commands); page setTimeout sleeps clamp under headless throttling (async eval test gave false negatives — tap gaps stretched >1s). SOLUTION: single synchronous eval with busy-wait gaps + synthetic KeyboardEvent dispatch (isTrusted irrelevant — listeners don't check it); real CDP `keydown`/`keyup` used only for the held-ascent physics test.
+
+QA (agent-browser, world "Water Seam QA" seed 5150, creative — all verified):
+- A: fresh Space press + 100 synthetic OS-repeat keydowns → flying stayed false, flickers=0 (the reported bug) ✓
+- B: double-tap (2 fresh presses, 80ms apart) → flying=true + vy=3.40 liftoff ✓
+- C: 50-repeat flood while flying → flying stayed true (no cancel) ✓
+- D: second double-tap → flying=false (MC cancel behavior) ✓
+- E: REAL held Space (CDP keydown) while flying → vy reached 5.25 (full climb speed), y risen +1.31 blocks over ~1.1s and climbing, keyup → still flying (hover) ✓
+- Regression: no console/page errors; autosave PUTs 200; lint clean.
+
+Stage Summary:
+- BUGFIX COMPLETE: holding Space in creative no longer flickers flight on/off; double-tap toggles flight on (with liftoff) / off exactly like Minecraft; same guard also fixes latent KeyE/F3/F5/Q repeat-spam issues.
+- NEXT candidates (unchanged Phase 10 list): boats, witch hut, enchanting, villager trade rotation, sprint FOV polish, farming achievements.
