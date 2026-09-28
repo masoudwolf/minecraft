@@ -1,0 +1,740 @@
+     1→// ─── Non-block item registry (id >= 256): food, materials, tools ─────────────
+     2→import type { BlockDef } from './blocks';
+     3→
+     4→export interface ToolDef {
+     5→  type: 'pickaxe' | 'axe' | 'shovel' | 'sword';
+     6→  /** harvest tier: 1 wood, 2 stone, 3 iron, 1 gold (fast), 5 diamond */
+     7→  tier: number;
+     8→  /** mining speed multiplier */
+     9→  speed: number;
+    10→  /** durability (uses) */
+    11→  dur: number;
+    12→  /** attack damage vs mobs */
+    13→  dmg: number;
+    14→}
+    15→
+    16→export interface ItemDef {
+    17→  id: number;
+    18→  name: string;
+    19→  /** hunger points restored when eaten (0 = not edible) */
+    20→  food?: number;
+    21→  /** tool stats (tools only) */
+    22→  tool?: ToolDef;
+    23→  /** armor stats (armor only) */
+    24→  armor?: ArmorDef;
+    25→  /** ranged weapon stats (bow only) */
+    26→  bow?: BowDef;
+    27→  /** draw 16x16 pixel-art icon; returns canvas */
+    28→  icon: (ctx: CanvasRenderingContext2D) => void;
+    29→}
+    30→
+    31→export interface BowDef {
+    32→  /** durability (shots) */
+    33→  dur: number;
+    34→}
+    35→
+    36→export const ITEM = {
+    37→  PORKCHOP: 256,
+    38→  BEEF: 257,
+    39→  CHICKEN_RAW: 258,
+    40→  MUTTON: 259,
+    41→  LEATHER: 260,
+    42→  FEATHER: 261,
+    43→  STICK: 262,
+    44→  COAL: 263,
+    45→  // tools 270..289
+    46→  WOOD_PICKAXE: 270,
+    47→  WOOD_AXE: 271,
+    48→  WOOD_SHOVEL: 272,
+    49→  WOOD_SWORD: 273,
+    50→  STONE_PICKAXE: 274,
+    51→  STONE_AXE: 275,
+    52→  STONE_SHOVEL: 276,
+    53→  STONE_SWORD: 277,
+    54→  IRON_PICKAXE: 278,
+    55→  IRON_AXE: 279,
+    56→  IRON_SHOVEL: 280,
+    57→  IRON_SWORD: 281,
+    58→  GOLD_PICKAXE: 282,
+    59→  GOLD_AXE: 283,
+    60→  GOLD_SHOVEL: 284,
+    61→  GOLD_SWORD: 285,
+    62→  DIAMOND_PICKAXE: 286,
+    63→  DIAMOND_AXE: 287,
+    64→  DIAMOND_SHOVEL: 288,
+    65→  DIAMOND_SWORD: 289,
+    66→  // materials
+    67→  IRON_INGOT: 290,
+    68→  GOLD_INGOT: 291,
+    69→  DIAMOND: 292,
+    70→  // cooked food (smelting)
+    71→  PORKCHOP_COOKED: 293,
+    72→  STEAK: 294,
+    73→  CHICKEN_COOKED: 295,
+    74→  MUTTON_COOKED: 296,
+    75→  // mob loot
+    76→  ROTTEN_FLESH: 297,
+    77→  STRING: 298,
+    78→  SPIDER_EYE: 299,
+    79→  ENDER_PEARL: 300,
+    80→  // armor 301..316 (4 tiers x 4 slots)
+    81→  LEATHER_HELMET: 301,
+    82→  LEATHER_CHESTPLATE: 302,
+    83→  LEATHER_LEGGINGS: 303,
+    84→  LEATHER_BOOTS: 304,
+    85→  IRON_HELMET: 305,
+    86→  IRON_CHESTPLATE: 306,
+    87→  IRON_LEGGINGS: 307,
+    88→  IRON_BOOTS: 308,
+    89→  GOLD_HELMET: 309,
+    90→  GOLD_CHESTPLATE: 310,
+    91→  GOLD_LEGGINGS: 311,
+    92→  GOLD_BOOTS: 312,
+    93→  DIAMOND_HELMET: 313,
+    94→  DIAMOND_CHESTPLATE: 314,
+    95→  DIAMOND_LEGGINGS: 315,
+    96→  DIAMOND_BOOTS: 316,
+    97→  // ranged combat + misc 317..320
+    98→  BOW: 317,
+    99→  ARROW: 318,
+   100→  BONE: 319,
+   101→  FLINT: 320,
+   102→  // farming (phase 8)
+   103→  BONEMEAL: 321,
+   104→} as const;
+   105→
+   106→// ─── armor ───────────────────────────────────────────────────────────────────
+   107→export type ArmorSlot = 'helmet' | 'chest' | 'legs' | 'boots';
+   108→
+   109→export interface ArmorDef {
+   110→  slot: ArmorSlot;
+   111→  /** armor points (MC values: half-shield units, max 20 across the set) */
+   112→  points: number;
+   113→  /** durability (uses) */
+   114→  dur: number;
+   115→}
+   116→
+   117→// ─── bow ─────────────────────────────────────────────────────────────────────────
+   118→const BOW_DUR = 385; // MC bow durability
+   119→
+   120→/** slot index for player.armor[] storage */
+   121→export const ARMOR_SLOT_INDEX: Record<ArmorSlot, number> = { helmet: 0, chest: 1, legs: 2, boots: 3 };
+   122→
+   123→/** armor stats per tier: [helmet, chest, legs, boots] points + durability (MC) */
+   124→const ARMOR_TIER_STATS: Record<string, { points: [number, number, number, number]; dur: number }> = {
+   125→  leather: { points: [1, 3, 2, 1], dur: 55 },
+   126→  iron: { points: [2, 6, 5, 2], dur: 165 },
+   127→  gold: { points: [2, 5, 3, 1], dur: 77 },
+   128→  diamond: { points: [3, 8, 6, 3], dur: 363 },
+   129→};
+   130→
+   131→const ARMOR_IDS: Record<string, Record<ArmorSlot, number>> = {
+   132→  leather: { helmet: ITEM.LEATHER_HELMET, chest: ITEM.LEATHER_CHESTPLATE, legs: ITEM.LEATHER_LEGGINGS, boots: ITEM.LEATHER_BOOTS },
+   133→  iron: { helmet: ITEM.IRON_HELMET, chest: ITEM.IRON_CHESTPLATE, legs: ITEM.IRON_LEGGINGS, boots: ITEM.IRON_BOOTS },
+   134→  gold: { helmet: ITEM.GOLD_HELMET, chest: ITEM.GOLD_CHESTPLATE, legs: ITEM.GOLD_LEGGINGS, boots: ITEM.GOLD_BOOTS },
+   135→  diamond: { helmet: ITEM.DIAMOND_HELMET, chest: ITEM.DIAMOND_CHESTPLATE, legs: ITEM.DIAMOND_LEGGINGS, boots: ITEM.DIAMOND_BOOTS },
+   136→};
+   137→
+   138→const ARMOR_LABEL: Record<string, string> = { leather: 'Leather', iron: 'Iron', gold: 'Golden', diamond: 'Diamond' };
+   139→const ARMOR_SLOT_LABEL: Record<ArmorSlot, string> = { helmet: 'Helmet', chest: 'Chestplate', legs: 'Leggings', boots: 'Boots' };
+   140→
+   141→/** armor pieces overlay on the tier palette (leather uses its own browns) */
+   142→const ARMOR_TIER_COLORS: Record<string, [string, string, string]> = {
+   143→  leather: ['#a5662c', '#7c4a1e', '#c4833f'],
+   144→};
+   145→
+   146→function drawHelmet(ctx: CanvasRenderingContext2D, tier: string): void {
+   147→  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+   148→  px(ctx, 3, 3, main, 10, 2);
+   149→  px(ctx, 3, 5, main, 2, 3); px(ctx, 11, 5, main, 2, 3);
+   150→  px(ctx, 4, 5, light, 8, 1);
+   151→  px(ctx, 5, 6, light, 2, 1);
+   152→  px(ctx, 3, 8, dark, 2, 1); px(ctx, 11, 8, dark, 2, 1);
+   153→  px(ctx, 4, 3, dark, 8, 1);
+   154→}
+   155→
+   156→function drawChestplate(ctx: CanvasRenderingContext2D, tier: string): void {
+   157→  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+   158→  // shoulders
+   159→  px(ctx, 2, 2, main, 3, 3); px(ctx, 11, 2, main, 3, 3);
+   160→  // torso
+   161→  px(ctx, 4, 3, main, 8, 9);
+   162→  px(ctx, 5, 4, light, 6, 2);
+   163→  px(ctx, 4, 11, dark, 8, 1);
+   164→  px(ctx, 7, 5, dark, 2, 6); // center seam
+   165→  px(ctx, 3, 4, dark, 1, 1); px(ctx, 12, 4, dark, 1, 1);
+   166→}
+   167→
+   168→function drawLeggings(ctx: CanvasRenderingContext2D, tier: string): void {
+   169→  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+   170→  px(ctx, 3, 2, main, 10, 3); // waistband
+   171→  px(ctx, 4, 3, light, 8, 1);
+   172→  px(ctx, 3, 5, main, 4, 9); px(ctx, 9, 5, main, 4, 9); // legs
+   173→  px(ctx, 3, 13, dark, 4, 1); px(ctx, 9, 13, dark, 4, 1);
+   174→  px(ctx, 7, 2, dark, 2, 1);
+   175→}
+   176→
+   177→function drawBoots(ctx: CanvasRenderingContext2D, tier: string): void {
+   178→  const [main, dark, light] = ARMOR_TIER_COLORS[tier];
+   179→  px(ctx, 2, 6, main, 4, 6); px(ctx, 10, 6, main, 4, 6); // boot shafts
+   180→  px(ctx, 1, 11, main, 5, 3); px(ctx, 10, 11, main, 5, 3); // feet
+   181→  px(ctx, 2, 7, light, 2, 2); px(ctx, 10, 7, light, 2, 2);
+   182→  px(ctx, 1, 13, dark, 5, 1); px(ctx, 10, 13, dark, 5, 1);
+   183→}
+   184→
+   185→// ─── tier stats (MC values) ───────────────────────────────────────────────────
+   186→const TIER_STATS = {
+   187→  wood: { tier: 1, speed: 2, dur: 59, swordDmg: 4 },
+   188→  stone: { tier: 2, speed: 4, dur: 131, swordDmg: 5 },
+   189→  iron: { tier: 3, speed: 6, dur: 250, swordDmg: 6 },
+   190→  gold: { tier: 1, speed: 12, dur: 32, swordDmg: 4 },
+   191→  diamond: { tier: 5, speed: 8, dur: 1561, swordDmg: 7 },
+   192→} as const;
+   193→
+   194→type TierName = keyof typeof TIER_STATS;
+   195→
+   196→function makeTool(type: ToolDef['type'], tierName: TierName): ToolDef {
+   197→  const t = TIER_STATS[tierName];
+   198→  const dmg =
+   199→    type === 'sword'
+   200→      ? t.swordDmg
+   201→      : type === 'axe'
+   202→        ? t.swordDmg - 1
+   203→        : type === 'pickaxe'
+   204→          ? Math.max(2, t.swordDmg - 2)
+   205→          : Math.max(2, t.swordDmg - 2);
+   206→  return { type, tier: t.tier, speed: t.speed, dur: t.dur, dmg };
+   207→}
+   208→
+   209→// ─── pixel-art helpers ────────────────────────────────────────────────────────
+   210→function noiseRect(ctx: CanvasRenderingContext2D, colors: string[], x0: number, y0: number, w: number, h: number, seed = 1): void {
+   211→  let s = seed;
+   212→  const rnd = (): number => {
+   213→    s = (s * 16807) % 2147483647;
+   214→    return s / 2147483647;
+   215→  };
+   216→  for (let y = 0; y < h; y++)
+   217→    for (let x = 0; x < w; x++) {
+   218→      ctx.fillStyle = colors[Math.floor(rnd() * colors.length)];
+   219→      ctx.fillRect(x0 + x, y0 + y, 1, 1);
+   220→    }
+   221→}
+   222→
+   223→function px(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, w = 1, h = 1): void {
+   224→  ctx.fillStyle = color;
+   225→  ctx.fillRect(x, y, w, h);
+   226→}
+   227→
+   228→/** palette per tier: [main, dark, light] */
+   229→const TIER_COLORS: Record<TierName, [string, string, string]> = {
+   230→  wood: ['#8a683c', '#6b4d2a', '#a5824f'],
+   231→  stone: ['#9a9a9a', '#707070', '#b8b8b8'],
+   232→  iron: ['#d8d8d8', '#9c9c9c', '#f0f0f0'],
+   233→  gold: ['#f6d33c', '#c9a227', '#fce88a'],
+   234→  diamond: ['#5ce8d5', '#2fb5a8', '#a8f6ec'],
+   235→};
+   236→
+   237→const HANDLE = '#6b4d2a';
+   238→const HANDLE_DARK = '#55402a';
+   239→
+   240→// metal armor tiers reuse the tool tier palette (leather already set above)
+   241→ARMOR_TIER_COLORS.iron = TIER_COLORS.iron;
+   242→ARMOR_TIER_COLORS.gold = TIER_COLORS.gold;
+   243→ARMOR_TIER_COLORS.diamond = TIER_COLORS.diamond;
+   244→
+   245→/** diagonal stick handle from bottom-left to (hx,hy), 2px thick */
+   246→function drawHandle(ctx: CanvasRenderingContext2D, hx: number, hy: number, len: number): void {
+   247→  for (let i = 0; i < len; i++) {
+   248→    px(ctx, hx - i, hy + i, HANDLE, 2, 1);
+   249→    px(ctx, hx - i, hy + i + 1, HANDLE_DARK, 1, 1);
+   250→  }
+   251→}
+   252→
+   253→function drawPickaxe(ctx: CanvasRenderingContext2D, tier: TierName): void {
+   254→  const [main, dark, light] = TIER_COLORS[tier];
+   255→  drawHandle(ctx, 9, 5, 9); // handle from (9,5) down-left to (1,13)
+   256→  // head: arc across the top-right
+   257→  px(ctx, 5, 2, main, 7, 2);
+   258→  px(ctx, 4, 4, main, 2, 2);
+   259→  px(ctx, 12, 4, main, 2, 2);
+   260→  px(ctx, 3, 6, main, 2, 2);
+   261→  px(ctx, 13, 6, main, 2, 1);
+   262→  px(ctx, 5, 2, light, 7, 1);
+   263→  px(ctx, 4, 4, light, 1, 1);
+   264→  px(ctx, 3, 6, light, 1, 1);
+   265→  px(ctx, 5, 3, dark, 7, 1);
+   266→  px(ctx, 12, 4, dark, 2, 1);
+   267→  px(ctx, 13, 6, dark, 2, 1);
+   268→}
+   269→
+   270→function drawAxe(ctx: CanvasRenderingContext2D, tier: TierName): void {
+   271→  const [main, dark, light] = TIER_COLORS[tier];
+   272→  drawHandle(ctx, 9, 5, 9);
+   273→  // head: blade on the top-right of the handle
+   274→  px(ctx, 8, 1, main, 5, 2);
+   275→  px(ctx, 6, 3, main, 7, 2);
+   276→  px(ctx, 8, 5, main, 5, 2);
+   277→  px(ctx, 12, 3, main, 2, 2);
+   278→  px(ctx, 8, 1, light, 5, 1);
+   279→  px(ctx, 6, 3, light, 2, 1);
+   280→  px(ctx, 10, 5, dark, 3, 1);
+   281→  px(ctx, 12, 3, dark, 2, 1);
+   282→}
+   283→
+   284→function drawShovel(ctx: CanvasRenderingContext2D, tier: TierName): void {
+   285→  const [main, dark, light] = TIER_COLORS[tier];
+   286→  drawHandle(ctx, 9, 5, 9);
+   287→  // head: spade tip top-right
+   288→  px(ctx, 9, 1, main, 4, 1);
+   289→  px(ctx, 8, 2, main, 6, 3);
+   290→  px(ctx, 9, 5, main, 4, 1);
+   291→  px(ctx, 9, 1, light, 3, 1);
+   292→  px(ctx, 8, 2, light, 2, 1);
+   293→  px(ctx, 11, 4, dark, 3, 1);
+   294→  px(ctx, 10, 5, dark, 3, 1);
+   295→}
+   296→
+   297→function drawSword(ctx: CanvasRenderingContext2D, tier: TierName): void {
+   298→  const [main, dark, light] = TIER_COLORS[tier];
+   299→  // blade diagonal (4,11)->(13,2), 2px wide
+   300→  for (let i = 0; i < 9; i++) {
+   301→    px(ctx, 4 + i, 11 - i, main, 2, 1);
+   302→    if (i % 2 === 0) px(ctx, 4 + i, 10 - i, light, 1, 1);
+   303→  }
+   304→  px(ctx, 13, 2, main, 2, 2);
+   305→  px(ctx, 14, 2, dark, 1, 1);
+   306→  // guard (perpendicular)
+   307→  px(ctx, 3, 9, dark, 1, 2);
+   308→  px(ctx, 4, 11, dark, 2, 1);
+   309→  px(ctx, 5, 12, dark, 1, 2);
+   310→  // handle
+   311→  px(ctx, 3, 12, HANDLE, 2, 1);
+   312→  px(ctx, 2, 13, HANDLE, 2, 1);
+   313→  px(ctx, 1, 14, HANDLE_DARK, 2, 1);
+   314→}
+   315→
+   316→// ─── tool registry builder ────────────────────────────────────────────────────
+   317→const TOOL_IDS: Record<string, number> = {
+   318→  'wood:pickaxe': ITEM.WOOD_PICKAXE, 'wood:axe': ITEM.WOOD_AXE, 'wood:shovel': ITEM.WOOD_SHOVEL, 'wood:sword': ITEM.WOOD_SWORD,
+   319→  'stone:pickaxe': ITEM.STONE_PICKAXE, 'stone:axe': ITEM.STONE_AXE, 'stone:shovel': ITEM.STONE_SHOVEL, 'stone:sword': ITEM.STONE_SWORD,
+   320→  'iron:pickaxe': ITEM.IRON_PICKAXE, 'iron:axe': ITEM.IRON_AXE, 'iron:shovel': ITEM.IRON_SHOVEL, 'iron:sword': ITEM.IRON_SWORD,
+   321→  'gold:pickaxe': ITEM.GOLD_PICKAXE, 'gold:axe': ITEM.GOLD_AXE, 'gold:shovel': ITEM.GOLD_SHOVEL, 'gold:sword': ITEM.GOLD_SWORD,
+   322→  'diamond:pickaxe': ITEM.DIAMOND_PICKAXE, 'diamond:axe': ITEM.DIAMOND_AXE, 'diamond:shovel': ITEM.DIAMOND_SHOVEL, 'diamond:sword': ITEM.DIAMOND_SWORD,
+   323→};
+   324→
+   325→const TIER_LABEL: Record<TierName, string> = { wood: 'Wooden', stone: 'Stone', iron: 'Iron', gold: 'Golden', diamond: 'Diamond' };
+   326→const TYPE_LABEL: Record<ToolDef['type'], string> = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword' };
+   327→const TOOL_PAINTER: Record<ToolDef['type'], (ctx: CanvasRenderingContext2D, tier: TierName) => void> = {
+   328→  pickaxe: drawPickaxe, axe: drawAxe, shovel: drawShovel, sword: drawSword,
+   329→};
+   330→
+   331→export const ITEMS: Record<number, ItemDef> = {
+   332→  [ITEM.PORKCHOP]: {
+   333→    id: ITEM.PORKCHOP, name: 'Raw Porkchop', food: 3,
+   334→    icon: (ctx) => {
+   335→      noiseRect(ctx, ['#f4a2a2', '#ee8f8f', '#f7b5b5'], 3, 5, 10, 7, 11);
+   336→      noiseRect(ctx, ['#e8c9c0', '#dcb8ae'], 5, 3, 7, 3, 7);
+   337→      ctx.fillStyle = '#c97b6f';
+   338→      ctx.fillRect(3, 11, 10, 1);
+   339→    },
+   340→  },
+   341→  [ITEM.BEEF]: {
+   342→    id: ITEM.BEEF, name: 'Raw Beef', food: 3,
+   343→    icon: (ctx) => {
+   344→      noiseRect(ctx, ['#b5342c', '#a02a24', '#c4443a'], 3, 5, 11, 8, 13);
+   345→      noiseRect(ctx, ['#e8d5c8', '#dcc8ba'], 5, 4, 7, 2, 5);
+   346→      ctx.fillStyle = '#8a1f1a';
+   347→      ctx.fillRect(3, 12, 11, 1);
+   348→    },
+   349→  },
+   350→  [ITEM.CHICKEN_RAW]: {
+   351→    id: ITEM.CHICKEN_RAW, name: 'Raw Chicken', food: 2,
+   352→    icon: (ctx) => {
+   353→      noiseRect(ctx, ['#f2c9a8', '#e8bc98', '#f7d6b8'], 4, 4, 9, 9, 17);
+   354→      ctx.fillStyle = '#e8e0d0';
+   355→      ctx.fillRect(11, 10, 3, 4);
+   356→      ctx.fillStyle = '#d4ccc0';
+   357→      ctx.fillRect(12, 13, 2, 1);
+   358→    },
+   359→  },
+   360→  [ITEM.MUTTON]: {
+   361→    id: ITEM.MUTTON, name: 'Raw Mutton', food: 2,
+   362→    icon: (ctx) => {
+   363→      noiseRect(ctx, ['#d86a5a', '#c95a4c', '#e07a6a'], 3, 5, 10, 8, 19);
+   364→      noiseRect(ctx, ['#f0e0d8', '#e4d0c8'], 4, 3, 8, 3, 3);
+   365→    },
+   366→  },
+   367→  [ITEM.LEATHER]: {
+   368→    id: ITEM.LEATHER, name: 'Leather',
+   369→    icon: (ctx) => {
+   370→      noiseRect(ctx, ['#9c6b3c', '#8a5c30', '#a87848'], 3, 4, 11, 9, 23);
+   371→      ctx.fillStyle = '#6e4820';
+   372→      ctx.fillRect(3, 4, 11, 1); ctx.fillRect(3, 12, 11, 1);
+   373→      ctx.fillRect(3, 4, 1, 9); ctx.fillRect(13, 4, 1, 9);
+   374→    },
+   375→  },
+   376→  [ITEM.FEATHER]: {
+   377→    id: ITEM.FEATHER, name: 'Feather',
+   378→    icon: (ctx) => {
+   379→      noiseRect(ctx, ['#f4f4f4', '#e8e8e8', '#ffffff'], 6, 2, 4, 10, 29);
+   380→      ctx.fillStyle = '#c8c8c8';
+   381→      ctx.fillRect(7, 2, 1, 10);
+   382→      ctx.fillStyle = '#b0b0b0';
+   383→      ctx.fillRect(6, 12, 2, 2);
+   384→    },
+   385→  },
+   386→  [ITEM.STICK]: {
+   387→    id: ITEM.STICK, name: 'Stick',
+   388→    icon: (ctx) => {
+   389→      ctx.fillStyle = '#6b4d2a';
+   390→      for (let i = 0; i < 9; i++) ctx.fillRect(4 + i, 13 - i, 2, 2);
+   391→      ctx.fillStyle = '#8a683c';
+   392→      for (let i = 0; i < 8; i++) ctx.fillRect(4 + i, 12 - i, 1, 1);
+   393→    },
+   394→  },
+   395→  [ITEM.COAL]: {
+   396→    id: ITEM.COAL, name: 'Coal',
+   397→    icon: (ctx) => {
+   398→      noiseRect(ctx, ['#2a2a2a', '#1c1c1c', '#383838'], 4, 4, 9, 9, 31);
+   399→      ctx.fillStyle = '#4a4a4a';
+   400→      ctx.fillRect(5, 5, 2, 1); ctx.fillRect(9, 8, 2, 1);
+   401→    },
+   402→  },
+   403→  [ITEM.IRON_INGOT]: {
+   404→    id: ITEM.IRON_INGOT, name: 'Iron Ingot',
+   405→    icon: (ctx) => {
+   406→      px(ctx, 4, 6, '#8c8c8c', 9, 1);
+   407→      px(ctx, 3, 7, '#c8c8c8', 11, 4);
+   408→      px(ctx, 3, 7, '#e8e8e8', 11, 2);
+   409→      px(ctx, 3, 10, '#8c8c8c', 11, 1);
+   410→      px(ctx, 4, 11, '#7a7a7a', 9, 1);
+   411→    },
+   412→  },
+   413→  [ITEM.GOLD_INGOT]: {
+   414→    id: ITEM.GOLD_INGOT, name: 'Gold Ingot',
+   415→    icon: (ctx) => {
+   416→      px(ctx, 4, 6, '#b8860b', 9, 1);
+   417→      px(ctx, 3, 7, '#f6d33c', 11, 4);
+   418→      px(ctx, 3, 7, '#fce88a', 11, 2);
+   419→      px(ctx, 3, 10, '#c9a227', 11, 1);
+   420→      px(ctx, 4, 11, '#a87f1c', 9, 1);
+   421→    },
+   422→  },
+   423→  [ITEM.DIAMOND]: {
+   424→    id: ITEM.DIAMOND, name: 'Diamond',
+   425→    icon: (ctx) => {
+   426→      px(ctx, 7, 3, '#a8f6ec', 3, 1);
+   427→      px(ctx, 5, 4, '#5ce8d5', 7, 1);
+   428→      px(ctx, 4, 5, '#5ce8d5', 9, 1);
+   429→      px(ctx, 3, 6, '#4fd8c8', 11, 2);
+   430→      px(ctx, 4, 8, '#2fb5a8', 9, 1);
+   431→      px(ctx, 5, 9, '#2fb5a8', 7, 1);
+   432→      px(ctx, 7, 10, '#23968b', 3, 1);
+   433→      px(ctx, 5, 4, '#d8fffa', 2, 2);
+   434→    },
+   435→  },
+   436→  [ITEM.PORKCHOP_COOKED]: {
+   437→    id: ITEM.PORKCHOP_COOKED, name: 'Cooked Porkchop', food: 8,
+   438→    icon: (ctx) => {
+   439→      noiseRect(ctx, ['#b5703c', '#a5622e', '#c98250'], 3, 5, 10, 7, 41);
+   440→      noiseRect(ctx, ['#d8a878', '#cc9a68'], 5, 3, 7, 3, 43);
+   441→      ctx.fillStyle = '#8a5222';
+   442→      ctx.fillRect(3, 11, 10, 1);
+   443→    },
+   444→  },
+   445→  [ITEM.STEAK]: {
+   446→    id: ITEM.STEAK, name: 'Steak', food: 8,
+   447→    icon: (ctx) => {
+   448→      noiseRect(ctx, ['#6b3a22', '#5c2f1a', '#7d482c'], 3, 5, 11, 8, 45);
+   449→      noiseRect(ctx, ['#a5764c', '#986a40'], 5, 4, 7, 2, 47);
+   450→      ctx.fillStyle = '#4a2412';
+   451→      ctx.fillRect(3, 12, 11, 1);
+   452→    },
+   453→  },
+   454→  [ITEM.CHICKEN_COOKED]: {
+   455→    id: ITEM.CHICKEN_COOKED, name: 'Cooked Chicken', food: 6,
+   456→    icon: (ctx) => {
+   457→      noiseRect(ctx, ['#c98a4a', '#bb7c3c', '#d99c5c'], 4, 4, 9, 9, 49);
+   458→      ctx.fillStyle = '#e8dcc8';
+   459→      ctx.fillRect(11, 10, 3, 4);
+   460→      ctx.fillStyle = '#c8bca8';
+   461→      ctx.fillRect(12, 13, 2, 1);
+   462→    },
+   463→  },
+   464→  [ITEM.MUTTON_COOKED]: {
+   465→    id: ITEM.MUTTON_COOKED, name: 'Cooked Mutton', food: 6,
+   466→    icon: (ctx) => {
+   467→      noiseRect(ctx, ['#9c5a34', '#8a4c28', '#ae6a40'], 3, 5, 10, 8, 51);
+   468→      noiseRect(ctx, ['#d8b088', '#cca078'], 4, 3, 8, 3, 53);
+   469→    },
+   470→  },
+   471→  [ITEM.ROTTEN_FLESH]: {
+   472→    id: ITEM.ROTTEN_FLESH, name: 'Rotten Flesh', food: 2,
+   473→    icon: (ctx) => {
+   474→      noiseRect(ctx, ['#8a5c3c', '#7a4c30', '#9c6a48'], 2, 4, 12, 9, 57);
+   475→      // rot patches
+   476→      ctx.fillStyle = '#5c7a34';
+   477→      ctx.fillRect(4, 6, 2, 2); ctx.fillRect(9, 8, 3, 2); ctx.fillRect(6, 10, 2, 1);
+   478→      ctx.fillStyle = '#6e4820';
+   479→      ctx.fillRect(2, 12, 12, 1); ctx.fillRect(2, 4, 12, 1);
+   480→    },
+   481→  },
+   482→  [ITEM.STRING]: {
+   483→    id: ITEM.STRING, name: 'String',
+   484→    icon: (ctx) => {
+   485→      ctx.fillStyle = '#e8e8e8';
+   486→      ctx.fillRect(4, 2, 1, 1); ctx.fillRect(5, 3, 1, 1); ctx.fillRect(6, 4, 1, 1);
+   487→      ctx.fillRect(7, 5, 1, 1); ctx.fillRect(8, 6, 1, 1); ctx.fillRect(9, 7, 1, 1);
+   488→      ctx.fillRect(10, 8, 1, 1); ctx.fillRect(9, 9, 1, 1); ctx.fillRect(8, 10, 1, 1);
+   489→      ctx.fillRect(7, 11, 1, 1); ctx.fillRect(6, 12, 1, 1); ctx.fillRect(5, 13, 1, 1);
+   490→      ctx.fillStyle = '#c8c8c8';
+   491→      ctx.fillRect(5, 2, 1, 1); ctx.fillRect(6, 3, 1, 1); ctx.fillRect(7, 4, 1, 1);
+   492→      ctx.fillRect(8, 5, 1, 1); ctx.fillRect(9, 6, 1, 1); ctx.fillRect(10, 7, 1, 1);
+   493→    },
+   494→  },
+   495→  [ITEM.SPIDER_EYE]: {
+   496→    id: ITEM.SPIDER_EYE, name: 'Spider Eye',
+   497→    icon: (ctx) => {
+   498→      // red eye with slit pupil
+   499→      noiseRect(ctx, ['#a82a2a', '#962222', '#ba3a3a'], 4, 4, 8, 8, 61);
+   500→      ctx.fillStyle = '#d46a6a';
+   501→      ctx.fillRect(5, 5, 2, 2);
+   502→      ctx.fillStyle = '#1a0808';
+   503→      ctx.fillRect(7, 5, 2, 6);
+   504→      ctx.fillStyle = '#e8e8e8';
+   505→      ctx.fillRect(7, 4, 1, 1); ctx.fillRect(8, 11, 1, 1);
+   506→    },
+   507→  },
+   508→  [ITEM.FLINT]: {
+   509→    id: ITEM.FLINT, name: 'Flint',
+   510→    icon: (ctx) => {
+   511→      // dark angular shard
+   512→      px(ctx, 5, 3, '#3a3a3a', 5, 2);
+   513→      px(ctx, 4, 5, '#2e2e2e', 8, 3);
+   514→      px(ctx, 5, 8, '#262626', 6, 3);
+   515→      px(ctx, 6, 11, '#1e1e1e', 4, 2);
+   516→      px(ctx, 5, 4, '#4e4e4e', 2, 1);
+   517→      px(ctx, 6, 6, '#484848', 2, 2);
+   518→      px(ctx, 8, 10, '#3e3e3e', 2, 1);
+   519→      px(ctx, 4, 7, '#161616', 1, 2);
+   520→    },
+   521→  },
+   522→  [ITEM.BONE]: {
+   523→    id: ITEM.BONE, name: 'Bone',
+   524→    icon: (ctx) => {
+   525→      // diagonal bone with knob ends
+   526→      for (let i = 0; i < 7; i++) px(ctx, 5 + i, 11 - i, '#ececd8', 2, 2);
+   527→      // top-right knob (2x2 blobs)
+   528→      px(ctx, 11, 2, '#f6f6ea', 3, 2); px(ctx, 13, 4, '#f6f6ea', 2, 3);
+   529→      px(ctx, 11, 4, '#d8d8c0', 1, 1);
+   530→      // bottom-left knob
+   531→      px(ctx, 1, 11, '#f6f6ea', 2, 3); px(ctx, 3, 13, '#f6f6ea', 3, 2);
+   532→      px(ctx, 3, 11, '#d8d8c0', 1, 1);
+   533→      // shaft shading
+   534→      px(ctx, 6, 11, '#c8c8b0', 1, 1); px(ctx, 9, 8, '#c8c8b0', 1, 1);
+   535→    },
+   536→  },
+   537→  [ITEM.ARROW]: {
+   538→    id: ITEM.ARROW, name: 'Arrow',
+   539→    icon: (ctx) => {
+   540→      // diagonal shaft
+   541→      for (let i = 0; i < 8; i++) px(ctx, 4 + i, 11 - i, '#8a683c', 1, 2);
+   542→      // flint tip (top-right)
+   543→      px(ctx, 12, 2, '#3a3a3a', 2, 2);
+   544→      px(ctx, 11, 3, '#4e4e4e', 2, 1);
+   545→      px(ctx, 12, 4, '#2e2e2e', 1, 1);
+   546→      // feather fletching (bottom-left)
+   547→      px(ctx, 2, 12, '#e8e8e8', 2, 1); px(ctx, 3, 13, '#e8e8e8', 2, 1);
+   548→      px(ctx, 4, 12, '#c8c8c8', 1, 1); px(ctx, 2, 14, '#c8c8c8', 1, 1);
+   549→      px(ctx, 3, 11, '#f6f6f6', 1, 1);
+   550→    },
+   551→  },
+   552→  [ITEM.ENDER_PEARL]: {
+   553→    id: ITEM.ENDER_PEARL, name: 'Ender Pearl',
+   554→    icon: (ctx) => {
+   555→      noiseRect(ctx, ['#1a6a58', '#125446', '#227a66'], 4, 4, 8, 8, 67);
+   556→      // dark rim + teal shine
+   557→      ctx.fillStyle = '#0a3630';
+   558→      ctx.fillRect(5, 4, 6, 1); ctx.fillRect(4, 5, 1, 6); ctx.fillRect(11, 5, 1, 6); ctx.fillRect(5, 11, 6, 1);
+   559→      ctx.fillStyle = '#5ac8a8';
+   560→      ctx.fillRect(6, 6, 2, 1); ctx.fillRect(5, 7, 1, 2);
+   561→      ctx.fillStyle = '#0e4038';
+   562→      ctx.fillRect(8, 8, 2, 2);
+   563→    },
+   564→  },
+   565→  [ITEM.BONEMEAL]: {
+   566→    id: ITEM.BONEMEAL, name: 'Bone Meal',
+   567→    icon: (ctx) => {
+   568→      // white powder pile
+   569→      ctx.fillStyle = '#ececdc';
+   570→      ctx.fillRect(4, 9, 8, 4);
+   571→      ctx.fillRect(5, 7, 6, 2);
+   572→      ctx.fillRect(6, 6, 4, 1);
+   573→      ctx.fillStyle = '#d8d8c4';
+   574→      px(ctx, 5, 10, '#d8d8c4'); px(ctx, 9, 11, '#d8d8c4'); px(ctx, 7, 8, '#d8d8c4');
+   575→      ctx.fillStyle = '#c0c0a8';
+   576→      px(ctx, 6, 12, '#c0c0a8'); px(ctx, 10, 12, '#c0c0a8');
+   577→      // sparkle
+   578→      px(ctx, 8, 4, '#ffffff'); px(ctx, 5, 5, '#f6f6ea');
+   579→    },
+   580→  },
+   581→};
+   582→
+   583→// register bow
+   584→ITEMS[ITEM.BOW] = {
+   585→  id: ITEM.BOW, name: 'Bow',
+   586→  bow: { dur: BOW_DUR },
+   587→  icon: (ctx) => {
+   588→    // curved wooden limb (arc from bottom-left grip to top-right tip)
+   589→    px(ctx, 4, 3, '#8a683c', 2, 2);
+   590→    px(ctx, 6, 2, '#8a683c', 3, 1);
+   591→    px(ctx, 9, 2, '#9c7848', 2, 1);
+   592→    px(ctx, 11, 3, '#9c7848', 1, 2);
+   593→    px(ctx, 12, 5, '#8a683c', 1, 2);
+   594→    // lower limb
+   595→    px(ctx, 3, 6, '#8a683c', 1, 3);
+   596→    px(ctx, 3, 9, '#7c5a32', 1, 2);
+   597→    px(ctx, 4, 11, '#7c5a32', 1, 2);
+   598→    px(ctx, 5, 13, '#6b4d2a', 2, 1);
+   599→    px(ctx, 7, 14, '#6b4d2a', 2, 1);
+   600→    // grip
+   601→    px(ctx, 6, 7, '#5c4020', 2, 3);
+   602→    px(ctx, 5, 8, '#5c4020', 1, 2);
+   603→    // string (right side arc)
+   604→    px(ctx, 13, 3, '#e8e8e8', 1, 1);
+   605→    px(ctx, 14, 4, '#e8e8e8', 1, 2);
+   606→    px(ctx, 14, 6, '#e8e8e8', 1, 2);
+   607→    px(ctx, 14, 8, '#e8e8e8', 1, 2);
+   608→    px(ctx, 14, 10, '#e8e8e8', 1, 2);
+   609→    px(ctx, 13, 12, '#e8e8e8', 1, 1);
+   610→    px(ctx, 12, 13, '#e8e8e8', 1, 1);
+   611→    px(ctx, 10, 14, '#d8d8d8', 2, 1);
+   612→  },
+   613→};
+   614→
+   615→// register tools
+   616→for (const [key, id] of Object.entries(TOOL_IDS)) {
+   617→  const [tierName, typeName] = key.split(':') as [TierName, ToolDef['type']];
+   618→  ITEMS[id] = {
+   619→    id,
+   620→    name: `${TIER_LABEL[tierName]} ${TYPE_LABEL[typeName]}`,
+   621→    tool: makeTool(typeName, tierName),
+   622→    icon: (ctx) => TOOL_PAINTER[typeName](ctx, tierName),
+   623→  };
+   624→}
+   625→
+   626→// register armor (16 pieces)
+   627→const ARMOR_PAINTER: Record<ArmorSlot, (ctx: CanvasRenderingContext2D, tier: string) => void> = {
+   628→  helmet: drawHelmet, chest: drawChestplate, legs: drawLeggings, boots: drawBoots,
+   629→};
+   630→for (const [tier, slots] of Object.entries(ARMOR_IDS)) {
+   631→  for (const slot of Object.keys(slots) as ArmorSlot[]) {
+   632→    const id = slots[slot];
+   633→    const stats = ARMOR_TIER_STATS[tier];
+   634→    ITEMS[id] = {
+   635→      id,
+   636→      name: `${ARMOR_LABEL[tier]} ${ARMOR_SLOT_LABEL[slot]}`,
+   637→      armor: {
+   638→        slot,
+   639→        points: stats.points[ARMOR_SLOT_INDEX[slot]],
+   640→        dur: stats.dur,
+   641→      },
+   642→      icon: (ctx) => ARMOR_PAINTER[slot](ctx, tier),
+   643→    };
+   644→  }
+   645→}
+   646→
+   647→// ─── queries ──────────────────────────────────────────────────────────────────
+   648→export function getItemDef(id: number): ItemDef | undefined {
+   649→  return ITEMS[id];
+   650→}
+   651→export function isItemId(id: number): boolean {
+   652→  return id >= 256;
+   653→}
+   654→export function getToolDef(id: number): ToolDef | undefined {
+   655→  return ITEMS[id]?.tool;
+   656→}
+   657→export function isToolItem(id: number): boolean {
+   658→  return !!ITEMS[id]?.tool;
+   659→}
+   660→export function getArmorDef(id: number): ArmorDef | undefined {
+   661→  return ITEMS[id]?.armor;
+   662→}
+   663→export function isArmorItem(id: number): boolean {
+   664→  return !!ITEMS[id]?.armor;
+   665→}
+   666→/** storage slot 0..3 for an armor piece, or -1 */
+   667→export function armorSlotIndex(id: number): number {
+   668→  const def = ITEMS[id]?.armor;
+   669→  return def ? ARMOR_SLOT_INDEX[def.slot] : -1;
+   670→}
+   671→export function getBowDef(id: number): BowDef | undefined {
+   672→  return ITEMS[id]?.bow;
+   673→}
+   674→export function isBowItem(id: number): boolean {
+   675→  return !!ITEMS[id]?.bow;
+   676→}
+   677→/** max stack size for an item or block id */
+   678→export function maxStack(id: number): number {
+   679→  return isToolItem(id) || isArmorItem(id) || isBowItem(id) ? 1 : 64;
+   680→}
+   681→
+   682→// ─── mining model ─────────────────────────────────────────────────────────────
+   683→export interface BreakInfo {
+   684→  /** seconds to break */
+   685→  time: number;
+   686→  /** will the block drop its item */
+   687→  harvest: boolean;
+   688→}
+   689→
+   690→export function breakInfo(def: BlockDef, tool?: ToolDef): BreakInfo {
+   691→  if (!Number.isFinite(def.hardness)) return { time: Infinity, harvest: false };
+   692→  const minTier = def.minTier ?? 0;
+   693→  let speed = 1;
+   694→  let harvest = def.tool ? minTier === 0 : true;
+   695→  if (def.tool && tool && tool.type === def.tool) {
+   696→    speed = tool.speed;
+   697→    harvest = tool.tier >= minTier;
+   698→  }
+   699→  const base = harvest ? 1.5 : 5;
+   700→  return { time: Math.max(0.05, (def.hardness * base) / speed), harvest };
+   701→}
+   702→
+   703→// ─── Icon rendering (cached dataURLs) ────────────────────────────────────────
+   704→const iconCache = new Map<number, string>();
+   705→
+   706→export function getItemIcon(itemId: number): string {
+   707→  const cached = iconCache.get(itemId);
+   708→  if (cached) return cached;
+   709→  const def = ITEMS[itemId];
+   710→  if (!def) return '';
+   711→  const c = document.createElement('canvas');
+   712→  c.width = 16; c.height = 16;
+   713→  const ctx = c.getContext('2d')!;
+   714→  ctx.imageSmoothingEnabled = false;
+   715→  def.icon(ctx);
+   716→  // scale up 4x for crisp display
+   717→  const big = document.createElement('canvas');
+   718→  big.width = 64; big.height = 64;
+   719→  const bctx = big.getContext('2d')!;
+   720→  bctx.imageSmoothingEnabled = false;
+   721→  bctx.drawImage(c, 0, 0, 64, 64);
+   722→  const url = big.toDataURL();
+   723→  iconCache.set(itemId, url);
+   724→  return url;
+   725→}
+   726→
+   727→/** texture for item drop entities (flat sprite) */
+   728→const dropTexCache = new Map<number, HTMLCanvasElement>();
+   729→export function getItemIconCanvas(itemId: number): HTMLCanvasElement {
+   730→  const cached = dropTexCache.get(itemId);
+   731→  if (cached) return cached;
+   732→  const c = document.createElement('canvas');
+   733→  c.width = 16; c.height = 16;
+   734→  const ctx = c.getContext('2d')!;
+   735→  const def = ITEMS[itemId];
+   736→  if (def) def.icon(ctx);
+   737→  dropTexCache.set(itemId, c);
+   738→  return c;
+   739→}
+   740→

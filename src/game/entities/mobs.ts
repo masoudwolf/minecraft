@@ -6,7 +6,7 @@ import { getMobSkins } from './mobSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
-export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'mooshroom';
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'mooshroom' | 'golem';
 
 interface MobDef {
   hostile: boolean;
@@ -17,7 +17,7 @@ interface MobDef {
   /** contact/attack damage to player */
   damage: number;
   drops: { id: number; min: number; max: number }[];
-  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'mooshroom';
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'mooshroom' | 'golem';
   /** spiders are neutral in daylight (still hostile in dark / when provoked) */
   neutralInDay?: boolean;
   /** spiders climb walls when chasing */
@@ -344,6 +344,53 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'mooshroom',
     builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
   },
+  golem: {
+    // village defender: passive to players, hunts hostile mobs (MC iron golem)
+    hostile: false, width: 1.3, height: 2.7, health: 100, speed: 1.35, damage: 0,
+    drops: [{ id: ITEM.IRON_INGOT, min: 3, max: 5 }], sound: 'golem',
+    builder: (s) => {
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const group = new THREE.Group();
+      // massive torso
+      const body = boxPart(1.0, 0.92, 0.55, mats[1], 'body');
+      body.position.y = 1.58;
+      group.add(body);
+      // hip block
+      const hips = boxPart(0.82, 0.3, 0.5, mats[1], 'body');
+      hips.position.y = 1.02;
+      group.add(hips);
+      // head with long villager-style nose
+      const head = boxPart(0.62, 0.56, 0.62, mats[0], 'head');
+      head.position.y = 2.36;
+      group.add(head);
+      if (s.extra) {
+        const nose = boxPart(0.18, 0.34, 0.16, partMat(s.extra), 'nose');
+        nose.position.set(0, 2.26, 0.37);
+        group.add(nose);
+      }
+      // long hanging arms with pivots (swing while walking)
+      const arms: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * 0.64, 1.95, 0);
+        const arm = boxPart(0.3, 1.05, 0.3, mats[2], 'limb');
+        arm.position.y = -0.5;
+        pivot.add(arm);
+        group.add(pivot);
+        arms.push(arm);
+        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+      }
+      // sturdy legs
+      const legs: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const leg = boxPart(0.34, 0.72, 0.34, mats[2], 'limb');
+        leg.position.set(sx * 0.2, 0.36, 0);
+        group.add(leg);
+        legs.push(leg);
+      }
+      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+    },
+  },
 };
 
 // ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
@@ -549,6 +596,12 @@ export class MobManager {
 
     // villagers live on village grounds (planks / cobblestone); mooshrooms on mycelium
     if (groundId === BLOCK.PLANKS || groundId === BLOCK.COBBLESTONE) {
+      // iron golem: at most one patrolling each village chunk roll
+      const golemCount = this.mobs.filter((m2) => m2.type === 'golem').length;
+      if (golemCount < 1 && Math.random() < 0.22 && skyL >= 9 && sunLevel > 0.55) {
+        this.spawn('golem', x, sy + 1, z);
+        return;
+      }
       const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
       if (villagerCount < 5 && skyL >= 9 && sunLevel > 0.55) {
         const herd = 1 + Math.floor(Math.random() * 2);
@@ -595,6 +648,9 @@ export class MobManager {
     if (mob.def.hostile) {
       mob.state = 'chase';
       if (mob.type === 'spider' || mob.type === 'enderman') mob.provoked = true;
+    } else if (mob.type === 'golem') {
+      // golems never flee — they stoically keep patrolling
+      mob.state = 'idle';
     } else {
       mob.state = 'flee';
       mob.stateTimer = 4;
@@ -763,7 +819,46 @@ export class MobManager {
       // creative players are invisible to hostile AI: treat hostiles as passive wanderers
       const hostileActive = m.def.hostile && !cb.playerCreative;
 
-      if (!hostileActive) {
+      if (m.type === 'golem') {
+        // ── iron golem: patrol, and charge the nearest hostile mob ──
+        let prey: Mob | null = null;
+        let preyDist = 11;
+        for (const o of this.mobs) {
+          if (o.dead || !o.def.hostile) continue;
+          const d = Math.hypot(o.x - m.x, o.y - m.y, o.z - m.z);
+          if (d < preyDist) { preyDist = d; prey = o; }
+        }
+        if (prey) {
+          m.state = 'chase';
+          const dx = prey.x - m.x;
+          const dz = prey.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          wantX = dx / len; wantZ = dz / len;
+          moveSpeed = m.def.speed;
+          if (preyDist < 2.4 && m.attackCd <= 0) {
+            m.attackCd = 1.5;
+            // hammer blow: heavy damage + MC-style launch into the air
+            this.hurtMob(prey, 9, dx, dz, cb);
+            if (!prey.dead) {
+              prey.vy = 8.5;
+              prey.vx += (dx / len) * 5;
+              prey.vz += (dz / len) * 5;
+            }
+            audio.golemSmash(preyDist);
+            cb.explodeParticles(m.x + (dx / len) * 1.4, m.y + 1.9, m.z + (dz / len) * 1.4);
+          }
+        } else {
+          // patrol: villager-style wander
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 4; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.45; }
+          }
+        }
+      } else if (!hostileActive) {
         // passive
         if (m.state === 'flee') {
           const dx = m.x - player.x;
@@ -1047,6 +1142,11 @@ export class MobManager {
         if (m.type === 'zombie') {
           pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
           pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
+        } else if (m.type === 'golem') {
+          // heavy pendulum sway; raised when charging a target
+          const raised = m.state === 'chase' ? -1.2 : 0;
+          pivot.rotation.x = raised + Math.sin(m.walkPhase * 2.4 + (pivot === (m.parts.arms[0] as unknown as { pivot?: THREE.Group }).pivot ? 0 : Math.PI)) * 0.3;
+          pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.05;
         } else if (m.type === 'enderman') {
           if (m.provoked) {
             pivot.rotation.x = -1.15 + Math.sin(m.walkPhase * 2.4) * 0.1;

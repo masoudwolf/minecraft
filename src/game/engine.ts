@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -701,6 +701,41 @@ export class Game {
       }
       return;
     }
+    // hoe: till grass/dirt/mycelium into farmland
+    const heldTool = held && held.count > 0 && isItemId(held.blockId) ? getToolDef(held.blockId) : undefined;
+    if (heldTool?.type === 'hoe' && this.target) {
+      const t = this.target;
+      const id = this.world.getBlock(t.x, t.y, t.z);
+      const above = this.world.getBlock(t.x, t.y + 1, t.z);
+      const tillable = id === BLOCK.GRASS || id === BLOCK.DIRT || id === BLOCK.MYCELIUM || id === BLOCK.SNOW_GRASS;
+      if (tillable && above === BLOCK.AIR) {
+        this.world.setBlock(t.x, t.y, t.z, BLOCK.FARMLAND);
+        audio.dig('dirt');
+        this.damageTool(1);
+        this.placeCooldown = 0.25;
+        this.startSwing();
+        this.achievements.unlock('plowman');
+      }
+      return; // hoes never place blocks
+    }
+    // seeds: plant a wheat crop on farmland (top face)
+    if (held && held.count > 0 && held.blockId === ITEM.SEEDS && this.target) {
+      const t = this.target;
+      if (this.world.getBlock(t.x, t.y, t.z) === BLOCK.FARMLAND && t.ny === 1) {
+        const above = this.world.getBlock(t.x, t.y + 1, t.z);
+        if (above === BLOCK.AIR) {
+          this.world.setBlock(t.x, t.y + 1, t.z, BLOCK.WHEAT_STAGE0);
+          audio.place('grass');
+          this.placeCooldown = 0.22;
+          this.startSwing();
+          held.count--;
+          if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+          this.syncHUD();
+          this.updateHandMesh();
+        }
+      }
+      return; // seeds never place blocks
+    }
     this.placeBlock();
   }
 
@@ -758,8 +793,74 @@ export class Game {
       this.showToast('The mushroom refuses to grow');
       return false;
     }
+    // wheat crop: advance 1-2 stages
+    if (isWheatCrop(id)) {
+      if (id === BLOCK.WHEAT_STAGE3) {
+        this.showToast('The wheat is already ripe');
+        return false;
+      }
+      const next = Math.min(BLOCK.WHEAT_STAGE3, nextWheatStage(id) + (Math.random() < 0.35 ? 1 : 0));
+      this.world.setBlock(x, y, z, next);
+      this.fertilizeFx(x, y + 0.5, z);
+      return true;
+    }
+    // sapling: instant tree
+    if (isSapling(id)) {
+      if (this.growSaplingTree(x, y, z, id)) {
+        this.fertilizeFx(x, y + 1, z);
+        this.achievements.unlock('gardener');
+        return true;
+      }
+      this.showToast('Not enough room to grow');
+      return false;
+    }
     this.showToast('Bone meal has no effect here');
     return false;
+  }
+
+  /** grow a full tree from a sapling at (x,y,z); returns false when blocked */
+  private growSaplingTree(x: number, y: number, z: number, saplingId: number): boolean {
+    const below = this.world.getBlock(x, y - 1, z);
+    if (below !== BLOCK.GRASS && below !== BLOCK.DIRT && below !== BLOCK.SNOW_GRASS && below !== BLOCK.FARMLAND) return false;
+    const isSpruce = saplingId === BLOCK.SPRUCE_SAPLING;
+    const height = isSpruce ? 6 + Math.floor(Math.random() * 3) : 4 + Math.floor(Math.random() * 3);
+    // trunk column must be clear
+    for (let dy = 1; dy <= height + 1; dy++) {
+      if (y + dy >= WORLD_HEIGHT) return false;
+      const cell = this.world.getBlock(x, y + dy, z);
+      if (cell !== BLOCK.AIR && !isLiquid(cell)) return false;
+    }
+    const log = isSpruce ? BLOCK.SPRUCE_LOG : BLOCK.LOG;
+    const leaf = isSpruce ? BLOCK.SPRUCE_LEAVES : BLOCK.LEAVES;
+    const topY = y + height;
+    // trunk (replaces the sapling)
+    this.world.setBlock(x, y, z, log);
+    for (let dy = 1; dy <= height; dy++) this.world.setBlock(x, y + dy, z, log);
+    if (isSpruce) {
+      // conical spruce: alternating ring radii + tip
+      this.setIfAir(x, topY + 1, z, leaf);
+      for (let ly = topY; ly >= y + 2; ly--) {
+        const layer = topY - ly;
+        const r = layer % 2 === 0 ? 1 : 2;
+        for (let dx = -r; dx <= r; dx++)
+          for (let dz = -r; dz <= r; dz++) {
+            if (dx === 0 && dz === 0) continue;
+            if (Math.abs(dx) === r && Math.abs(dz) === r && r === 2) continue;
+            this.setIfAir(x + dx, ly, z + dz, leaf);
+          }
+      }
+    } else {
+      // oak canopy: two wide layers + two small layers (terrain.placeTree pattern)
+      for (let dy = -2; dy <= 1; dy++) {
+        const r = dy <= -1 ? 2 : 1;
+        for (let dx = -r; dx <= r; dx++)
+          for (let dz = -r; dz <= r; dz++) {
+            if (dx === 0 && dz === 0 && dy <= 0) continue;
+            this.setIfAir(x + dx, topY + dy, z + dz, leaf);
+          }
+      }
+    }
+    return true;
   }
 
   private fertilizeFx(x: number, y: number, z: number): void {
@@ -1107,9 +1208,21 @@ export class Game {
       audio.breakBlock((def.sound ?? 'stone') as MaterialSound);
       const dropId = def.drop === undefined ? t.id : def.drop;
       // gravel has a 12% chance to drop flint (MC-style, used for arrows)
-      const actualDrop = harvest && t.id === BLOCK.GRAVEL && Math.random() < 0.12 ? ITEM.FLINT : dropId;
+      let actualDrop = harvest && t.id === BLOCK.GRAVEL && Math.random() < 0.12 ? ITEM.FLINT : dropId;
+      // leaves drop saplings (~8%, MC-style) — the tree regrowth loop
+      if (harvest && t.id === BLOCK.LEAVES && Math.random() < 0.08) actualDrop = BLOCK.OAK_SAPLING;
+      if (harvest && t.id === BLOCK.SPRUCE_LEAVES && Math.random() < 0.08) actualDrop = BLOCK.SPRUCE_SAPLING;
+      // tall grass drops wheat seeds (~20%, MC-style foraging)
+      if (harvest && t.id === BLOCK.TALL_GRASS && Math.random() < 0.2) actualDrop = ITEM.SEEDS;
       if (harvest && actualDrop && actualDrop > 0) {
         this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+      }
+      // mature wheat: grain + seeds for replanting
+      if (harvest && t.id === BLOCK.WHEAT_STAGE3) {
+        this.drops.spawn(ITEM.WHEAT, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+        const seeds = 1 + Math.floor(Math.random() * 2);
+        for (let s = 0; s < seeds; s++) this.drops.spawn(ITEM.SEEDS, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+        this.achievements.unlock('harvest');
       }
       // XP from ores
       const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
@@ -1806,6 +1919,7 @@ export class Game {
     if (id === BLOCK.CRAFTING_TABLE) this.achievements.unlock('benchmarking');
     if (id === ITEM.WOOD_PICKAXE) this.achievements.unlock('timeToMine');
     if (id === ITEM.STONE_PICKAXE) this.achievements.unlock('gettingUpgrade');
+    if (id === ITEM.BREAD) this.achievements.unlock('bakeBread');
   }
 
   /** consume durability from held tool; breaks it at 0 (creative: no wear) */
@@ -2359,6 +2473,24 @@ export class Game {
         const id = this.world.getBlock(sx, sy, sz);
         if (id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) this.world.scheduleFluidTick(sx, sy, sz, 0.5);
       }
+      // crop & sapling sweep: deterministic pass over all columns near the player
+      // (random sampling almost never hits real farm plots; MC uses random ticks)
+      const baseX = Math.floor(px2), baseY = Math.floor(py2), baseZ = Math.floor(pz2);
+      const R = 15;
+      for (let dx = -R; dx <= R; dx++)
+        for (let dz = -R; dz <= R; dz++) {
+          const bx = baseX + dx, bz = baseZ + dz;
+          for (let by = baseY - 8; by <= baseY + 10; by++) {
+            const id = this.world.getBlock(bx, by, bz);
+            if (isWheatCrop(id) && id < BLOCK.WHEAT_STAGE3) {
+              const below = this.world.getBlock(bx, by - 1, bz);
+              const hydrated = below === BLOCK.FARMLAND ? this.hasAdjacentWater(bx, by - 1, bz) : false;
+              if (Math.random() < (hydrated ? 0.5 : 0.22)) this.world.setBlock(bx, by, bz, nextWheatStage(id));
+            } else if (isSapling(id) && Math.random() < 0.2) {
+              this.growSaplingTree(bx, by, bz, id);
+            }
+          }
+        }
     }
     this.furnaceSyncTimer += dt;
     if (this.furnaceSyncTimer > 0.3) {

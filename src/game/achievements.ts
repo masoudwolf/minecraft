@@ -25,6 +25,10 @@ export const ACHIEVEMENTS: Record<string, AchievementDef> = {
   sniperDuel: { id: 'sniperDuel', title: 'Sniper Duel', desc: 'Kill a mob with an arrow from over 12 blocks', iconTile: 23 },
   trader: { id: 'trader', title: 'The Trader', desc: 'Trade with a villager', iconTile: 40 },
   gardener: { id: 'gardener', title: 'Growth Spurt', desc: 'Fertilize the land with bone meal', iconTile: 45 },
+  // phase 9
+  plowman: { id: 'plowman', title: 'Plowman', desc: 'Till the earth with a hoe', iconTile: 67 },
+  harvest: { id: 'harvest', title: 'The Harvest', desc: 'Harvest fully-grown wheat', iconTile: 72 },
+  bakeBread: { id: 'bakeBread', title: 'Bake Bread', desc: 'Craft bread from three wheat', iconTile: 5 },
 };
 
 export class AchievementManager {

@@ -78,6 +78,7 @@ export function getMobSkins(type: string): MobSkins {
     case 'enderman': skins = buildEnderman(); break;
     case 'villager': skins = buildVillager(); break;
     case 'mooshroom': skins = buildMooshroom(); break;
+    case 'golem': skins = buildGolem(); break;
     default: skins = buildPig();
   }
   skinCache.set(type, skins);
@@ -458,4 +459,71 @@ function buildMooshroom(): MobSkins {
   ctx.fillRect(4, 4, 3, 5);
 
   return { head: tex(head), body: tex(body), limb: tex(limb) };
+}
+
+// ── IRON GOLEM (phase 9): massive pale-metal defender with vines ────────────
+function buildGolem(): MobSkins {
+  const rnd = seeded(1010);
+  const iron = ['#d8d4c8', '#ccc8ba', '#e0dcd0', '#c2beae', '#d4d0c2'];
+  // head: pale metal face + deep-set eyes + brow
+  const head = makeCanvas(16, 16);
+  let ctx = head.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, iron, rnd);
+  // brow ridge shadow
+  ctx.fillStyle = '#a8a498';
+  ctx.fillRect(2, 5, 12, 1);
+  // eyes (dark, deep-set)
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(4, 6, 2, 2);
+  ctx.fillRect(10, 6, 2, 2);
+  // nose shadow strip between the eyes
+  ctx.fillStyle = '#b0aca0';
+  ctx.fillRect(7, 6, 2, 6);
+  // rust speckles
+  for (let i = 0; i < 5; i++) {
+    px(ctx, 2 + Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 13), '#a67a52');
+  }
+
+  // body: pale metal plates with cracks + vine detail on chest
+  const body = makeCanvas(16, 16);
+  ctx = body.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, iron, rnd);
+  // plate seams
+  ctx.fillStyle = '#a8a498';
+  ctx.fillRect(0, 4, 16, 1);
+  ctx.fillRect(0, 10, 16, 1);
+  // cracks
+  ctx.fillStyle = '#8e8a7c';
+  px(ctx, 3, 6, '#8e8a7c'); px(ctx, 4, 7, '#8e8a7c'); px(ctx, 4, 8, '#8e8a7c');
+  px(ctx, 11, 11, '#8e8a7c'); px(ctx, 12, 12, '#8e8a7c');
+  // vines (green strands creeping over the chest)
+  ctx.fillStyle = '#4c8a32';
+  px(ctx, 1, 2, '#4c8a32'); px(ctx, 2, 3, '#4c8a32'); px(ctx, 2, 4, '#3a7026');
+  px(ctx, 13, 8, '#4c8a32'); px(ctx, 14, 9, '#3a7026'); px(ctx, 13, 10, '#4c8a32');
+  px(ctx, 7, 13, '#4c8a32'); px(ctx, 8, 14, '#3a7026');
+  // rust patches
+  for (let i = 0; i < 4; i++) {
+    px(ctx, 2 + Math.floor(rnd() * 12), 2 + Math.floor(rnd() * 12), '#a67a52');
+  }
+
+  // limb: metal arms/legs with vine wraps
+  const limb = makeCanvas(8, 16);
+  ctx = limb.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 16, iron, rnd);
+  ctx.fillStyle = '#a8a498';
+  ctx.fillRect(0, 5, 8, 1);
+  ctx.fillRect(0, 11, 8, 1);
+  ctx.fillStyle = '#4c8a32';
+  px(ctx, 2, 8, '#4c8a32'); px(ctx, 3, 8, '#3a7026'); px(ctx, 5, 9, '#4c8a32');
+  ctx.fillStyle = '#a67a52';
+  px(ctx, 6, 3, '#a67a52'); px(ctx, 1, 13, '#a67a52');
+
+  // extra: nose (long pale-metal strip, darker tip)
+  const nose = makeCanvas(8, 8);
+  ctx = nose.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 8, ['#c8c4b6', '#bebaac', '#d2cec0'], rnd);
+  ctx.fillStyle = '#9a9688';
+  ctx.fillRect(0, 6, 8, 2);
+
+  return { head: tex(head), body: tex(body), limb: tex(limb), extra: tex(nose) };
 }

@@ -2,7 +2,7 @@
 import type { BlockDef } from './blocks';
 
 export interface ToolDef {
-  type: 'pickaxe' | 'axe' | 'shovel' | 'sword';
+  type: 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe';
   /** harvest tier: 1 wood, 2 stone, 3 iron, 1 gold (fast), 5 diamond */
   tier: number;
   /** mining speed multiplier */
@@ -101,6 +101,15 @@ export const ITEM = {
   FLINT: 320,
   // farming (phase 8)
   BONEMEAL: 321,
+  // farming (phase 9)
+  SEEDS: 322,
+  WHEAT: 323,
+  BREAD: 324,
+  WOOD_HOE: 325,
+  STONE_HOE: 326,
+  IRON_HOE: 327,
+  GOLD_HOE: 328,
+  DIAMOND_HOE: 329,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -200,8 +209,8 @@ function makeTool(type: ToolDef['type'], tierName: TierName): ToolDef {
       ? t.swordDmg
       : type === 'axe'
         ? t.swordDmg - 1
-        : type === 'pickaxe'
-          ? Math.max(2, t.swordDmg - 2)
+        : type === 'hoe'
+          ? Math.max(1, t.swordDmg - 3)
           : Math.max(2, t.swordDmg - 2);
   return { type, tier: t.tier, speed: t.speed, dur: t.dur, dmg };
 }
@@ -313,6 +322,18 @@ function drawSword(ctx: CanvasRenderingContext2D, tier: TierName): void {
   px(ctx, 1, 14, HANDLE_DARK, 2, 1);
 }
 
+function drawHoe(ctx: CanvasRenderingContext2D, tier: TierName): void {
+  const [main, dark, light] = TIER_COLORS[tier];
+  drawHandle(ctx, 9, 5, 9);
+  // bent blade: horizontal top bar + downward tip on the right
+  px(ctx, 9, 2, main, 6, 2);
+  px(ctx, 14, 4, main, 2, 3);
+  px(ctx, 13, 2, light, 3, 1);
+  px(ctx, 14, 4, light, 1, 2);
+  px(ctx, 9, 3, dark, 5, 1);
+  px(ctx, 15, 6, dark, 1, 1);
+}
+
 // ─── tool registry builder ────────────────────────────────────────────────────
 const TOOL_IDS: Record<string, number> = {
   'wood:pickaxe': ITEM.WOOD_PICKAXE, 'wood:axe': ITEM.WOOD_AXE, 'wood:shovel': ITEM.WOOD_SHOVEL, 'wood:sword': ITEM.WOOD_SWORD,
@@ -320,12 +341,13 @@ const TOOL_IDS: Record<string, number> = {
   'iron:pickaxe': ITEM.IRON_PICKAXE, 'iron:axe': ITEM.IRON_AXE, 'iron:shovel': ITEM.IRON_SHOVEL, 'iron:sword': ITEM.IRON_SWORD,
   'gold:pickaxe': ITEM.GOLD_PICKAXE, 'gold:axe': ITEM.GOLD_AXE, 'gold:shovel': ITEM.GOLD_SHOVEL, 'gold:sword': ITEM.GOLD_SWORD,
   'diamond:pickaxe': ITEM.DIAMOND_PICKAXE, 'diamond:axe': ITEM.DIAMOND_AXE, 'diamond:shovel': ITEM.DIAMOND_SHOVEL, 'diamond:sword': ITEM.DIAMOND_SWORD,
+  'wood:hoe': ITEM.WOOD_HOE, 'stone:hoe': ITEM.STONE_HOE, 'iron:hoe': ITEM.IRON_HOE, 'gold:hoe': ITEM.GOLD_HOE, 'diamond:hoe': ITEM.DIAMOND_HOE,
 };
 
 const TIER_LABEL: Record<TierName, string> = { wood: 'Wooden', stone: 'Stone', iron: 'Iron', gold: 'Golden', diamond: 'Diamond' };
-const TYPE_LABEL: Record<ToolDef['type'], string> = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword' };
+const TYPE_LABEL: Record<ToolDef['type'], string> = { pickaxe: 'Pickaxe', axe: 'Axe', shovel: 'Shovel', sword: 'Sword', hoe: 'Hoe' };
 const TOOL_PAINTER: Record<ToolDef['type'], (ctx: CanvasRenderingContext2D, tier: TierName) => void> = {
-  pickaxe: drawPickaxe, axe: drawAxe, shovel: drawShovel, sword: drawSword,
+  pickaxe: drawPickaxe, axe: drawAxe, shovel: drawShovel, sword: drawSword, hoe: drawHoe,
 };
 
 export const ITEMS: Record<number, ItemDef> = {
@@ -576,6 +598,52 @@ export const ITEMS: Record<number, ItemDef> = {
       px(ctx, 6, 12, '#c0c0a8'); px(ctx, 10, 12, '#c0c0a8');
       // sparkle
       px(ctx, 8, 4, '#ffffff'); px(ctx, 5, 5, '#f6f6ea');
+    },
+  },
+  [ITEM.SEEDS]: {
+    id: ITEM.SEEDS, name: 'Wheat Seeds',
+    icon: (ctx) => {
+      // scattered green seeds
+      const seed = (x: number, y: number, c: string): void => {
+        px(ctx, x, y, c); px(ctx, x + 1, y, c); px(ctx, x, y + 1, c);
+      };
+      seed(3, 5, '#5da03f'); seed(8, 4, '#6db34c'); seed(12, 6, '#4c8a32');
+      seed(5, 9, '#6db34c'); seed(10, 10, '#5da03f'); seed(4, 12, '#4c8a32');
+      seed(11, 13, '#5da03f');
+      px(ctx, 9, 6, '#7cc25a'); px(ctx, 6, 11, '#7cc25a'); px(ctx, 13, 11, '#6db34c');
+    },
+  },
+  [ITEM.WHEAT]: {
+    id: ITEM.WHEAT, name: 'Wheat',
+    icon: (ctx) => {
+      // three golden stalks tied together
+      for (const [x, top] of [[5, 2], [8, 1], [11, 2]] as [number, number][]) {
+        ctx.fillStyle = '#c9b455';
+        ctx.fillRect(x, top + 4, 1, 13 - top);
+        ctx.fillStyle = '#dcc25e';
+        ctx.fillRect(x - 1, top, 3, 4);
+        px(ctx, x, top - 1 > 0 ? top - 1 : 0, '#e8d478');
+        ctx.fillStyle = '#b89b3e';
+        ctx.fillRect(x - 1, top + 3, 3, 1);
+      }
+      ctx.fillStyle = '#9aa848';
+      px(ctx, 4, 9, '#9aa848'); px(ctx, 12, 9, '#9aa848'); px(ctx, 6, 12, '#9aa848'); px(ctx, 10, 12, '#9aa848');
+    },
+  },
+  [ITEM.BREAD]: {
+    id: ITEM.BREAD, name: 'Bread', food: 5,
+    icon: (ctx) => {
+      // golden-brown loaf
+      noiseRect(ctx, ['#b8863c', '#a8762e', '#c89650'], 2, 5, 12, 7, 71);
+      // top crust dome
+      noiseRect(ctx, ['#d8a860', '#cc9a52'], 3, 3, 10, 3, 73);
+      // slashes
+      ctx.fillStyle = '#8a5c22';
+      px(ctx, 5, 4, '#8a5c22'); px(ctx, 6, 3, '#8a5c22');
+      px(ctx, 9, 3, '#8a5c22'); px(ctx, 10, 4, '#8a5c22');
+      // bottom rim
+      ctx.fillStyle = '#8a5c22';
+      ctx.fillRect(2, 11, 12, 1);
     },
   },
 };

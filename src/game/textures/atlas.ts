@@ -653,6 +653,116 @@ export function getAtlas(): AtlasData {
     ctx.fillRect(p[0] + 5, p[1] + 8, 6, 1);
   }
 
+  // ── phase 9: farming tiles 67-74 ──
+  p = T(67);                                                                                             // farmland top (wet furrows)
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#4e3418', '#442c12', '#583a1e', '#3c2810'], rnd);
+    // horizontal furrow grooves
+    for (const y of [2, 3, 7, 8, 12, 13]) {
+      for (let x = 0; x < 16; x++) {
+        if (rnd() > 0.75) continue;
+        px(ctx, p[0] + x, p[1] + y, '#33220c');
+        if (rnd() > 0.6) px(ctx, p[0] + x, p[1] + y + 1, '#63421f');
+      }
+    }
+    // moisture speckles
+    for (let i = 0; i < 8; i++) px(ctx, p[0] + Math.floor(rnd() * 16), p[1] + Math.floor(rnd() * 16), '#2c1c0a');
+  }
+  p = T(68);                                                                                             // farmland side (dirt with dark rim)
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, DIRT, rnd);
+    noiseFill(ctx, p[0], p[1], 16, 3, ['#4e3418', '#442c12', '#583a1e'], rnd);
+    ctx.fillStyle = '#33220c';
+    ctx.fillRect(p[0], p[1] + 3, 16, 1);
+  }
+  p = T(69);                                                                                             // wheat stage 0 (green sprouts)
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    for (const sx2 of [2, 5, 8, 11, 14]) {
+      ctx.fillStyle = '#5da03f';
+      ctx.fillRect(p[0] + sx2, p[1] + 11, 1, 5);
+      px(ctx, p[0] + sx2 - 1, p[1] + 11, '#4c8a32');
+      px(ctx, p[0] + sx2 + 1, p[1] + 12, '#6db34c');
+    }
+  }
+  p = T(70);                                                                                             // wheat stage 1 (taller green)
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    for (const sx2 of [1, 4, 7, 10, 13]) {
+      ctx.fillStyle = '#5da03f';
+      ctx.fillRect(p[0] + sx2, p[1] + 7, 1, 9);
+      px(ctx, p[0] + sx2 - 1, p[1] + 9, '#4c8a32');
+      px(ctx, p[0] + sx2 + 1, p[1] + 10, '#6db34c');
+      px(ctx, p[0] + sx2, p[1] + 6, '#7cc25a');
+    }
+  }
+  p = T(71);                                                                                             // wheat stage 2 (tall, tips yellowing)
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    for (const sx2 of [1, 4, 7, 10, 13]) {
+      ctx.fillStyle = '#7ca848';
+      ctx.fillRect(p[0] + sx2, p[1] + 4, 1, 12);
+      px(ctx, p[0] + sx2 - 1, p[1] + 7, '#6a9238');
+      px(ctx, p[0] + sx2 + 1, p[1] + 9, '#8cb856');
+      ctx.fillStyle = '#c9b84e';
+      ctx.fillRect(p[0] + sx2, p[1] + 3, 1, 2);
+    }
+  }
+  p = T(72);                                                                                             // wheat stage 3 (mature golden)
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    for (const sx2 of [1, 4, 7, 10, 13]) {
+      // golden stalks
+      ctx.fillStyle = '#c9b455';
+      ctx.fillRect(p[0] + sx2, p[1] + 3, 1, 13);
+      // grain heads
+      ctx.fillStyle = '#dcc25e';
+      ctx.fillRect(p[0] + sx2 - 1, p[1] + 2, 3, 4);
+      ctx.fillStyle = '#b89b3e';
+      ctx.fillRect(p[0] + sx2 - 1, p[1] + 5, 3, 1);
+      px(ctx, p[0] + sx2, p[1] + 1, '#e8d478');
+      // side leaves
+      px(ctx, p[0] + sx2 - 1, p[1] + 8, '#9aa848');
+      px(ctx, p[0] + sx2 + 1, p[1] + 10, '#9aa848');
+    }
+  }
+  p = T(73);                                                                                             // oak sapling
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    // small stem
+    ctx.fillStyle = '#6b4d2a';
+    ctx.fillRect(p[0] + 7, p[1] + 9, 2, 7);
+    // leaf clumps
+    ctx.fillStyle = '#4c8a32';
+    ctx.fillRect(p[0] + 4, p[1] + 6, 8, 4);
+    ctx.fillRect(p[0] + 5, p[1] + 4, 6, 2);
+    ctx.fillRect(p[0] + 2, p[1] + 8, 3, 2);
+    ctx.fillRect(p[0] + 11, p[1] + 7, 3, 2);
+    ctx.fillStyle = '#6db34c';
+    px(ctx, p[0] + 6, p[1] + 5, '#6db34c'); px(ctx, p[0] + 9, p[1] + 5, '#6db34c');
+    px(ctx, p[0] + 5, p[1] + 7, '#6db34c'); px(ctx, p[0] + 10, p[1] + 8, '#6db34c');
+    ctx.fillStyle = '#3a7026';
+    px(ctx, p[0] + 5, p[1] + 9, '#3a7026'); px(ctx, p[0] + 10, p[1] + 9, '#3a7026');
+    px(ctx, p[0] + 7, p[1] + 6, '#3a7026');
+  }
+  p = T(74);                                                                                             // spruce sapling (conical, dark)
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    ctx.fillStyle = '#3b2811';
+    ctx.fillRect(p[0] + 7, p[1] + 11, 2, 5);
+    // layered dark green needles
+    ctx.fillStyle = '#2c5530';
+    ctx.fillRect(p[0] + 4, p[1] + 10, 8, 2);
+    ctx.fillRect(p[0] + 5, p[1] + 7, 6, 2);
+    ctx.fillRect(p[0] + 6, p[1] + 4, 4, 2);
+    ctx.fillRect(p[0] + 7, p[1] + 2, 2, 2);
+    ctx.fillStyle = '#3d7342';
+    px(ctx, p[0] + 6, p[1] + 8, '#3d7342'); px(ctx, p[0] + 9, p[1] + 5, '#3d7342');
+    px(ctx, p[0] + 7, p[1] + 3, '#3d7342'); px(ctx, p[0] + 5, p[1] + 11, '#3d7342');
+    ctx.fillStyle = '#1e3d22';
+    px(ctx, p[0] + 8, p[1] + 11, '#1e3d22'); px(ctx, p[0] + 7, p[1] + 6, '#1e3d22');
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

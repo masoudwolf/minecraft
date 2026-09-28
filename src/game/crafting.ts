@@ -56,6 +56,9 @@ function shovel(M: number, id: number): ShapedRecipe {
 function sword(M: number, id: number): ShapedRecipe {
   return shaped(1, 3, [M, M, S], id);
 }
+function hoe(M: number, id: number): ShapedRecipe {
+  return shaped(2, 3, [M, M, 0, S, 0, S], id);
+}
 // armor recipe helpers: material M (MC patterns)
 function helmet(M: number, id: number): ShapedRecipe {
   return shaped(3, 2, [M, M, M, M, 0, M], id);
@@ -113,6 +116,15 @@ export const RECIPES: Recipe[] = [
   axe(D, ITEM.DIAMOND_AXE),
   shovel(D, ITEM.DIAMOND_SHOVEL),
   sword(D, ITEM.DIAMOND_SWORD),
+  // ── hoes (all tiers) ──
+  hoe(P, ITEM.WOOD_HOE),
+  hoe(C, ITEM.STONE_HOE),
+  hoe(I, ITEM.IRON_HOE),
+  hoe(G, ITEM.GOLD_HOE),
+  hoe(D, ITEM.DIAMOND_HOE),
+  // ── farming ──
+  // bread: 3 wheat in a row (MC pattern)
+  shaped(3, 1, [ITEM.WHEAT, ITEM.WHEAT, ITEM.WHEAT], ITEM.BREAD),
   // ── armor (leather / iron / gold / diamond) ──
   helmet(L, ITEM.LEATHER_HELMET),
   chestplate(L, ITEM.LEATHER_CHESTPLATE),

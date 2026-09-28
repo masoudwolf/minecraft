@@ -94,7 +94,28 @@ export const BLOCK = {
   MUSHROOM_BROWN_CAP: 58,
   MUSHROOM_RED: 59,
   MUSHROOM_BROWN: 60,
+  // ── phase 9: farming ──
+  FARMLAND: 61,
+  WHEAT_STAGE0: 62,
+  WHEAT_STAGE1: 63,
+  WHEAT_STAGE2: 64,
+  WHEAT_STAGE3: 65,
+  OAK_SAPLING: 66,
+  SPRUCE_SAPLING: 67,
 } as const;
+
+/** wheat crop growth stages (0 = sprout, 3 = mature golden) */
+export function isWheatCrop(id: number): boolean {
+  return id >= BLOCK.WHEAT_STAGE0 && id <= BLOCK.WHEAT_STAGE3;
+}
+/** next growth stage of a wheat crop (saturating at WHEAT_STAGE3) */
+export function nextWheatStage(id: number): number {
+  return Math.min(BLOCK.WHEAT_STAGE3, id + 1);
+}
+/** is this id a tree sapling? */
+export function isSapling(id: number): boolean {
+  return id === BLOCK.OAK_SAPLING || id === BLOCK.SPRUCE_SAPLING;
+}
 
 export const FLOW_MAX = 7;
 
@@ -130,6 +151,9 @@ export const TILE = {
   wool_light_gray: 56, wool_gray: 57, wool_brown: 58, wool_black: 59,
   mycelium_top: 60, mycelium_side: 61, mushroom_stem: 62,
   mushroom_red: 63, mushroom_brown: 64, mushroom_red_small: 65, mushroom_brown_small: 66,
+  farmland_top: 67, farmland_side: 68,
+  wheat_0: 69, wheat_1: 70, wheat_2: 71, wheat_3: 72,
+  oak_sapling: 73, spruce_sapling: 74,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -205,6 +229,15 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.MUSHROOM_BROWN_CAP]: { id: BLOCK.MUSHROOM_BROWN_CAP, name: 'Brown Mushroom Block', tiles: TILE.mushroom_brown, solid: true, opaque: true, hardness: 0.4, tool: 'axe', drop: BLOCK.MUSHROOM_BROWN, sound: 'wood' },
   [BLOCK.MUSHROOM_RED]: { id: BLOCK.MUSHROOM_RED, name: 'Red Mushroom', tiles: TILE.mushroom_red_small, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
   [BLOCK.MUSHROOM_BROWN]: { id: BLOCK.MUSHROOM_BROWN, name: 'Brown Mushroom', tiles: TILE.mushroom_brown_small, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+
+  // ── phase 9: farming ──
+  [BLOCK.FARMLAND]: { id: BLOCK.FARMLAND, name: 'Farmland', tiles: t(TILE.farmland_side, TILE.farmland_side, TILE.farmland_top, TILE.dirt, TILE.farmland_side, TILE.farmland_side), solid: true, opaque: true, hardness: 0.6, tool: 'shovel', drop: BLOCK.DIRT, sound: 'dirt' },
+  [BLOCK.WHEAT_STAGE0]: { id: BLOCK.WHEAT_STAGE0, name: 'Wheat Crop', tiles: TILE.wheat_0, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.01, drop: ITEM.SEEDS, sound: 'grass' },
+  [BLOCK.WHEAT_STAGE1]: { id: BLOCK.WHEAT_STAGE1, name: 'Wheat Crop', tiles: TILE.wheat_1, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.01, drop: ITEM.SEEDS, sound: 'grass' },
+  [BLOCK.WHEAT_STAGE2]: { id: BLOCK.WHEAT_STAGE2, name: 'Wheat Crop', tiles: TILE.wheat_2, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.01, drop: ITEM.SEEDS, sound: 'grass' },
+  [BLOCK.WHEAT_STAGE3]: { id: BLOCK.WHEAT_STAGE3, name: 'Wheat Crop', tiles: TILE.wheat_3, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.01, drop: null, sound: 'grass' },
+  [BLOCK.OAK_SAPLING]: { id: BLOCK.OAK_SAPLING, name: 'Oak Sapling', tiles: TILE.oak_sapling, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+  [BLOCK.SPRUCE_SAPLING]: { id: BLOCK.SPRUCE_SAPLING, name: 'Spruce Sapling', tiles: TILE.spruce_sapling, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
 };
 
 /** flowing water defs share appearance with source water */

@@ -441,13 +441,16 @@ export class TerrainGenerator {
       for (let dx = 0; dx < 6; dx++)
         for (let dz = 0; dz < 4; dz++) {
           const trench = dz === 1 && dx >= 1 && dx <= 4;
-          setIf(ox + dx, gy, oz + dz, trench ? BLOCK.WATER : BLOCK.DIRT, true);
+          setIf(ox + dx, gy, oz + dz, trench ? BLOCK.WATER : BLOCK.FARMLAND, true);
           setIf(ox + dx, gy + 1, oz + dz, BLOCK.AIR, true);
           setIf(ox + dx, gy + 2, oz + dz, BLOCK.AIR, true);
-          // sugarcane rows flanking the trench
-          if (dz === 0 || dz === 2) {
-            if (this.hash2(x0 + ox + dx, z0 + oz + dz, 507) < 0.65)
-              setIf(ox + dx, gy + 1, oz + dz, BLOCK.SUGARCANE, false);
+          // wheat rows on the tilled beds (mixed ripeness, deterministic)
+          if (!trench && dz !== 1) {
+            const h = this.hash2(x0 + ox + dx, z0 + oz + dz, 507);
+            if (h < 0.72) {
+              const stage = h < 0.3 ? BLOCK.WHEAT_STAGE3 : h < 0.55 ? BLOCK.WHEAT_STAGE2 : BLOCK.WHEAT_STAGE1;
+              setIf(ox + dx, gy + 1, oz + dz, stage, false);
+            }
           }
         }
       // corner log posts with torches
