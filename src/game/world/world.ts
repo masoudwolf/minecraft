@@ -336,6 +336,11 @@ export class World {
     return l < 0 ? 0xf0 : l;
   }
 
+  /** biome name at a column (delegates to the generator; used by mob spawning) */
+  biomeAt(wx: number, wz: number): string {
+    return this.terrain.biomeAt(wx, wz);
+  }
+
   private setLightRaw(wx: number, wy: number, wz: number, val: number): void {
     if (wy < 0 || wy >= WORLD_HEIGHT) return;
     const cx = Math.floor(wx / CHUNK_SIZE);

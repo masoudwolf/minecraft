@@ -125,6 +125,9 @@ export const RECIPES: Recipe[] = [
   // ── farming ──
   // bread: 3 wheat in a row (MC pattern)
   shaped(3, 1, [ITEM.WHEAT, ITEM.WHEAT, ITEM.WHEAT], ITEM.BREAD),
+  // ── transport (phase 10) ──
+  // boat: MC pattern (planks U-shape, 3x2)
+  shaped(3, 2, [P, 0, P, P, P, P], ITEM.BOAT),
   // ── armor (leather / iron / gold / diamond) ──
   helmet(L, ITEM.LEATHER_HELMET),
   chestplate(L, ITEM.LEATHER_CHESTPLATE),

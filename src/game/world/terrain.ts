@@ -223,6 +223,9 @@ export class TerrainGenerator {
     // village structures (plains): deterministic per chunk — house / well / farm
     this.placeVillageStructures(data, cx, cz);
 
+    // witch hut (swamp): stilted hut over a water pool, Phase 10
+    this.placeWitchHut(data, cx, cz);
+
     // decorations: flowers / tall grass / cactus / dead bush (in-chunk only, 1 column wide)
     for (let lx = 0; lx < CHUNK_SIZE; lx++) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -301,6 +304,66 @@ export class TerrainGenerator {
     const idx = blockIndex(lx, y, lz);
     if (!replaceSolid && data[idx] !== BLOCK.AIR && data[idx] !== BLOCK.WATER && data[idx] !== BLOCK.LEAVES) return;
     data[idx] = block;
+  }
+
+  /** place a witch hut in this chunk (swamp only): stilted plank hut over water */
+  private placeWitchHut(data: Uint8Array, cx: number, cz: number): void {
+    const x0 = cx * CHUNK_SIZE;
+    const z0 = cz * CHUNK_SIZE;
+    const midX = x0 + CHUNK_SIZE / 2, midZ = z0 + CHUNK_SIZE / 2;
+    if (this.biomeAt(Math.floor(midX), Math.floor(midZ)) !== 'swamp') return;
+    if (this.hash2(cx, cz, 600) >= 0.05) return;
+    const ox = 4 + Math.floor(this.hash2(cx, cz, 601) * 5); // 4..8 → hut spans to ox+4 ≤ 12
+    const oz = 4 + Math.floor(this.hash2(cx, cz, 602) * 5);
+    const setIf = (lx: number, y: number, lz: number, block: number, replaceSolid: boolean): void => {
+      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+      if (!replaceSolid) {
+        const cur = data[blockIndex(lx, y, lz)];
+        if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
+      }
+      data[blockIndex(lx, y, lz)] = block;
+    };
+    // need a pool: center column underwater (h < SEA_LEVEL), hut floor above it
+    const poolH = this.heightAt(x0 + ox + 2, z0 + oz + 2);
+    if (poolH >= SEA_LEVEL) return; // not a pool
+    const floorY = SEA_LEVEL + 1;
+    // clear the volume (kill swamp trees inside)
+    for (let lx = 0; lx < 5; lx++)
+      for (let lz = 0; lz < 5; lz++)
+        for (let y = floorY; y <= floorY + 4; y++)
+          setIf(ox + lx, y, oz + lz, BLOCK.AIR, true);
+    // stilts: spruce logs from the pool bed up to the floor at corners + center
+    for (const [dx, dz] of [[0, 0], [4, 0], [0, 4], [4, 4], [2, 2]] as [number, number][]) {
+      const bed = this.heightAt(x0 + ox + dx, z0 + oz + dz);
+      const from = Math.min(floorY - 1, Math.max(3, bed));
+      for (let y = from; y < floorY; y++) setIf(ox + dx, y, oz + dz, BLOCK.SPRUCE_LOG, true);
+    }
+    // plank floor 5×5
+    for (let lx = 0; lx < 5; lx++)
+      for (let lz = 0; lz < 5; lz++)
+        setIf(ox + lx, floorY, oz + lz, BLOCK.PLANKS, true);
+    // walls: perimeter 2 tall with a doorway on the -z side; log corners
+    for (let y = floorY + 1; y <= floorY + 2; y++) {
+      for (let i = 0; i < 5; i++) {
+        const door = y <= floorY + 2 && i === 2;
+        setIf(ox + i, y, oz, door ? BLOCK.AIR : BLOCK.PLANKS, true);
+        setIf(ox + i, y, oz + 4, BLOCK.PLANKS, true);
+        setIf(ox, y, oz + i, BLOCK.PLANKS, true);
+        setIf(ox + 4, y, oz + i, BLOCK.PLANKS, true);
+      }
+      for (const [dx, dz] of [[0, 0], [4, 0], [0, 4], [4, 4]] as [number, number][]) {
+        setIf(ox + dx, y, oz + dz, BLOCK.SPRUCE_LOG, true);
+      }
+    }
+    // flat roof 7×7 with spruce-log rim (overhang)
+    for (let lx = -1; lx <= 5; lx++)
+      for (let lz = -1; lz <= 5; lz++) {
+        const rim = lx === -1 || lx === 5 || lz === -1 || lz === 5;
+        setIf(ox + lx, floorY + 3, oz + lz, rim ? BLOCK.SPRUCE_LOG : BLOCK.PLANKS, true);
+      }
+    // interior: crafting table + torch (witch's workbench)
+    setIf(ox + 1, floorY + 1, oz + 3, BLOCK.CRAFTING_TABLE, true);
+    setIf(ox + 3, floorY + 1, oz + 1, BLOCK.TORCH, true);
   }
 
   /** place a village structure in this chunk (plains only, fully in-chunk): house / well / farm */

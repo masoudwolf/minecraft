@@ -658,3 +658,56 @@ Stage Summary:
 - Mob heads are Minecraft-accurate: face on the front only, featureless skin on the other 5 faces (user's "head on all four sides" fixed).
 - NaN/void mob despawn guard added; entity material systems (tint × light) unified.
 - NEXT candidates (unchanged): boats, witch hut, enchanting, trade rotation, achievements.
+---
+Task ID: 16 (Bugfix — Chicken Has 4 Legs + Leg Rotation Pivot at Middle)
+Agent: main (user-reported bugfix round)
+Task: User reported: (1) chicken has 4 legs — illogical, should have 2; (2) leg rotation pivot for walk animation must be at the TOP of the leg (hip), not the middle — middle-pivot looks wrong.
+
+Work Log:
+- Bug 1 root cause (mobs.ts): chicken was built via `quadruped()` which always creates 4 legs. Replaced with a dedicated bipedal bird builder: body + head with face-on-front-only (headPart), NEW 3D beak box (orange limb texture) protruding from the face, NEW red wattle box (new `extra` wattle texture in mobSkins.buildChicken), exactly TWO thin legs, and two side WINGS exposed via parts.arms.
+- Bug 2 root cause (mobs.ts + playerModel.ts): every leg was a single BoxGeometry whose CENTER was at half leg height → `rotation.x` spun around the leg's MIDDLE (feet orbit, top sinks into body). Arms already used pivot Groups. Added `legPivot()` helper: pivot Group at the hip (top), leg box child hanging at y=-h/2 → rotation swings from the hip, Minecraft-style. Applied to ALL builders: quadruped (pig/cow/sheep/mooshroom/chicken-2-legs), humanoid (zombie/skeleton), creeper (4), enderman (2), villager (2), golem (2 — legs also lengthened 0.72→0.88 to close the hip gap). parts.legs now stores pivots (cast as Mesh, same pattern the spider already used) — walk animation code unchanged.
+- playerModel.ts: same hip-pivot rig for Steve (pivot at y=0.74, leg child at -0.37); added `legMeshes` array so armor boots still attach to the swinging leg boxes. Spider pivots untouched (already correct). Golem leg gap fix included.
+- mobSkins.ts: buildChicken gained wattle `extra` texture; buildChicken cached like all skins.
+
+QA (agent-browser, world "Mob Rig QA" seed 7777, creative — all verified):
+- Chicken rig: legCount=2, both pivot Groups at hip y=0.31 with leg child at -0.15; 2 wings; beak + wattle present ✓
+- Walk animation numeric: walking at full speed, leg pivot rotation oscillated (-0.202 → -0.492 across samples), legs mirrored (opposite signs), hip world-Y CONSTANT at 41.36 while swinging → true hip rotation ✓
+- All 12 mob types: legs are pivot Groups with hanging children, hip Y at body underside (pig 0.30, cow 0.54, sheep 0.49, zombie/skeleton 0.74, creeper 0.38, spider 8 pivots 0.58, enderman 1.35, villager 0.32, golem 0.88) ✓
+- Wing flap: dropped chicken from height → wings flap (max rotation 0.62 rad) + slow-fall cap engaged (vy = -3.2 exactly) ✓
+- Visual: chicken studio screenshots (chicken-studio2.png) show exactly 2 orange legs, wings, red wattle, face front-only ✓
+- Lint clean; tsc still 22 pre-existing errors (0 new); no console/page errors.
+
+Stage Summary:
+- Bipedal chicken (2 legs + beak + wattle + flapping wings) and MC-style hip-pivot leg rigging across every mob AND the player model. Walk animations now swing from the hip.
+- NEXT: Phase 10 content per user "go to next stages of completing the game".
+---
+Task ID: 17 (Phase 10 — Boats, Witch Hut + Witch, Trade Rotation, Sprint FOV)
+Agent: main (feature round: "برو سراغ مراحل بعدی تکمیل بازی")
+Task: After bugfixes, continue completing the game (Phase 10): boats, witch hut + witch mob, villager trade rotation, sprint FOV polish.
+
+Work Log:
+- BOATS (new src/game/entities/boats.ts): BoatManager with MC-style oak boat model (hull, side walls, bow/stern, rim trim, bench, prow tips — 9 boxes, per-boat cloned materials with cached base colors × voxel-light factor). Physics: spring-damper buoyancy toward water surface (rest y = water surface − 0.28), water drag + 8.2 m/s clamp, thrust 9.5 m/s² while rowing, A/D turn 1.9 rad/s, heavy land friction, roll/pitch lean visuals, moveEntity AABB collision (1.25×0.62), NaN/void despawn. Boat item (id 330) + pixel icon + MC U-shape plank recipe (3×2). Engine: RMB place (water scan along look ray, 6m), RMB mount (boat raycast priority over placement — MC behavior), rowing drives boat while rider follows at seat offset (physicsStep), Shift dismounts to a free spot beside the boat, left-click attack breaks boat → drops BOAT item, creative placement doesn't consume, sprint-dust-style wood particles on break. Rider sitting pose in 3rd person (leg pivots -1.35).
+- WITCH (12th hostile mob type): buildWitch skin (green hag face w/ wart + red-glint eyes, purple robe, hat texture w/ golden band) + custom builder = humanoid + long nose + pointy hat (brim + 2 cone boxes + tilted tip). 26 hp, ranged AI: holds 5.5–9.5m (approach/back off/strafe), lobs splash potions every 2.8s (arc lead throw, g=16, substepped, tumbling purple box). Potions shatter on block/direct hit: shatter audio + purple burst + splash radius 2.6 → damage (max 4 scaled) + POISON 4.5s. Poison: player.poisonT/poisonTickT, 1 dmg per 1.5s, never below 2 hp, creative immune. Spawning: swamp night hostile roll (~9%) + witch-hut grounds (swamp planks/cobble, cap 1, day or night). Drops sticks + spider eyes. New sounds: witch cackle ambient/hurt, potionThrow glug, potionShatter.
+- WITCH HUT (terrain.ts placeWitchHut): swamp chunks, 5% deterministic roll, requires water pool (h < SEA_LEVEL at hut center). Stilted 5×5 plank hut: spruce-log stilts from pool bed (corners + center), plank floor at SEA_LEVEL+1, 2-tall walls w/ log corners + doorway, 7×7 plank roof w/ log rim overhang, interior crafting table + torch. MobManager world interface widened with optional biomeAt (World delegates to terrain).
+- TRADE ROTATION (trades.ts rewrite): pool expanded 3 → 10 offers; villagerTrades(seed, epoch) deterministically picks 3 via LCG; restock epoch = 5 real minutes (tradeEpoch()), per-villager seed from position hash. engine.openTrade(villager) computes offers → getTradeOffers() renders them (Overlays.tsx switched from the static VILLAGER_TRADES to live per-villager stock; executeTrade uses activeTrades).
+- SPRINT FOV (engine frameUpdate): smoothed +7° FOV kick while sprinting (speed > 3.2), lerped at dt*9, stacks with bow-charge zoom.
+
+QA (agent-browser, world "Mob Rig QA" seed 7777 — all verified):
+- Boat buoyancy: spawned on water → settles at y=40.45 vs computed rest 40.59, inWater, vy→0 ✓ (beaching in shallows stalls it — MC-like, open water required)
+- Mount: RMB raycast → riding=true, boat.occupied ✓ (mount takes priority over placement when aiming at a boat)
+- Rowing: W in deep water → speed ramps to 8.20 m/s (exact clamp), all speed along facing; rider position tracks boat exactly ✓
+- Turning: A → yaw delta −0.95 rad/0.9s (correct left-turn sign) ✓
+- Dismount: Shift → riding=false, player placed BESIDE the boat (1.2m off), boat remains ✓
+- Item placement: boat in hotbar + aim at clear water → boats 1→2 (creative: not consumed) ✓
+- Break: attack aimed at boat → boats 2→1 + BOAT item drop spawned ✓
+- Witch: model parts (nose, 4 hat boxes, hip-pivot legs) ✓; in survival mode chases holding 7.6m, splash potions hit → health 20→16→7 under sustained fire, poisonT active (2.75s seen) and ticking non-lethal damage ✓
+- Witch hut: found chunk (30,15) via the generator's own hash; after streaming, crafting table found at EXACTLY the predicted (489,42,250); floor=planks, below floor=WATER, corner stilt=SPRUCE_LOG, roof planks, torch=30 ✓ (screenshot witch-hut3.png shows roof through pause backdrop)
+- Trade rotation: same villager → same 3 offers (deterministic); different villager → different 3; all from the 10-pool ✓
+- Sprint FOV: sprinting at 5.6 m/s → sprintFov converged to exactly +7.00 ✓
+- Regression: chicken still 2 legs + pivots + beak/wattle; autosave PUTs 200; no console/page errors; lint clean; tsc 22 pre-existing (0 new).
+- QA harness notes: (1) headless pointer-lock now drop-loops after trade-panel open (engine's >500ms lock-session guard pauses correctly — real-browser Esc behavior; resume via Back to Game works, screenshots must be taken within ~0.8s of resume or the menu re-appears); (2) teleporting into UNGENERATED chunks voids the player (fall → death → respawn at spawn) — force flying + y≥58 and let streamChunks run (or drive w.streamChunks() from eval, ~30 calls covers radius); (3) `p.poisonT` lives on the Player wrapper (w.player.poisonT), not p.entity; (4) forwardVector convention: yaw=atan2(−dx,−dz), pitch positive = UP.
+
+Stage Summary:
+- PHASE 10 COMPLETE: rideable boats (full water physics + combat), swamp witch huts with a ranged potion-throwing witch + poison status effect, per-villager rotating trade stock (10-offer pool, 5-min restock), sprint FOV kick. Game now at "VoxelCraft 0.10.0 — Phase 10".
+- Known minor: boats not serialized in world saves (transient like arrows — respawn on placement); witches don't drink healing potions (MC does); trade restock is global epoch (MC restocks per-villager on trade); witch hut roll 5%/swamp-chunk may need several chunks to find one.
+- NEXT (Phase 11 candidates): enchanting table + lapis, snow golem buildable, horse mounts, redstone-lite (lever/door), lightning rod block, boat chest variant, farming milestone achievements, fishing rod + fish, banner blocks.

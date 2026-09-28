@@ -110,6 +110,8 @@ export const ITEM = {
   IRON_HOE: 327,
   GOLD_HOE: 328,
   DIAMOND_HOE: 329,
+  // transport (phase 10)
+  BOAT: 330,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -644,6 +646,30 @@ export const ITEMS: Record<number, ItemDef> = {
       // bottom rim
       ctx.fillStyle = '#8a5c22';
       ctx.fillRect(2, 11, 12, 1);
+    },
+  },
+  [ITEM.BOAT]: {
+    id: ITEM.BOAT, name: 'Boat',
+    icon: (ctx) => {
+      // side-view oak boat: curved hull
+      // hull body
+      noiseRect(ctx, ['#8a683c', '#7c5a32', '#94703f'], 2, 8, 12, 4, 81);
+      // hull taper (bow right, stern left)
+      ctx.fillStyle = '#8a683c';
+      ctx.fillRect(1, 9, 1, 3); ctx.fillRect(14, 9, 1, 3);
+      ctx.fillRect(2, 12, 12, 1);
+      // rim (lighter)
+      ctx.fillStyle = '#a5824f';
+      ctx.fillRect(2, 7, 12, 1);
+      px(ctx, 1, 8, '#a5824f'); px(ctx, 14, 8, '#a5824f');
+      // bench
+      ctx.fillStyle = '#6b4d2a';
+      ctx.fillRect(6, 7, 4, 1);
+      // plank seams
+      ctx.fillStyle = '#6b4d2a';
+      ctx.fillRect(2, 9, 12, 1);
+      // paddle hint
+      px(ctx, 11, 4, '#7c5a32', 1, 3); px(ctx, 10, 3, '#9c7848', 2, 2);
     },
   },
 };

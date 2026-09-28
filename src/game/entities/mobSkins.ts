@@ -84,6 +84,7 @@ export function getMobSkins(type: string): MobSkins {
     case 'spider': skins = buildSpider(); break;
     case 'enderman': skins = buildEnderman(); break;
     case 'villager': skins = buildVillager(); break;
+    case 'witch': skins = buildWitch(); break;
     case 'mooshroom': skins = buildMooshroom(); break;
     case 'golem': skins = buildGolem(); break;
     default: skins = buildPig();
@@ -216,7 +217,12 @@ function buildChicken(): MobSkins {
   ctx = limb.getContext('2d')!;
   noiseFill(ctx, 0, 0, 8, 16, ['#e8a23c', '#d8942f', '#f0b050'], rnd);
 
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+  // extra: red wattle (3D box under the beak)
+  const wattle = makeCanvas(8, 8);
+  ctx = wattle.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 8, ['#c83c3c', '#b83030', '#d44848', '#a82a2a'], rnd);
+
+  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(wattle) };
 }
 
 // ── ZOMBIE ───────────────────────────────────────────────────────────────────
@@ -436,6 +442,67 @@ function buildVillager(): MobSkins {
   ctx.fillRect(0, 6, 8, 2);
 
   return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(nose) };
+}
+
+// ── WITCH (phase 10): green-faced hag, purple robe, pointy hat ──────────────
+function buildWitch(): MobSkins {
+  const rnd = seeded(1111);
+  const skin = ['#7ca04a', '#6e9240', '#88ac54', '#648539'];
+  const robe = ['#5b3a6e', '#4f3160', '#67437c', '#452a54'];
+  // head: green hag face with wart + wrinkle, hooked nose shadow
+  const head = makeCanvas(16, 16);
+  let ctx = head.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, skin, rnd);
+  const headPlain = cloneCanvas(head);
+  // brows (angry)
+  ctx.fillStyle = '#2c3a1c';
+  ctx.fillRect(3, 5, 4, 1); ctx.fillRect(9, 5, 4, 1);
+  // eyes (dark with red glint)
+  ctx.fillStyle = '#1c1c14';
+  ctx.fillRect(4, 6, 2, 2); ctx.fillRect(10, 6, 2, 2);
+  px(ctx, 4, 6, '#8a2020'); px(ctx, 11, 7, '#8a2020');
+  // mouth (grim line)
+  ctx.fillStyle = '#33421f';
+  ctx.fillRect(5, 11, 6, 1);
+  px(ctx, 5, 12, '#33421f'); px(ctx, 10, 12, '#33421f');
+  // wart on the cheek
+  px(ctx, 12, 10, '#4c6430');
+  // nose ridge shadow (the 3D nose box covers the middle)
+  ctx.fillStyle = '#5c7a38';
+  ctx.fillRect(7, 7, 2, 5);
+
+  // body: purple robe with darker hem + belt
+  const body = makeCanvas(16, 16);
+  ctx = body.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 16, 16, robe, rnd);
+  ctx.fillStyle = '#3a2450';
+  ctx.fillRect(0, 13, 16, 3); // hem
+  ctx.fillStyle = '#7a5494';
+  ctx.fillRect(0, 3, 16, 2); // collar highlight
+  ctx.fillStyle = '#2e1c40';
+  ctx.fillRect(0, 8, 16, 1); // belt
+
+  // limb: robe sleeves / skirt-colored legs
+  const limb = makeCanvas(8, 16);
+  ctx = limb.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 16, robe, rnd);
+  ctx.fillStyle = '#3a2450';
+  ctx.fillRect(0, 14, 8, 2);
+
+  // extra: pointy hat texture (dark purple with star band + bent tip shading)
+  const hat = makeCanvas(8, 8);
+  ctx = hat.getContext('2d')!;
+  noiseFill(ctx, 0, 0, 8, 8, ['#3a2450', '#322045', '#42285c'], rnd);
+  // hat band (golden)
+  ctx.fillStyle = '#c9a227';
+  ctx.fillRect(0, 5, 8, 1);
+  // buckle
+  px(ctx, 3, 5, '#f0d060'); px(ctx, 4, 5, '#f0d060');
+  // tip shading
+  ctx.fillStyle = '#241634';
+  px(ctx, 6, 1, '#241634'); px(ctx, 6, 2, '#241634'); px(ctx, 5, 2, '#241634');
+
+  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(hat) };
 }
 
 // ── MOOSHROOM (phase 8): red cow with white patches ─────────────────────────

@@ -6,7 +6,7 @@ import { getMobSkins } from './mobSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
-export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'mooshroom' | 'golem';
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem';
 
 interface MobDef {
   hostile: boolean;
@@ -17,7 +17,7 @@ interface MobDef {
   /** contact/attack damage to player */
   damage: number;
   drops: { id: number; min: number; max: number }[];
-  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'mooshroom' | 'golem';
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem';
   /** spiders are neutral in daylight (still hostile in dark / when provoked) */
   neutralInDay?: boolean;
   /** spiders climb walls when chasing */
@@ -96,6 +96,14 @@ interface Arrow {
   dmg: number;
 }
 
+/** witch splash potion projectile */
+interface Potion {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  life: number;
+  mesh: THREE.Mesh;
+}
+
 // ─── Model builders ──────────────────────────────────────────────────────────
 function partMat(tex: THREE.CanvasTexture): THREE.MeshLambertMaterial {
   return new THREE.MeshLambertMaterial({ map: tex });
@@ -106,6 +114,24 @@ function boxPart(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial
   const mesh = new THREE.Mesh(geo, mat);
   mesh.userData.part = tag;
   return mesh;
+}
+
+/**
+ * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
+ * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
+ * animating pivot.rotation.x swings the leg from the top — like MC — instead
+ * of spinning around the leg's middle (which made feet orbit and sink into
+ * the body). The pivot is stored in parts.legs and the walk animation rotates
+ * it directly. `side` (-1 left / +1 right) is kept on userData for animators.
+ */
+function legPivot(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial, hipX: number, hipY: number, hipZ: number, side = 0): THREE.Group {
+  const pivot = new THREE.Group();
+  pivot.position.set(hipX, hipY, hipZ);
+  pivot.userData.side = side;
+  const leg = boxPart(w, h, d, mat, 'limb');
+  leg.position.y = -h / 2; // hang from the hip
+  pivot.add(leg);
+  return pivot;
 }
 
 /**
@@ -151,11 +177,11 @@ function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
   const legs: THREE.Mesh[] = [];
   const lx = opts.bodyW / 2 - opts.legW / 2;
   const lz = opts.bodyD / 2 - opts.legW / 2;
+  const hipY = opts.bodyY - opts.bodyH / 2; // hips at the body's underside
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const leg = boxPart(opts.legW, opts.legH, opts.legW, mats[2], 'limb');
-    leg.position.set(sx * lx, opts.bodyY - opts.bodyH / 2 - opts.legH / 2, sz * lz);
-    group.add(leg);
-    legs.push(leg);
+    const pivot = legPivot(opts.legW, opts.legH, opts.legW, mats[2], sx * lx, hipY, sz * lz, sx);
+    group.add(pivot);
+    legs.push(pivot as unknown as THREE.Mesh);
   }
   return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
 }
@@ -174,10 +200,9 @@ function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts
   group.add(head);
   const legs: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
-    const leg = boxPart(lw, 0.74, lw, mats[2], 'limb');
-    leg.position.set(sx * 0.125, 0.37, 0);
-    group.add(leg);
-    legs.push(leg);
+    const pivot = legPivot(lw, 0.74, lw, mats[2], sx * 0.125, 0.74, 0, sx);
+    group.add(pivot);
+    legs.push(pivot as unknown as THREE.Mesh);
   }
   const arms: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
@@ -213,9 +238,51 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   chicken: {
     hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
     drops: [{ id: ITEM.CHICKEN_RAW, min: 1, max: 1 }, { id: ITEM.FEATHER, min: 0, max: 2 }], sound: 'cluck',
+    // proper BIPEDAL bird: 2 legs (not the quadruped's 4!), 3D beak + wattle,
+    // side wings that flap while airborne (MC chicken)
     builder: (s) => {
-      const p = quadruped(s, { bodyW: 0.38, bodyH: 0.38, bodyD: 0.5, bodyY: 0.5, legW: 0.08, legH: 0.3, headS: 0.26, headY: 0.78, headZ: 0.28, shadowR: 0.25 });
-      return p;
+      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
+      const group = new THREE.Group();
+      const body = boxPart(0.38, 0.38, 0.5, mats[1], 'body');
+      body.position.y = 0.5;
+      group.add(body);
+      const head = headPart(0.26, 0.26, 0.26, s, extra);
+      head.position.set(0, 0.78, 0.3);
+      group.add(head);
+      // 3D beak (orange) protruding from the face + red wattle under it
+      const beak = boxPart(0.12, 0.07, 0.09, mats[2], 'beak');
+      beak.position.set(0, 0.77, 0.3 + 0.13 + 0.035);
+      group.add(beak);
+      if (s.extra) {
+        const wattleMat = partMat(s.extra);
+        extra.push(wattleMat);
+        const wattle = boxPart(0.08, 0.1, 0.05, wattleMat, 'wattle');
+        wattle.position.set(0, 0.7, 0.3 + 0.13 + 0.015);
+        group.add(wattle);
+      }
+      // TWO legs with hip pivots at the body underside (front-ish, MC-like)
+      const legs: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const pivot = legPivot(0.06, 0.31, 0.06, mats[2], sx * 0.06, 0.31, 0.07, sx);
+        group.add(pivot);
+        legs.push(pivot as unknown as THREE.Mesh);
+      }
+      // wings folded at the sides — exposed via parts.arms so the animator
+      // can flap them while the chicken is airborne
+      const arms: THREE.Mesh[] = [];
+      for (const sx of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * (0.19 + 0.03), 0.62, 0);
+        pivot.userData.side = sx;
+        const wing = boxPart(0.06, 0.28, 0.36, mats[1], 'wing');
+        wing.position.y = -0.14;
+        pivot.add(wing);
+        group.add(pivot);
+        arms.push(wing);
+        (wing as unknown as { pivot: THREE.Group }).pivot = pivot;
+      }
+      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
   zombie: {
@@ -238,10 +305,9 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       group.add(head);
       const legs: THREE.Mesh[] = [];
       for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const leg = boxPart(0.24, 0.38, 0.24, mats[2], 'limb');
-        leg.position.set(sx * 0.14, 0.19, sz * 0.18);
-        group.add(leg);
-        legs.push(leg);
+        const pivot = legPivot(0.24, 0.38, 0.24, mats[2], sx * 0.14, 0.38, sz * 0.18, sx);
+        group.add(pivot);
+        legs.push(pivot as unknown as THREE.Mesh);
       }
       return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
@@ -309,10 +375,9 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       group.add(head);
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const leg = boxPart(0.13, 1.35, 0.13, mats[2], 'limb');
-        leg.position.set(sx * 0.11, 0.675, 0);
-        group.add(leg);
-        legs.push(leg);
+        const pivot = legPivot(0.13, 1.35, 0.13, mats[2], sx * 0.11, 1.35, 0, sx);
+        group.add(pivot);
+        legs.push(pivot as unknown as THREE.Mesh);
       }
       const arms: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
@@ -358,15 +423,54 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       const armsBox = boxPart(0.58, 0.16, 0.16, mats[2], 'arm');
       armsBox.position.set(0, 1.26, 0.24);
       group.add(armsBox);
-      // short legs under the skirt
+      // short legs under the skirt (hip pivots so they swing from the top)
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const leg = boxPart(0.2, 0.32, 0.2, mats[2], 'limb');
-        leg.position.set(sx * 0.12, 0.16, 0);
-        group.add(leg);
-        legs.push(leg);
+        const pivot = legPivot(0.2, 0.32, 0.2, mats[2], sx * 0.12, 0.32, 0, sx);
+        group.add(pivot);
+        legs.push(pivot as unknown as THREE.Mesh);
       }
       return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+    },
+  },
+  witch: {
+    hostile: true, width: 0.6, height: 1.95, health: 26, speed: 1.5, damage: 0,
+    drops: [
+      { id: ITEM.STICK, min: 0, max: 2 },
+      { id: ITEM.SPIDER_EYE, min: 0, max: 1 },
+    ], sound: 'witch',
+    // ranged caster: keeps distance and lobs splash potions (poison on hit)
+    builder: (s) => {
+      const parts = humanoid(s);
+      const extra: THREE.MeshLambertMaterial[] = [];
+      const group = parts.group;
+      // long hooked nose (villager-style)
+      if (s.headPlain) {
+        const noseMat = partMat(s.headPlain);
+        extra.push(noseMat);
+        const nose = boxPart(0.12, 0.3, 0.12, noseMat, 'nose');
+        nose.position.set(0, 1.62, 0.3);
+        group.add(nose);
+      }
+      // pointy hat: brim + tapering cone boxes, slightly tilted (MC witch)
+      if (s.extra) {
+        const hatMat = partMat(s.extra);
+        extra.push(hatMat);
+        const brim = boxPart(0.6, 0.06, 0.6, hatMat, 'hat');
+        brim.position.set(0, 1.99, 0);
+        group.add(brim);
+        const cone1 = boxPart(0.44, 0.2, 0.44, hatMat, 'hat');
+        cone1.position.set(0, 2.11, -0.02);
+        group.add(cone1);
+        const cone2 = boxPart(0.28, 0.18, 0.28, hatMat, 'hat');
+        cone2.position.set(0, 2.29, -0.06);
+        group.add(cone2);
+        const tip = boxPart(0.13, 0.16, 0.13, hatMat, 'hat');
+        tip.position.set(0.02, 2.45, -0.1);
+        tip.rotation.z = -0.25;
+        group.add(tip);
+      }
+      return { group, head: parts.head, legs: parts.legs, arms: parts.arms, materials: [...parts.materials, ...extra], shadow: parts.shadow };
     },
   },
   mooshroom: {
@@ -413,13 +517,12 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         arms.push(arm);
         (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
       }
-      // sturdy legs
+      // sturdy legs (hip pivots; 0.88 tall so the top meets the hip block)
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const leg = boxPart(0.34, 0.72, 0.34, mats[2], 'limb');
-        leg.position.set(sx * 0.2, 0.36, 0);
-        group.add(leg);
-        legs.push(leg);
+        const pivot = legPivot(0.34, 0.88, 0.34, mats[2], sx * 0.2, 0.88, 0, sx);
+        group.add(pivot);
+        legs.push(pivot as unknown as THREE.Mesh);
       }
       return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
@@ -454,6 +557,8 @@ function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz:
 // ─── MobManager ──────────────────────────────────────────────────────────────
 export interface MobCallbacks {
   damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
+  /** witch splash potion: apply poison for N seconds (ticks 1 dmg / 1.5s, non-lethal) */
+  poisonPlayer?: (seconds: number) => void;
   spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
   spawnXP: (x: number, y: number, z: number, value: number) => void;
   explodeParticles: (x: number, y: number, z: number) => void;
@@ -477,20 +582,23 @@ export interface MobCallbacks {
 export class MobManager {
   mobs: Mob[] = [];
   arrows: Arrow[] = [];
+  potions: Potion[] = [];
   private scene: THREE.Scene;
-  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number };
+  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string };
   private spawnTimer = 0;
   private arrowMat: THREE.MeshLambertMaterial;
   private playerArrowMat: THREE.MeshLambertMaterial;
+  private potionMat: THREE.MeshLambertMaterial;
   private time = 0;
   /** most recent callbacks (for hurt→teleport outside update loop) */
   private lastCb: MobCallbacks | null = null;
 
-  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number }) {
+  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string }) {
     this.scene = scene;
     this.world = world;
     this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
     this.playerArrowMat = new THREE.MeshLambertMaterial({ color: 0xc8a06a });
+    this.potionMat = new THREE.MeshLambertMaterial({ color: 0xa44fd8, transparent: true, opacity: 0.92 });
   }
 
   get count(): number {
@@ -510,6 +618,8 @@ export class MobManager {
     this.mobs = [];
     for (const a of this.arrows) this.scene.remove(a.mesh);
     this.arrows = [];
+    for (const p of this.potions) this.scene.remove(p.mesh);
+    this.potions = [];
   }
 
   /** raycast mobs for attacks; returns nearest hit within reach */
@@ -635,6 +745,14 @@ export class MobManager {
 
     // villagers live on village grounds (planks / cobblestone); mooshrooms on mycelium
     if (groundId === BLOCK.PLANKS || groundId === BLOCK.COBBLESTONE) {
+      // swamp planks/cobble = witch hut grounds: keep a witch around (day or night)
+      if (this.world.biomeAt?.(cx, cz) === 'swamp') {
+        const witchCount = this.mobs.filter((m2) => m2.type === 'witch').length;
+        if (witchCount < 1 && Math.random() < 0.3) {
+          this.spawn('witch', x, sy + 1, z);
+        }
+        return;
+      }
       // iron golem: at most one patrolling each village chunk roll
       const golemCount = this.mobs.filter((m2) => m2.type === 'golem').length;
       if (golemCount < 1 && Math.random() < 0.22 && skyL >= 9 && sunLevel > 0.55) {
@@ -662,7 +780,8 @@ export class MobManager {
 
     if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
       const roll = Math.random();
-      const type: MobType = roll < 0.36 ? 'zombie' : roll < 0.64 ? 'skeleton' : roll < 0.84 ? 'creeper' : roll < 0.96 ? 'spider' : 'enderman';
+      const isSwamp = this.world.biomeAt?.(cx, cz) === 'swamp';
+      const type: MobType = roll < 0.32 ? 'zombie' : roll < 0.58 ? 'skeleton' : roll < 0.74 ? 'creeper' : roll < 0.86 ? 'spider' : roll < 0.95 && isSwamp ? 'witch' : 'enderman';
       this.spawn(type, x, sy + 1, z);
     } else if (wantPassive) {
       const roll = Math.random();
@@ -987,6 +1106,33 @@ export class MobManager {
             else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
           }
         }
+      } else if (m.type === 'witch') {
+        // ranged caster: hold 5.5-9.5 blocks, strafe, lob splash potions
+        if (distToPlayer < 15 && !cb.playerCreative) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          if (distToPlayer > 9.5) { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed; }
+          else if (distToPlayer < 5.5) { wantX = -dx / len; wantZ = -dz / len; moveSpeed = m.def.speed * 0.75; }
+          else {
+            wantX = -dz / len * 0.55; wantZ = dx / len * 0.55;
+            moveSpeed = m.def.speed * 0.45;
+          }
+          if (m.attackCd <= 0 && distToPlayer < 14) {
+            m.attackCd = 2.8;
+            this.throwPotion(m, player);
+          }
+        } else {
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+          }
+        }
       } else if (m.type === 'spider') {
         // spiders are neutral in bright light unless provoked (MC behavior)
         const light = this.lightAt(m, sunLevel);
@@ -1180,10 +1326,20 @@ export class MobManager {
         legs[0].rotation.x = swing;
         if (legs[1]) legs[1].rotation.x = -swing;
       }
-      // arms: zombie reaches forward; enderman hangs/swings (raised when provoked)
+      // arms: zombie reaches forward; enderman hangs/swings (raised when provoked);
+      // chicken wings flap while airborne
       for (const arm of m.parts.arms) {
         const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
         if (!pivot) continue;
+        if (m.type === 'chicken') {
+          // wings fold against the body on the ground; flap fast while falling
+          // (slow-fall glide). side -1 left / +1 right → mirror the z rotation
+          const side = ((pivot.userData.side as number) || 1);
+          const flap = !m.onGround ? Math.sin(this.time * 26) * 0.85 : 0;
+          pivot.rotation.z = side * flap;
+          pivot.rotation.x = 0;
+          continue;
+        }
         if (m.type === 'zombie') {
           pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
           pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
@@ -1313,6 +1469,64 @@ export class MobManager {
       a.mesh.position.set(a.x, a.y, a.z);
       a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
     }
+
+    // ── witch potions ──
+    for (let i = this.potions.length - 1; i >= 0; i--) {
+      const po = this.potions[i];
+      po.life -= dt;
+      po.vy -= 16 * dt;
+      // substepped so fast potions can't tunnel through blocks
+      const sp = Math.hypot(po.vx, po.vy, po.vz);
+      const steps = Math.max(1, Math.ceil((sp * dt) / 0.4));
+      const sdt = dt / steps;
+      let shattered = false;
+      for (let s = 0; s < steps && !shattered; s++) {
+        po.x += po.vx * sdt;
+        po.y += po.vy * sdt;
+        po.z += po.vz * sdt;
+        const bid = this.world.getBlock(Math.floor(po.x), Math.floor(po.y), Math.floor(po.z));
+        if (bid !== 0 && !isWaterId(bid)) shattered = true;
+      }
+      const pd = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+      if (pd < 1.1) shattered = true; // direct hit
+      if (shattered || po.life <= 0) {
+        this.scene.remove(po.mesh);
+        this.potions.splice(i, 1);
+        if (shattered) {
+          const shatterDist = Math.hypot(po.x - cb.playerX, po.y - cb.playerY, po.z - cb.playerZ);
+          audio.potionShatter(shatterDist);
+          cb.teleportParticles(po.x, po.y + 0.2, po.z); // purple magic splash
+          // splash radius 2.6: damage + poison (MC splash lingering area)
+          const pDist = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+          if (pDist < 2.6 && !cb.playerCreative) {
+            cb.damagePlayer(Math.max(1, Math.round(4 * (1 - pDist / 2.6))), po.x, po.z);
+            cb.poisonPlayer?.(4.5);
+          }
+        }
+        continue;
+      }
+      po.mesh.position.set(po.x, po.y, po.z);
+      po.mesh.rotation.x += dt * 7;
+      po.mesh.rotation.z += dt * 4;
+    }
+  }
+
+  /** witch lob: arc a splash potion toward the player */
+  private throwPotion(m: Mob, player: AABBEntity & { eyeY(): number }): void {
+    const ox = m.x, oy = m.y + 1.5, oz = m.z;
+    const tx = player.x, ty = player.y + 0.9, tz = player.z;
+    const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+    const dist = Math.hypot(dx, dy, dz) || 1;
+    const speed = 10;
+    const lead = dist / speed;
+    const vx = dx / dist * speed + (Math.random() - 0.5) * 0.7;
+    const vz = dz / dist * speed + (Math.random() - 0.5) * 0.7;
+    const vy = dy / dist * speed + lead * 8 + 1.2;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.22, 0.17), this.potionMat);
+    mesh.position.set(ox, oy, oz);
+    this.scene.add(mesh);
+    this.potions.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 6, mesh });
+    audio.potionThrow(dist);
   }
 
   private updateBurning(m: Mob, dt: number, sunLevel: number, cb: MobCallbacks): void {

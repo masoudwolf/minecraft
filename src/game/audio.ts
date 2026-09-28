@@ -149,6 +149,7 @@ class AudioManager {
       case 'villager': this.tone(230 + Math.random() * 60, 0.22, v * 1.1, 'square', 150); setTimeout(() => this.tone(190 + Math.random() * 40, 0.16, v * 0.9, 'square', 130), 170); break;
       case 'mooshroom': this.tone(150 + Math.random() * 30, 0.45, v * 1.2, 'sawtooth', 95); break;
       case 'golem': this.tone(78 + Math.random() * 18, 0.55, v * 1.6, 'sawtooth', 52); setTimeout(() => this.tone(64, 0.35, v * 1.1, 'sine', 45), 240); break;
+      case 'witch': this.tone(640, 0.09, v * 0.9, 'square', 380); setTimeout(() => this.tone(520, 0.1, v * 0.85, 'square', 320), 90); setTimeout(() => this.tone(660, 0.14, v * 0.8, 'square', 420), 200); break;
       case 'hiss': break; // creepers are silent until fuse
     }
   }
@@ -168,6 +169,7 @@ class AudioManager {
       case 'villager': this.tone(200, 0.3, v, 'square', 140); break;
       case 'mooshroom': this.tone(170, 0.3, v, 'sawtooth', 110); break;
       case 'golem': this.tone(130, 0.14, v * 1.5, 'square', 85); setTimeout(() => this.noiseBurst(500, 0.2, v * 0.8, 'lowpass'), 60); break;
+      case 'witch': this.tone(760, 0.12, v, 'square', 460); setTimeout(() => this.tone(590, 0.14, v * 0.9, 'square', 380), 100); break;
     }
   }
 
@@ -177,6 +179,21 @@ class AudioManager {
     this.tone(95, 0.16, v * 1.4, 'square', 70);
     setTimeout(() => this.tone(320, 0.1, v * 0.9, 'square', 240), 70);
     setTimeout(() => this.noiseBurst(1200, 0.16, v * 0.6, 'bandpass', 2), 90);
+  }
+
+  /** witch lob a splash potion: glassy glug-throw */
+  potionThrow(dist = 5): void {
+    const v = 0.22 * Math.max(0.15, 1 - dist / 22);
+    this.tone(300, 0.12, v, 'sine', 260);
+    setTimeout(() => this.tone(210, 0.14, v * 0.9, 'sine', 190), 90);
+    setTimeout(() => this.noiseBurst(900, 0.08, v * 0.5, 'bandpass', 1.5), 150);
+  }
+
+  /** splash potion shatter: glass burst + fizz */
+  potionShatter(dist = 5): void {
+    const v = 0.26 * Math.max(0.12, 1 - dist / 20);
+    this.noiseBurst(2600, 0.14, v, 'highpass', 1.2);
+    setTimeout(() => this.noiseBurst(700, 0.3, v * 0.6, 'bandpass', 2), 60);
   }
 
   /** villager trade: cheerful "hmm!" + coin clink */

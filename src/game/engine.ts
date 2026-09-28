@@ -7,12 +7,13 @@ import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
+import { BoatManager, type Boat } from './entities/boats';
 import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, ITEM } from './items';
 import { matchRecipe, freshDur } from './crafting';
-import { VILLAGER_TRADES } from './trades';
+import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
@@ -96,6 +97,9 @@ export class Game {
   private wasInWater = false;
   private wasOnGround = true;
   private prevVy = 0;
+  private boats!: BoatManager;
+  private ridingBoat: Boat | null = null;
+  private sprintFov = 0;
   private saveTimer = 0;
   private fpsAccum = 0;
   private fpsFrames = 0;
@@ -365,6 +369,8 @@ export class Game {
     }
     this.drops?.clear();
     this.mobs?.clear();
+    this.boats?.clear();
+    this.ridingBoat = null;
     this.clearPrimedTnt();
     this.world = new World(seed, save?.edits);
     this.scene.add(this.world.group);
@@ -377,6 +383,7 @@ export class Game {
     this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
     this.particles = new ParticleSystem(this.scene);
     this.mobs = new MobManager(this.scene, this.world);
+    this.boats = new BoatManager(this.scene, this.world);
     if (save?.mobs && Array.isArray(save.mobs)) this.mobs.restore(save.mobs);
     this.xpOrbs = new XPOrbManager(this.scene, this.world);
     this.blockEnts = new BlockEntityManager(this.world);
@@ -701,7 +708,20 @@ export class Game {
       const dir = p.forwardVector();
       const hit = this.mobs?.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
       if (hit && hit.mob.type === 'villager') {
-        this.openTrade();
+        this.openTrade(hit.mob);
+        return;
+      }
+    }
+    // mount a nearby boat (before placing a new one)
+    if (!this.player.sneaking && !this.ridingBoat) {
+      const p = this.player;
+      const dir = p.forwardVector();
+      const boatHit = this.boats.raycast(p.x, p.eyeY(), p.z, dir.x, dir.y, dir.z, 3.4);
+      if (boatHit) {
+        this.ridingBoat = boatHit.boat;
+        boatHit.boat.occupied = true;
+        audio.splash();
+        this.showToast('Sneak to get out');
         return;
       }
     }
@@ -754,7 +774,53 @@ export class Game {
       }
       return; // seeds never place blocks
     }
+    // boat: launch onto water along the look ray
+    if (held && held.count > 0 && held.blockId === ITEM.BOAT) {
+      const placed = this.tryPlaceBoat();
+      if (placed && !this.player.isCreative) {
+        held.count--;
+        if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+        this.syncHUD();
+        this.updateHandMesh();
+      }
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      return; // boat item never places blocks
+    }
     this.placeBlock();
+  }
+
+  /** drop the held boat onto the first water cell along the look ray */
+  private tryPlaceBoat(): boolean {
+    if (this.ridingBoat) return false;
+    const p = this.player;
+    const eyeY = p.eyeY();
+    const dir = p.forwardVector();
+    for (let t = 0.5; t <= 6; t += 0.25) {
+      const x = Math.floor(p.x + dir.x * t);
+      const y = Math.floor(eyeY + dir.y * t);
+      const z = Math.floor(p.z + dir.z * t);
+      if (isWaterId(this.world.getBlock(x, y, z)) && this.world.getBlock(x, y + 1, z) === BLOCK.AIR) {
+        this.boats.spawn(x + 0.5, y + 0.45, z + 0.5, Math.atan2(dir.x, dir.z));
+        audio.splash();
+        return true;
+      }
+    }
+    this.showToast('Point at water to launch the boat');
+    return false;
+  }
+
+  /** leave the boat: place the player on a free spot beside it */
+  private dismountBoat(): void {
+    const b = this.ridingBoat;
+    if (!b) return;
+    b.occupied = false;
+    const spot = this.boats.dismountSpot(b);
+    const p = this.player.entity;
+    p.x = spot.x; p.y = spot.y; p.z = spot.z;
+    p.vx = b.vx * 0.3; p.vy = Math.max(p.vy, 0); p.vz = b.vz * 0.3;
+    this.ridingBoat = null;
+    audio.splash();
   }
 
   /** apply bone meal to a block; returns true when consumed */
@@ -938,8 +1004,14 @@ export class Game {
   }
 
   // ── villager trading ────────────────────────────────────────────────────────
-  openTrade(): void {
+  /** offers currently shown in the trade panel (set by openTrade) */
+  private activeTrades: TradeOffer[] = [];
+
+  openTrade(mob?: { x: number; z: number }): void {
     audio.click();
+    // per-villager stock: deterministic pick from the pool, rotating every epoch (MC restock)
+    const seed = mob ? villagerTradeSeed(mob.x, mob.z) : 0;
+    this.activeTrades = villagerTrades(seed, tradeEpoch());
     useGameStore.getState().setTradeOpen(true);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
@@ -951,9 +1023,14 @@ export class Game {
     if (st.screen === 'playing') this.requestLock();
   }
 
+  /** offers shown in the trade panel (called by the UI when rendering) */
+  getTradeOffers(): TradeOffer[] {
+    return this.activeTrades;
+  }
+
   /** execute a villager trade offer (validated server-side… er, engine-side) */
   executeTrade(index: number): void {
-    const offer = VILLAGER_TRADES[index];
+    const offer = this.activeTrades[index] ?? null;
     if (!offer) return;
     if (this.countItem(offer.give.id) < offer.give.count) {
       this.showToast('Not enough ' + this.itemLabel(offer.give.id));
@@ -1155,11 +1232,23 @@ export class Game {
       ? getToolDef(heldSlot.blockId)
       : undefined;
 
-    // mob attack takes priority over mining
+    // mob attack takes priority over mining (boats too)
     if (this.mining && this.attackCooldown <= 0) {
       const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
       const dir = this.player.forwardVector();
-      const hit = this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      // attacking a boat breaks it (drops the boat item)
+      const boatHit = this.ridingBoat ? null : this.boats.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      if (boatHit && (!hit || boatHit.dist < hit.dist)) {
+        this.attackCooldown = 0.42;
+        this.startSwing();
+        this.boats.remove(boatHit.boat);
+        this.drops.spawn(ITEM.BOAT, boatHit.boat.x, boatHit.boat.y + 0.4, boatHit.boat.z, 1);
+        audio.breakBlock('wood' as MaterialSound);
+        this.particles.burstBlockBreak(boatHit.boat.x, boatHit.boat.y + 0.2, boatHit.boat.z, [0.54, 0.41, 0.24]);
+        this.crackMesh.visible = false;
+        return;
+      }
       if (hit) {
         this.attackCooldown = 0.42;
         this.startSwing();
@@ -2113,6 +2202,10 @@ export class Game {
         this.modelWalkPhase += dt * Math.min(9, hSpeed * 1.9);
       }
       animatePlayerModel(this.playerModel, p.x, p.y, p.z, p.yaw, p.pitch, this.modelWalkPhase, moving, p.sneaking, p.dead, 0);
+      // boat rider pose: seated legs (swing anim would override)
+      if (this.ridingBoat) {
+        for (const leg of this.playerModel.legs) leg.rotation.x = -1.35;
+      }
       // sync armor overlays (hashed inside — cheap per frame)
       const armorIds = p.armor.map((a) => (a && a.count > 0 ? a.blockId : null)) as (number | null)[];
       setPlayerModelArmor(this.playerModel, armorIds);
@@ -2354,7 +2447,25 @@ export class Game {
     const wasOnGround = p.entity.onGround;
     const prevVy = p.entity.vy;
 
-    p.moveInput({ forward, strafe }, this.world, step, wishJump, wishSneak);
+    // ── boat riding: rowing input drives the boat, the player rides along ──
+    if (this.ridingBoat) {
+      if (wishSneak) {
+        this.dismountBoat();
+      } else {
+        const b = this.ridingBoat;
+        this.boats.update(step, this.sky?.sunLevel ?? 1, b, { forward, strafe });
+        // rider follows the boat (seat slightly above the hull base)
+        p.entity.x = b.x;
+        p.entity.y = b.y + 0.18;
+        p.entity.z = b.z;
+        p.entity.vx = b.vx; p.entity.vy = b.vy; p.entity.vz = b.vz;
+        p.entity.onGround = false;
+        p.entity.inWater = b.inWater;
+        if (p.stepDistance !== undefined) p.stepDistance = 0;
+      }
+    } else if (!this.ridingBoat) {
+      p.moveInput({ forward, strafe }, this.world, step, wishJump, wishSneak);
+    }
 
     // footsteps
     if (p.entity.onGround && p.stepDistance > 2.1) {
@@ -2418,6 +2529,7 @@ export class Game {
 
     // death
     if (p.dead) {
+      if (this.ridingBoat) this.dismountBoat();
       // lose XP on death (MC drops it — simplified: reset)
       p.level = 0;
       p.xp = 0;
@@ -2437,7 +2549,10 @@ export class Game {
 
     // camera
     p.speedMultiplier = this.bowCharging ? 0.5 : 1;
-    p.applyCamera(this.settings.fov + (this.bowCharging ? -10 * this.bowCharge : 0), 8, dt);
+    // sprint FOV kick (MC-like): smoothly widen when sprinting
+    const sprintingNow = p.sprinting && Math.hypot(p.entity.vx, p.entity.vz) > 3.2;
+    this.sprintFov += ((sprintingNow ? 7 : 0) - this.sprintFov) * Math.min(1, dt * 9);
+    p.applyCamera(this.settings.fov + this.sprintFov + (this.bowCharging ? -10 * this.bowCharge : 0), 8, dt);
 
     // player world-light factor (shared by 3rd-person model + held item): same
     // formula as mobs/terrain — max(blockLight, skyLight × sunLevel), so the hand
@@ -2487,6 +2602,20 @@ export class Game {
         p.damage(1);
         audio.hurt();
       }
+    }
+
+    // poison (witch splash potions): 1 damage every 1.5s, never lethal
+    if (p.poisonT > 0) {
+      p.poisonT -= dt;
+      p.poisonTickT -= dt;
+      if (p.poisonTickT <= 0) {
+        p.poisonTickT = 1.5;
+        if (p.health > 2) {
+          p.damage(1);
+          audio.hurt();
+        }
+      }
+      if (p.poisonT <= 0) p.poisonTickT = 0;
     }
 
     // interaction
@@ -2581,6 +2710,11 @@ export class Game {
     // XP orbs
     this.xpOrbs.update(dt, p.entity, (value) => this.addXP(value));
 
+    // boats drift/update when the player is not riding (riding updates in physicsStep)
+    if (!this.ridingBoat) {
+      this.boats.update(dt, this.sky?.sunLevel ?? 1, null, { forward: 0, strafe: 0 });
+    }
+
     // mobs
     if (this.mobs) {
       const eyeY = p.eyeY();
@@ -2631,6 +2765,10 @@ export class Game {
         playerY: p.y,
         playerZ: p.z,
         playerCreative: p.isCreative,
+        poisonPlayer: (seconds) => {
+          if (p.isCreative || p.dead) return;
+          p.poisonT = Math.max(p.poisonT, seconds);
+        },
         igniteTnt: (tx, ty, tz) => this.igniteTNT(tx, ty, tz, 0.25 + Math.random() * 0.7),
         killByPlayer: (dist) => {
           if (dist >= 12) this.achievements.unlock('sniperDuel');
@@ -2818,6 +2956,7 @@ export class Game {
     this.clearLightningBolts();
     this.drops?.clear();
     this.mobs?.clear();
+    this.boats?.clear();
     this.renderer.dispose();
   }
 }

@@ -5,7 +5,6 @@ import { useEffect } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
 import { audio } from '@/game/audio';
-import { VILLAGER_TRADES } from '@/game/trades';
 import { slotIconUrl, slotName } from './slotIcon';
 import { McButton, useMenuBackground } from './ui';
 
@@ -228,9 +227,9 @@ export function TradePanel() {
           </div>
         </div>
 
-        {/* ── trade rows ── */}
+        {/* ── trade rows (per-villager stock, rotates every 5 min — MC restock) ── */}
         <div className="flex flex-col gap-[6px]">
-          {VILLAGER_TRADES.map((offer, i) => {
+          {(getEngine()?.getTradeOffers() ?? []).map((offer, i) => {
             const giveIcon = slotIconUrl(offer.give.id);
             const getIcon = slotIconUrl(offer.get.id);
             return (

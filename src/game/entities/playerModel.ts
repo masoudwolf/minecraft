@@ -31,7 +31,10 @@ export interface PlayerModelParts {
   group: THREE.Group;
   head: THREE.Mesh;
   body: THREE.Mesh;
+  /** HIP PIVOTS (rotation.x swings the leg from the top, MC-style) */
   legs: THREE.Mesh[];
+  /** the actual leg boxes (children of the pivots) — boots attach here */
+  legMeshes: THREE.Mesh[];
   arms: THREE.Mesh[];
   shadow: THREE.Mesh;
   /** armor overlay meshes (rebuilt when armor changes) */
@@ -83,12 +86,19 @@ export function createPlayerModel(scene: THREE.Scene): PlayerModelParts {
   body.position.y = 1.1;
   group.add(body);
 
+  // legs with HIP PIVOTS at the body's underside (y=0.74): the leg box hangs
+  // below the pivot so walk swing rotates from the hip, not the middle
   const legs: THREE.Mesh[] = [];
+  const legMeshes: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.125, 0.74, 0);
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.74, 0.24), [pantsM, pantsM, pantsM, pantsM, shoeM, shoeM]);
-    leg.position.set(sx * 0.125, 0.37, 0);
-    group.add(leg);
-    legs.push(leg);
+    leg.position.y = -0.37;
+    pivot.add(leg);
+    group.add(pivot);
+    legs.push(pivot as unknown as THREE.Mesh);
+    legMeshes.push(leg);
   }
 
   const arms: THREE.Mesh[] = [];
@@ -113,7 +123,7 @@ export function createPlayerModel(scene: THREE.Scene): PlayerModelParts {
   scene.add(shadow);
 
   scene.add(group);
-  return { group, head, body, legs, arms, shadow, armorGroup, armorKey: '', bootMeshes: [] };
+  return { group, head, body, legs, legMeshes, arms, shadow, armorGroup, armorKey: '', bootMeshes: [] };
 }
 
 // ─── armor overlays (3rd person) ────────────────────────────────────────────
@@ -203,13 +213,14 @@ export function setPlayerModelArmor(model: PlayerModelParts, armorIds: (number |
     model.armorGroup.add(waist);
   }
 
-  // boots (3): lower-leg + toe shells (attach to leg meshes so they swing with walk)
+  // boots (3): lower-leg + toe shells (attach to the leg boxes inside the hip
+  // pivots so they swing with walk)
   if (armorIds[3]) {
     const mat = armorMat(armorIds[3]!);
     for (let i = 0; i < 2; i++) {
       const boot = aBox(0.28, 0.3, 0.3, mat);
       boot.position.set(0, -0.3, 0.02);
-      model.legs[i].add(boot);
+      model.legMeshes[i].add(boot);
       model.bootMeshes.push(boot);
     }
   }

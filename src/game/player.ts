@@ -38,6 +38,9 @@ export class Player {
   bobPhase = 0;
   stepDistance = 0;
   hurtCooldown = 0;
+  /** poison timer (witch splash potions); ticks 1 damage per poisonTickT while > 0 */
+  poisonT = 0;
+  poisonTickT = 0;
 
   hotbar: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
   /** main inventory 27 slots (hotbar is slots 0..8) */
