@@ -556,7 +556,17 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       vTint = aTint;
       vec3 pos = position;
       if (uWave > 0.5) {
-        pos.y += sin(uTime * 1.6 + position.x * 0.9 + position.z * 0.7) * 0.045 - 0.05;
+        // Wave phase MUST use world position (modelMatrix includes the chunk
+        // offset): local position.x/z restart at 0 in every chunk, which made
+        // phases disagree across chunk borders and tore visible seams in the
+        // ocean surface (sand showing through the crack).
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        // Only bob the top-surface vertices (fract(y) ≈ 0.875 for sources);
+        // bottom edges stay welded to the floor/shore so no underwater gaps.
+        float isTop = step(0.8, fract(position.y));
+        float wave = sin(uTime * 1.6 + wp.x * 0.9 + wp.z * 0.7) * 0.03
+                   + sin(uTime * 2.7 + wp.x * 1.9 - wp.z * 1.4) * 0.015;
+        pos.y += (wave - 0.045) * isTop;
       }
       vec4 mv = modelViewMatrix * vec4(pos, 1.0);
       vFogDepth = -mv.z;
