@@ -629,3 +629,32 @@ QA (agent-browser, world "Water Seam QA" seed 5150, creative — all verified):
 Stage Summary:
 - BUGFIX COMPLETE: holding Space in creative no longer flickers flight on/off; double-tap toggles flight on (with liftoff) / off exactly like Minecraft; same guard also fixes latent KeyE/F3/F5/Q repeat-spam issues.
 - NEXT candidates (unchanged Phase 10 list): boats, witch hut, enchanting, villager trade rotation, sprint FOV polish, farming achievements.
+---
+Task ID: 15 (Bugfix — Night Mob Brightness + Four-Sided Mob Heads)
+Agent: main (user-reported bugfix round)
+Task: User reported: (1) mobs/animals are too bright at night — make it more realistic; (2) mob heads show the face on ALL four sides instead of only the front.
+
+Work Log:
+- Bug 2 root cause (mobs.ts): head boxes were built with a SINGLE material wrapping a texture that has the face baked in → BoxGeometry applies one material to all 6 faces → face rendered on ±X/±Y/±Z (4 sides + top + bottom). Player model was already correct ([skin×4, face, skin] with face on +Z).
+- Fix 2: mobSkins.ts — every one of the 12 skin builders now also produces `headPlain` (canvas clone taken after base fill + side-appropriate markings like sheep wool tuft / zombie hair band, BEFORE facial features); mobs.ts — new `headPart()` builds head boxes with material array [plain, plain, plain, plain, face, plain] (face on +Z = model forward, matches quadruped headZ>0 and villager/golem nose at +Z); villager/golem NOSE materials now tracked in parts.materials (previously uncloned + unlit-tinted); spawn() material cloning is now ARRAY-AWARE (remaps each entry of material arrays).
+- Bug 1 root cause (scene lights vs voxel light): mobs/drops/Steve use MeshLambertMaterial lit by scene Hemisphere+Directional lights whose night floor (ambient 0.25+0.14·0.75) kept entities ~40-90% bright while the terrain shader renders surface at skyLight×sunLevel ≈ 0.14 → glowing mobs on pitch-dark ground.
+- Fix 1 (entity world-light shading, MC-authentic): per-entity brightness = max(blockLight, skyLight×sunLevel) — the exact terrain shader formula — sampled from voxel light at each entity's position, smoothed (lerp dt·6), applied as material color multiplier over the base state tint:
+  - mobs.ts: Mob gains tintR/G/B (base state tint) + lightF/lastAppliedF; tint() replaced by setTint(m,r,g,b) (stores base, writes base×lightF — hurt red / creeper flash / enderman purple still work and are themselves dimmed by darkness); light block runs per mob per frame.
+  - drops.ts: per-drop material clones (block atlas + item sprite caches kept as clone sources); same light sampling per drop; DropManager.update gained sunLevel param (engine passes sky.sunLevel).
+  - engine.ts: playerLightF computed per frame (frameUpdate) and applied to the 3rd-person Steve (base colors cached in WeakMap so armor tier tints survive multiplication) AND the first-person held item/arm (base color cached on material.userData).
+- Robustness fix found during QA: mobs that glitch to NaN/void positions never despawned (distToPlayer=NaN fails `> 64`) — despawn guard now also removes non-finite or y<-20 mobs (was polluting worlds with invisible broken mobs; the NaN then propagated to anything reading their position — e.g. my first QA camera eval NaN'd the player position, recovered by respawn-at-column-scan).
+- QA-harness note: repeated MultiEdit "atomic" failure partially applied edits twice in mobs.ts (duplicate headPart def) — caught by grep diff, removed; tsc errors went 27 → 22 (fixed 5 pre-existing: mobs world type widened with getLight/getLightForMesh, drops geoCache typed BoxGeometry).
+
+QA (agent-browser, world "Water Seam QA", creative — all verified):
+- Head arrays: all spawned mob types report 6 material slots, [plain×4, face@+Z] pattern, face distinct ✓
+- Visual front shot: zombie face (eyes+mouth) on front only; top/sides plain ✓ (mob-face-front4.png)
+- Visual side/back shot: plain green head sides, no features ✓ (mob-side2.png)
+- Night (sky.time=0.78·DAY_LENGTH=480): sunLevel 0.102 → ALL mobs lightF≈0.10, material colors match exactly; night screenshot shows dark terrain + dark mobs (mob-dark-night.png, hand-night.png) ✓
+- Day (time=0.3·480): sun 0.72 → mobs/hand lerp back up (hand 0.096→0.498 = base 0.687×0.72 ✓); entities under canopy stay shaded (sky light < 15) — correct ✓
+- Regressions: hurt-red flash, creeper fuse flash, enderman purple tint all preserved through setTint; lint clean; no console/page errors; no new tsc errors (22 pre-existing remain).
+
+Stage Summary:
+- Entities now obey voxel lighting: pitch-dark at night, torch-lit brightness near light sources, shaded under canopies — matching the terrain exactly (user's "too bright at night" fixed).
+- Mob heads are Minecraft-accurate: face on the front only, featureless skin on the other 5 faces (user's "head on all four sides" fixed).
+- NaN/void mob despawn guard added; entity material systems (tint × light) unified.
+- NEXT candidates (unchanged): boats, witch hut, enchanting, trade rotation, achievements.

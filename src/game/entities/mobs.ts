@@ -65,6 +65,13 @@ interface Mob extends AABBEntity {
   deathT: number;
   wanderX: number;
   wanderZ: number;
+  /** base state tint (hurt red / creeper flash / enderman purple) before world light */
+  tintR: number;
+  tintG: number;
+  tintB: number;
+  /** smoothed world-light factor applied over the base tint (night realism) */
+  lightF: number;
+  lastAppliedF: number;
 }
 
 /** serialized mob for world saves */
@@ -101,6 +108,21 @@ function boxPart(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial
   return mesh;
 }
 
+/**
+ * Head box with Minecraft-accurate texturing: the face texture is applied ONLY
+ * to the front (+Z — the model's forward axis); the other 5 faces get the
+ * featureless skin. Both materials are pushed onto extraMats so per-instance
+ * cloning and world-light tinting cover the whole head.
+ */
+function headPart(w: number, h: number, d: number, skins: { head: THREE.CanvasTexture; headPlain: THREE.CanvasTexture }, extraMats: THREE.MeshLambertMaterial[], tag = 'head'): THREE.Mesh {
+  const face = partMat(skins.head);
+  const plain = partMat(skins.headPlain);
+  extraMats.push(face, plain);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [plain, plain, plain, plain, face, plain]);
+  mesh.userData.part = tag;
+  return mesh;
+}
+
 function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
   const geo = new THREE.CircleGeometry(radius, 12);
   const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
@@ -118,11 +140,12 @@ function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
   shadowR: number;
 }): MobParts {
   const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+  const extra: THREE.MeshLambertMaterial[] = [];
   const group = new THREE.Group();
   const body = boxPart(opts.bodyW, opts.bodyH, opts.bodyD, mats[1], 'body');
   body.position.y = opts.bodyY;
   group.add(body);
-  const head = boxPart(opts.headS, opts.headS, opts.headS, mats[0], 'head');
+  const head = headPart(opts.headS, opts.headS, opts.headS, skins, extra);
   head.position.set(0, opts.headY, opts.headZ);
   group.add(head);
   const legs: THREE.Mesh[] = [];
@@ -134,18 +157,19 @@ function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
     group.add(leg);
     legs.push(leg);
   }
-  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+  return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
 }
 
 function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts {
   const lw = thin ? 0.16 : 0.25;
   const aw = thin ? 0.14 : 0.22;
   const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
+  const extra: THREE.MeshLambertMaterial[] = [];
   const group = new THREE.Group();
   const body = boxPart(0.5, 0.72, 0.26, mats[1], 'body');
   body.position.y = 1.1;
   group.add(body);
-  const head = boxPart(0.5, 0.5, 0.5, mats[0], 'head');
+  const head = headPart(0.5, 0.5, 0.5, skins, extra);
   head.position.y = 1.72;
   group.add(head);
   const legs: THREE.Mesh[] = [];
@@ -166,7 +190,7 @@ function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts
     arms.push(arm);
     (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
   }
-  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+  return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
 }
 
 // ─── Mob definitions ─────────────────────────────────────────────────────────
@@ -204,11 +228,12 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [], sound: 'hiss',
     builder: (s) => {
       const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
       const body = boxPart(0.5, 0.78, 0.32, mats[1], 'body');
       body.position.y = 0.76;
       group.add(body);
-      const head = boxPart(0.52, 0.52, 0.52, mats[0], 'head');
+      const head = headPart(0.52, 0.52, 0.52, s, extra);
       head.position.y = 1.42;
       group.add(head);
       const legs: THREE.Mesh[] = [];
@@ -218,7 +243,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         group.add(leg);
         legs.push(leg);
       }
-      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
   skeleton: {
@@ -235,12 +260,13 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     neutralInDay: true, climbs: true,
     builder: (s) => {
       const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
       // abdomen (back) + thorax (front) — flat wide body
       const abdomen = boxPart(0.8, 0.45, 0.8, mats[1], 'body');
       abdomen.position.set(0, 0.55, -0.34);
       group.add(abdomen);
-      const head = boxPart(0.52, 0.44, 0.5, mats[0], 'head');
+      const head = headPart(0.52, 0.44, 0.5, s, extra);
       head.position.set(0, 0.55, 0.5);
       group.add(head);
       // 8 legs: 4 per side, thin boxes angled out from pivots on the body
@@ -264,7 +290,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
           legs.push(pivot as unknown as THREE.Mesh);
         }
       }
-      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
   enderman: {
@@ -273,11 +299,12 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     teleports: true, neutralInDay: true,
     builder: (s) => {
       const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
       const body = boxPart(0.42, 0.8, 0.26, mats[1], 'body');
       body.position.y = 1.75;
       group.add(body);
-      const head = boxPart(0.46, 0.42, 0.46, mats[0], 'head');
+      const head = headPart(0.46, 0.42, 0.46, s, extra);
       head.position.y = 2.44;
       group.add(head);
       const legs: THREE.Mesh[] = [];
@@ -298,7 +325,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         arms.push(arm);
         (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
       }
-      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
   villager: {
@@ -306,6 +333,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [], sound: 'villager',
     builder: (s) => {
       const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
       // robe torso
       const body = boxPart(0.56, 0.72, 0.32, mats[1], 'body');
@@ -316,11 +344,13 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       skirt.position.y = 0.51;
       group.add(skirt);
       // head + long nose
-      const head = boxPart(0.5, 0.5, 0.5, mats[0], 'head');
+      const head = headPart(0.5, 0.5, 0.5, s, extra);
       head.position.y = 1.69;
       group.add(head);
       if (s.extra) {
-        const nose = boxPart(0.13, 0.26, 0.11, partMat(s.extra), 'nose');
+        const noseMat = partMat(s.extra);
+        extra.push(noseMat);
+        const nose = boxPart(0.13, 0.26, 0.11, noseMat, 'nose');
         nose.position.set(0, 1.63, 0.31);
         group.add(nose);
       }
@@ -336,7 +366,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         group.add(leg);
         legs.push(leg);
       }
-      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
   mooshroom: {
@@ -350,6 +380,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [{ id: ITEM.IRON_INGOT, min: 3, max: 5 }], sound: 'golem',
     builder: (s) => {
       const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
+      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
       // massive torso
       const body = boxPart(1.0, 0.92, 0.55, mats[1], 'body');
@@ -360,11 +391,13 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       hips.position.y = 1.02;
       group.add(hips);
       // head with long villager-style nose
-      const head = boxPart(0.62, 0.56, 0.62, mats[0], 'head');
+      const head = headPart(0.62, 0.56, 0.62, s, extra);
       head.position.y = 2.36;
       group.add(head);
       if (s.extra) {
-        const nose = boxPart(0.18, 0.34, 0.16, partMat(s.extra), 'nose');
+        const noseMat = partMat(s.extra);
+        extra.push(noseMat);
+        const nose = boxPart(0.18, 0.34, 0.16, noseMat, 'nose');
         nose.position.set(0, 2.26, 0.37);
         group.add(nose);
       }
@@ -388,7 +421,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         group.add(leg);
         legs.push(leg);
       }
-      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
     },
   },
 };
@@ -445,7 +478,7 @@ export class MobManager {
   mobs: Mob[] = [];
   arrows: Arrow[] = [];
   private scene: THREE.Scene;
-  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void };
+  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number };
   private spawnTimer = 0;
   private arrowMat: THREE.MeshLambertMaterial;
   private playerArrowMat: THREE.MeshLambertMaterial;
@@ -453,7 +486,7 @@ export class MobManager {
   /** most recent callbacks (for hurt→teleport outside update loop) */
   private lastCb: MobCallbacks | null = null;
 
-  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void }) {
+  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number }) {
     this.scene = scene;
     this.world = world;
     this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
@@ -527,13 +560,17 @@ export class MobManager {
     const skinKey = variant && type === 'sheep' ? `sheep:${variant}` : type;
     const skins = getMobSkins(skinKey);
     const parts = def.builder(skins);
-    // per-instance material clones so hurt tint is individual
+    // per-instance material clones so hurt tint is individual (array-aware: heads
+    // use [plain×4, face] material arrays)
     const cloned = parts.materials.map((mm) => mm.clone());
     const mapping = new Map<THREE.Material, THREE.Material>();
     parts.materials.forEach((mm, i2) => mapping.set(mm, cloned[i2]));
     parts.group.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh && mapping.has(mesh.material as THREE.Material)) {
+      if (!mesh.isMesh) return;
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((mm) => mapping.get(mm) ?? mm);
+      } else if (mapping.has(mesh.material as THREE.Material)) {
         mesh.material = mapping.get(mesh.material) as THREE.Material;
       }
     });
@@ -558,6 +595,8 @@ export class MobManager {
       provoked: false, teleportCd: 0, waterHurtT: 0,
       variant: type === 'sheep' ? (variant || 'white') : '',
       wanderX: x, wanderZ: z,
+      tintR: 1, tintG: 1, tintB: 1,
+      lightF: 1, lastAppliedF: 1,
     };
     mob.targetYaw = mob.yaw;
     parts.shadow = shadow;
@@ -765,8 +804,14 @@ export class MobManager {
       const m = this.mobs[i];
       const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y, player.z - m.z);
 
-      // despawn far
-      if (distToPlayer > 64) {
+      // despawn far / invalid: NaN or below-world positions never heal on their
+      // own and NaN breaks the distance check (NaN > 64 === false), so mobs that
+      // glitch out would otherwise persist forever
+      if (
+        distToPlayer > 64 ||
+        !Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.z) ||
+        m.y < -20
+      ) {
         this.scene.remove(m.group);
         this.scene.remove(m.parts.shadow);
         this.mobs.splice(i, 1);
@@ -777,7 +822,7 @@ export class MobManager {
       if (m.dead) {
         m.deathT -= dt;
         m.group.rotation.z = Math.min(Math.PI / 2, m.group.rotation.z + dt * 6);
-        tint(m.parts.materials, 1, 0.35, 0.35);
+        this.setTint(m, 1, 0.35, 0.35);
         if (m.deathT <= 0) {
           for (const drop of m.def.drops) {
             const n = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
@@ -799,8 +844,8 @@ export class MobManager {
       // hurt tint decay
       if (m.hurtT > 0) {
         m.hurtT -= dt;
-        tint(m.parts.materials, 1, 0.35, 0.35);
-        if (m.hurtT <= 0) tint(m.parts.materials, 1, 1, 1);
+        this.setTint(m, 1, 0.35, 0.35);
+        if (m.hurtT <= 0) this.setTint(m, 1, 1, 1);
       }
 
       // ambient sound
@@ -1038,10 +1083,10 @@ export class MobManager {
           // fused: flash + wait
           m.fuse += dt;
           const flash = Math.sin(m.fuse * 22) > 0 ? 1 : 0;
-          tint(m.parts.materials, 1, 1 + flash * 1.2, 1 + flash * 1.2);
+          this.setTint(m, 1, 1 + flash * 1.2, 1 + flash * 1.2);
           if (distToPlayer > 5) {
             m.fuse = -1;
-            tint(m.parts.materials, 1, 1, 1);
+            this.setTint(m, 1, 1, 1);
           } else if (m.fuse > 1.5) {
             this.explode(m.x, m.y + 0.8, m.z, cb);
             this.scene.remove(m.group);
@@ -1161,8 +1206,23 @@ export class MobManager {
       m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
       // enderman glows purple when provoked
       if (m.type === 'enderman' && m.hurtT <= 0) {
-        if (m.provoked) tint(m.parts.materials, 1, 0.72, 1.12);
-        else tint(m.parts.materials, 1, 1, 1);
+        if (m.provoked) this.setTint(m, 1, 0.72, 1.12);
+        else this.setTint(m, 1, 1, 1);
+      }
+
+      // ── world-light shading: entities obey voxel light (night realism) ──
+      // same formula as the terrain shader: brightness = max(blockLight, skyLight × sunLevel).
+      // Mobs go dark on the surface at night, stay visible near torches, and are
+      // near-black in unlit caves — instead of glowing under scene lights.
+      {
+        const lb = this.world.getLightForMesh(Math.floor(m.x), Math.floor(m.y + m.height * 0.7), Math.floor(m.z));
+        const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel));
+        m.lightF += (target - m.lightF) * Math.min(1, dt * 6);
+        if (Math.abs(m.lightF - m.lastAppliedF) > 0.004) {
+          const f = m.lightF;
+          for (const mm of m.parts.materials) mm.color.setRGB(m.tintR * f, m.tintG * f, m.tintB * f);
+          m.lastAppliedF = f;
+        }
       }
 
       // shadow
@@ -1296,6 +1356,14 @@ export class MobManager {
     audio.bowShoot(dist);
   }
 
+  /** per-mob state tint (hurt red / creeper flash / enderman purple) × world light */
+  private setTint(m: Mob, r: number, g: number, b: number): void {
+    m.tintR = r; m.tintG = g; m.tintB = b;
+    const f = m.lightF;
+    for (const mm of m.parts.materials) mm.color.setRGB(r * f, g * f, b * f);
+    m.lastAppliedF = f;
+  }
+
   /** player-shot arrow (from bow). dx,dy,dz = unit direction. */
   shootPlayerArrow(x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number, dmg: number): void {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.6), this.playerArrowMat);
@@ -1304,10 +1372,6 @@ export class MobManager {
     this.arrows.push({ x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, life: 20, stuck: 0, mesh, fromPlayer: true, dmg });
     audio.bowShoot(0);
   }
-}
-
-function tint(mats: THREE.MeshLambertMaterial[], r: number, g: number, b: number): void {
-  for (const m of mats) m.color.setRGB(r, g, b);
 }
 
 // ─── sheep color variants (MC-ish distribution) ─────────────────────────────

@@ -107,6 +107,10 @@ export class Game {
   /** camera perspective: 0 = first person, 1 = third back, 2 = third front (F5) */
   cameraMode: 0 | 1 | 2 = 0;
   private playerModel: PlayerModelParts | null = null;
+  /** smoothed world-light factor for the 3rd-person model (night realism) */
+  private playerLightF = 1;
+  /** base colors of the player model's materials (armor tints) before light multiplication */
+  private playerModelBaseMats = new WeakMap<THREE.Material, THREE.Color>();
   private modelWalkPhase = 0;
   private sprintFxTimer = 0;
   /** bow draw state (RMB held with bow) */
@@ -2112,6 +2116,26 @@ export class Game {
       // sync armor overlays (hashed inside — cheap per frame)
       const armorIds = p.armor.map((a) => (a && a.count > 0 ? a.blockId : null)) as (number | null)[];
       setPlayerModelArmor(this.playerModel, armorIds);
+      // world-light shading on the 3rd-person model (playerLightF updated in
+      // frameUpdate; base colors cached so armor tier tints are preserved)
+      {
+        const f = this.playerLightF;
+        this.playerModel.group.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const mm of mats) {
+            const lam = mm as THREE.MeshLambertMaterial;
+            if (!(lam as unknown as { isMeshLambertMaterial?: boolean }).isMeshLambertMaterial) continue;
+            let base = this.playerModelBaseMats.get(lam);
+            if (!base) {
+              base = lam.color.clone();
+              this.playerModelBaseMats.set(lam, base);
+            }
+            lam.color.copy(base).multiplyScalar(f);
+          }
+        });
+      }
       this.handGroup.visible = false;
     } else {
       if (this.playerModel) {
@@ -2414,6 +2438,24 @@ export class Game {
     // camera
     p.speedMultiplier = this.bowCharging ? 0.5 : 1;
     p.applyCamera(this.settings.fov + (this.bowCharging ? -10 * this.bowCharge : 0), 8, dt);
+
+    // player world-light factor (shared by 3rd-person model + held item): same
+    // formula as mobs/terrain — max(blockLight, skyLight × sunLevel), so the hand
+    // and Steve go dark at night and light up near torches
+    if (this.world && this.sky) {
+      const lb = this.world.getLightForMesh(Math.floor(p.x), Math.floor(p.y + 1.4), Math.floor(p.z));
+      const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * this.sky.sunLevel));
+      this.playerLightF += (target - this.playerLightF) * Math.min(1, dt * 6);
+    }
+
+    // held item / arm obeys world light (base color cached on the material)
+    if (this.handMesh) {
+      const mat = this.handMesh.material as THREE.MeshLambertMaterial;
+      const ud = mat.userData as { baseC?: THREE.Color };
+      if (!ud.baseC) ud.baseC = mat.color.clone();
+      mat.color.copy(ud.baseC).multiplyScalar(this.playerLightF);
+    }
+
     this.updateCameraPerspective(dt);
     // explosion camera shake
     if (this.shakeT > 0) {
@@ -2524,7 +2566,7 @@ export class Game {
     }
 
     // drops + particles
-    this.drops.update(dt, p.entity, (stack) => {
+    this.drops.update(dt, p.entity, this.sky?.sunLevel ?? 1, (stack) => {
       const picked = this.tryPickup(stack);
       if (picked) {
         const name = isItemId(stack.blockId)

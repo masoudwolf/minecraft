@@ -14,6 +14,9 @@ interface DropEntity extends AABBEntity {
   age: number;
   pickupDelay: number;
   mesh: THREE.Mesh;
+  /** smoothed world-light factor (night realism — matches terrain brightness) */
+  lightF: number;
+  lastAppliedF: number;
 }
 
 const DROP_SIZE = 0.25;
@@ -46,12 +49,12 @@ export function createBlockGeometry(blockId: number, size: number): THREE.BoxGeo
 export class DropManager {
   drops: DropEntity[] = [];
   private scene: THREE.Scene;
-  private world: { getBlock(x: number, y: number, z: number): number };
-  private geoCache = new Map<number, THREE.BufferGeometry>();
+  private world: { getBlock(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number };
+  private geoCache = new Map<number, THREE.BoxGeometry>();
   private mat: THREE.Material;
   private itemMatCache = new Map<number, THREE.MeshLambertMaterial>();
 
-  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number }, atlasTexture: THREE.Texture) {
+  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number }, atlasTexture: THREE.Texture) {
     this.scene = scene;
     this.world = world;
     this.mat = new THREE.MeshLambertMaterial({ map: atlasTexture });
@@ -81,9 +84,10 @@ export class DropManager {
         mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
         this.itemMatCache.set(blockId, mat);
       }
-      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), mat);
+      // per-instance clone so world-light shading is individual per drop
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), mat.clone());
     } else {
-      mesh = new THREE.Mesh(this.geoFor(blockId), this.mat);
+      mesh = new THREE.Mesh(this.geoFor(blockId), this.mat.clone());
     }
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
@@ -98,11 +102,13 @@ export class DropManager {
       age: 0,
       pickupDelay: 0.5,
       mesh,
+      lightF: 1,
+      lastAppliedF: 1,
     };
     this.drops.push(e);
   }
 
-  update(dt: number, playerPos: { x: number; y: number; z: number }, onPickup: (stack: ItemStack) => boolean): void {
+  update(dt: number, playerPos: { x: number; y: number; z: number }, sunLevel: number, onPickup: (stack: ItemStack) => boolean): void {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.age += dt;
@@ -148,6 +154,15 @@ export class DropManager {
       d.mesh.position.set(d.x, d.y + DROP_SIZE / 2 + Math.sin(d.age * 2.5) * 0.05 + DROP_SIZE * 0.2, d.z);
       d.mesh.rotation.y = d.age * 1.4;
       if (isItemId(d.stack.blockId)) d.mesh.rotation.y = Math.sin(d.age * 1.4) * 0.6;
+
+      // world-light shading (same formula as terrain: dark at night, torch-lit areas stay bright)
+      const lb = this.world.getLightForMesh(Math.floor(d.x), Math.floor(d.y + 0.4), Math.floor(d.z));
+      const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel));
+      d.lightF += (target - d.lightF) * Math.min(1, dt * 6);
+      if (Math.abs(d.lightF - d.lastAppliedF) > 0.004) {
+        (d.mesh.material as THREE.MeshLambertMaterial).color.setScalar(d.lightF);
+        d.lastAppliedF = d.lightF;
+      }
     }
   }
 
