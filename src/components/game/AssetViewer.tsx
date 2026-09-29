@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { useGameStore, type Screen } from '@/game/state';
 import { audio } from '@/game/audio';
 import { getMobSkins } from '@/game/entities/mobSkins';
+import { preloadEntityTextures } from '@/game/entities/vanillaSkins';
 import { buildMobModel, type MobParts } from '@/game/entities/mobs';
 import { getAtlas, tileUV } from '@/game/textures/atlas';
 import { BLOCKS, type BlockDef } from '@/game/blocks';
@@ -74,6 +75,7 @@ function AssetViewer() {
 
   // ── scene setup (once) ──
   useEffect(() => {
+    void preloadEntityTextures(); // decoded images → sync tinted textures
     const host = canvasHost.current;
     if (!host) return;
     const scene = new THREE.Scene();
@@ -245,6 +247,7 @@ function AssetViewer() {
     }
     handle.scene.add(g);
     modelGroup.current = g;
+    (window as unknown as { __avModel?: THREE.Group }).__avModel = g; // QA hook
   }, [tab, mobSel, blockDef]);
 
   const entry = MOB_ENTRIES[mobSel];

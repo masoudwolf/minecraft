@@ -33,6 +33,31 @@ loader.setPath('/textures/entity/');
 
 const texCache = new Map<string, THREE.Texture>();
 
+/**
+ * Eagerly decode every entity texture (browser image cache). Call once at
+ * startup — after this resolves, tintedTex can build its canvases
+ * synchronously (no async texture swaps, which are unreliable on the GPU).
+ */
+const decodedImages = new Map<string, HTMLImageElement>();
+export function preloadEntityTextures(files?: string[]): Promise<unknown> {
+  const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch'];
+  return Promise.all(
+    list.map(
+      (f) =>
+        new Promise<void>((res) => {
+          if (decodedImages.has(f)) return res();
+          const img = new Image();
+          img.onload = () => {
+            decodedImages.set(f, img);
+            res();
+          };
+          img.onerror = () => res(); // serve untinted rather than hanging
+          img.src = `/textures/entity/${f}.png`;
+        }),
+    ),
+  );
+}
+
 /** Load (cached) a vanilla entity texture with pixel-perfect settings. */
 export function vanillaTex(file: string): THREE.Texture {
   const hit = texCache.get(file);
@@ -80,11 +105,14 @@ export function boxUV(geo: THREE.BoxGeometry, lay: BoxUVLayout, texW: number, te
     [u + 2 * d + w, v + d, w, h], // −Z back
   ];
   const uvAttr = geo.attributes.uv as THREE.BufferAttribute;
+  // tiny inset (in texels) so exact region EDGES never sample the neighboring
+  // row/column (transparent padding next to some MC regions)
+  const eps = 0.02;
   for (let f = 0; f < 6; f++) {
     const [rx, ry, rw, rh] = rects[f];
     // corner UVs in image space; convert to GL space (flipY)
-    const L = rx / W, R = (rx + rw) / W;
-    const T = 1 - ry / H, B = 1 - (ry + rh) / H;
+    const L = (rx + eps) / W, R = (rx + rw - eps) / W;
+    const T = 1 - (ry + eps) / H, B = 1 - (ry + rh - eps) / H;
     // BoxGeometry per-face vertex order: TL, TR, BL, BR (u 0..1, v 1..0)
     // All faces use the straight mapping except −Y (bottom), which MC folds
     // vertically flipped relative to the region (Blockbench convention).
@@ -117,9 +145,11 @@ export function uvBox(p: MobSkinPart, w: number, h: number, d: number): THREE.Me
 
 // ─── Tinted texture variants (sheep dye colors, etc.) ────────────────────────
 // Canvas-level multiply tint of a vanilla texture — used where MC tints at
-// runtime (sheep fleece). Async: paints when the image is available.
+// runtime (sheep fleece). SYNCHRONOUS when the image has been preloaded via
+// preloadEntityTextures() (always the case in-game and in the Asset Viewer);
+// before preload finishes it falls back to the untinted texture.
 
-const tintCache = new Map<string, THREE.CanvasTexture>();
+const tintCache = new Map<string, THREE.Texture>();
 
 function tintCanvas(img: HTMLImageElement | HTMLCanvasElement, color: string, strength: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -144,31 +174,23 @@ function tintCanvas(img: HTMLImageElement | HTMLCanvasElement, color: string, st
   return c;
 }
 
+function pixelTex(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(canvas);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** Get a multiply-tinted copy of a vanilla texture (cached per file+color). */
-export function tintedTex(file: string, color: string, strength = 1): THREE.CanvasTexture {
+export function tintedTex(file: string, color: string, strength = 1): THREE.Texture {
   const key = `${file}|${color}|${strength}`;
   const hit = tintCache.get(key);
   if (hit) return hit;
-  // placeholder canvas until the image arrives
-  const ph = document.createElement('canvas');
-  ph.width = 16; ph.height = 16;
-  const out = new THREE.CanvasTexture(ph);
-  out.magFilter = THREE.NearestFilter;
-  out.minFilter = THREE.NearestFilter;
-  out.generateMipmaps = false;
-  out.colorSpace = THREE.SRGBColorSpace;
+  const img = decodedImages.get(file);
+  if (!img) return vanillaTex(file); // not preloaded yet — untinted fallback
+  const out = pixelTex(tintCanvas(img, color, strength));
   tintCache.set(key, out);
-  const img = new Image();
-  img.src = `/textures/entity/${file}.png`;
-  img.onload = () => {
-    const canvas = tintCanvas(img, color, strength);
-    out.image = canvas;
-    out.needsUpdate = true;
-  };
   return out;
-}
-
-/** Raw (untinted) canvas copy of a vanilla texture — for baking leg colors etc. */
-export function bakedTex(file: string, color: string): THREE.CanvasTexture {
-  return tintedTex(file, color, 1);
 }

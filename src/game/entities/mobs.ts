@@ -126,7 +126,8 @@ function collectMats(list: THREE.MeshLambertMaterial[], mesh: THREE.Mesh): void 
  * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
  * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
  * animating pivot.rotation.x swings the leg from the top — like MC. `furPart`
- * optionally adds an inflated fleece box (sheep) that rides the swing.
+ * optionally adds an inflated fleece box (sheep) that rides the swing; like
+ * vanilla, the fleece leg wraps only the UPPER HALF of the leg.
  */
 function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }): THREE.Group {
   const pivot = new THREE.Group();
@@ -137,9 +138,10 @@ function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number,
   pivot.add(leg);
   if (furPart) {
     const f = furPart.inflate;
-    const fur = boxPart(furPart.part, w + f * 2, h + f * 2, d + f * 2, 'fur');
+    const furH = h * 0.5 + f * 2;
+    const fur = boxPart(furPart.part, w + f * 2, furH, d + f * 2, 'fur');
     leg.add(fur);
-    fur.position.y = 0;
+    fur.position.y = h / 2 - furH / 2 + f * 0.5; // top-aligned wrap
   }
   return pivot;
 }

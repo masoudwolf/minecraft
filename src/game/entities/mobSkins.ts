@@ -112,7 +112,9 @@ function buildSheep(color = 'white'): MobSkins {
     fur: {
       head: white ? p(fleeceFile, 64, 32, 0, 0, 6, 6, 6) : tintP(fleeceFile, 64, 32, dye, 1, 0, 0, 6, 6, 6),
       body: white ? p(fleeceFile, 64, 32, 28, 8, 8, 16, 6) : tintP(fleeceFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
-      limb: white ? p(fleeceFile, 64, 32, 0, 16, 4, 12, 4) : tintP(fleeceFile, 64, 32, dye, 1, 0, 16, 4, 12, 4),
+      // fleece legs cover only the UPPER half of the leg (vanilla SheepModel:
+      // fur leg boxes are 6 tall on a 12-tall leg) — hence h=6
+      limb: white ? p(fleeceFile, 64, 32, 0, 16, 4, 6, 4) : tintP(fleeceFile, 64, 32, dye, 1, 0, 16, 4, 6, 4),
       inflate: 0.12,
     },
   };
@@ -121,7 +123,8 @@ function buildSheep(color = 'white'): MobSkins {
 // ── CHICKEN: head(0,0)4x6x3 · body(0,9)6x8x6 · beak(14,0)4x2x2 · wattle(14,4)2x2x2
 // legs are runtime-tinted orange by vanilla → baked orange texture here
 function buildChicken(): MobSkins {
-  const legs = tintP('chicken', 64, 32, '#E0A020', 1, 14, 16, 2, 5, 2);
+  // leg region h=4: rows 16..22 opaque (row 23 of the body cross is padding)
+  const legs = tintP('chicken', 64, 32, '#E0A020', 1, 14, 16, 2, 4, 2);
   return {
     head: p('chicken', 64, 32, 0, 0, 4, 6, 3),
     body: p('chicken', 64, 32, 0, 9, 6, 8, 6),
@@ -129,7 +132,7 @@ function buildChicken(): MobSkins {
     legsBaked: legs,
     extra: p('chicken', 64, 32, 14, 0, 4, 2, 2),
     extra2: p('chicken', 64, 32, 14, 4, 2, 2, 2),
-    wing: p('chicken', 64, 32, 24, 13, 1, 8, 6),
+    wing: p('chicken', 64, 32, 24, 13, 1, 3, 6),
   };
 }
 
@@ -215,7 +218,7 @@ function buildGolem(): MobSkins {
     head: p('iron_golem', 128, 128, 0, 0, 8, 10, 8),
     head2: p('iron_golem', 128, 128, 10, 8, 2, 4, 2),
     body: p('iron_golem', 128, 128, 0, 40, 18, 12, 11),
-    limb: p('iron_golem', 128, 128, 0, 70, 4, 8, 4),
+    limb: p('iron_golem', 128, 128, 0, 70, 4, 6, 4),
     limb2: p('iron_golem', 128, 128, 60, 21, 4, 30, 2),
   };
 }

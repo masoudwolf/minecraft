@@ -7,6 +7,7 @@ import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
 import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
+import { preloadEntityTextures } from './entities/vanillaSkins';
 import { BoatManager, type Boat } from './entities/boats';
 import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
@@ -159,6 +160,8 @@ export class Game {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    // decode vanilla entity textures up front → sync tinted skins (sheep dye etc.)
+    void preloadEntityTextures();
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
