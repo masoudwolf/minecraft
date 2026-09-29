@@ -166,7 +166,18 @@ export function uvBox(p: MobSkinPart, w: number, h: number, d: number, opts?: Bo
 
 const tintCache = new Map<string, THREE.Texture>();
 
-function tintCanvas(img: HTMLImageElement | HTMLCanvasElement, color: string, strength: number): HTMLCanvasElement {
+/** A tint region rect; `mode 'wool'` tints only WOOL texels inside the rect:
+ *  near-neutral light grays (the sheep's wool framing) — while pure white
+ *  (eye sclera), tan skin and the pink muzzle stay vanilla. */
+export type TintRegion = [number, number, number, number] | [number, number, number, number, 'wool'];
+
+function isWoolTexel(r: number, g: number, b: number, a: number): boolean {
+  if (a < 8) return false; // transparent padding
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  return max - min <= 14 && r >= 190 && !(r >= 250 && g >= 250 && b >= 250);
+}
+
+function tintCanvas(img: HTMLImageElement | HTMLCanvasElement, color: string, strength: number, regions?: TintRegion[]): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = img.width; c.height = img.height;
   const ctx = c.getContext('2d')!;
@@ -180,6 +191,42 @@ function tintCanvas(img: HTMLImageElement | HTMLCanvasElement, color: string, st
       const b = Math.round(255 - (255 - parseInt(m[3], 16)) * strength);
       color = `rgb(${r},${g},${b})`;
     }
+  }
+  const dye = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+    ? [parseInt(color[1] + color[2], 16), parseInt(color[3] + color[4], 16), parseInt(color[5] + color[6], 16)]
+    : [255, 255, 255];
+  if (regions) {
+    // REGION-LIMITED tint: multiply only inside the given texture rects (the
+    // sheep's skin-head WOOL faces — top/sides/back + forehead row), leaving
+    // the face skin, eyes and muzzle vanilla.
+    for (const reg of regions) {
+      const [rx, ry, rw, rh, mode] = reg;
+      if (mode === 'wool') {
+        // per-texel wool filter: multiply ONLY near-neutral light texels
+        const data = ctx.getImageData(rx, ry, rw, rh);
+        const d = data.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (!isWoolTexel(d[i], d[i + 1], d[i + 2], d[i + 3])) continue;
+          const sr = dye[0] / 255, sg = dye[1] / 255, sb = dye[2] / 255;
+          d[i] = Math.round(d[i] * sr);
+          d[i + 1] = Math.round(d[i + 1] * sg);
+          d[i + 2] = Math.round(d[i + 2] * sb);
+        }
+        ctx.putImageData(data, rx, ry);
+        continue;
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = color;
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
+    }
+    return c;
   }
   ctx.globalCompositeOperation = 'multiply';
   ctx.fillStyle = color;
@@ -198,14 +245,18 @@ function pixelTex(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   return t;
 }
 
-/** Get a multiply-tinted copy of a vanilla texture (cached per file+color). */
-export function tintedTex(file: string, color: string, strength = 1): THREE.Texture {
-  const key = `${file}|${color}|${strength}`;
+/** Get a multiply-tinted copy of a vanilla texture (cached per file+color).
+ *  `regions` limits the tint to those texture-space rects — used by the
+ *  sheep's skin head so ONLY the wool texels (top/sides/back faces + the wool
+ *  framing of the face plate) take the dye while the face/eyes/muzzle stay
+ *  vanilla. Region mode 'wool' tints per-texel (see TintRegion). */
+export function tintedTex(file: string, color: string, strength = 1, regions?: TintRegion[]): THREE.Texture {
+  const key = `${file}|${color}|${strength}|${regions ? regions.map((r) => r.join(',')).join(';') : 'all'}`;
   const hit = tintCache.get(key);
   if (hit) return hit;
   const img = decodedImages.get(file);
   if (img) {
-    const out = pixelTex(tintCanvas(img, color, strength));
+    const out = pixelTex(tintCanvas(img, color, strength, regions));
     tintCache.set(key, out);
     return out;
   }
@@ -224,7 +275,7 @@ export function tintedTex(file: string, color: string, strength = 1): THREE.Text
     const im = decodedImages.get(file);
     if (!im) return;
     c.width = im.width; c.height = im.height;
-    c.getContext('2d')!.drawImage(tintCanvas(im, color, strength), 0, 0);
+    c.getContext('2d')!.drawImage(tintCanvas(im, color, strength, regions), 0, 0);
     tex.needsUpdate = true;
   };
   onPreloaded.push(redraw);

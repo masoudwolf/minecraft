@@ -4,7 +4,7 @@
 // so every face samples the exact vanilla pixels — pixel-perfect by
 // construction, no hand-extracted texel data to drift out of alignment.
 import * as THREE from 'three';
-import { vanillaTex, tintedTex, boxCrossTex, type MobSkinPart, type BoxUVLayout } from './vanillaSkins';
+import { vanillaTex, tintedTex, boxCrossTex, type MobSkinPart, type BoxUVLayout, type TintRegion } from './vanillaSkins';
 
 export interface MobSkins {
   head: MobSkinPart;
@@ -133,17 +133,31 @@ function buildCow(tex: string): MobSkins {
 // BACK 6px, shifted 2px back. That protruding face is how vanilla shows the
 // sheep's eyes/muzzle — no transparency tricks. Fleece body (28,8) 8x16x6
 // inflate 1.75/side; fleece legs (0,16) 4x6x4 (upper half only).
-// DYEING (vanilla SheepFurLayer): ONLY the fleece layer is tinted with the
-// sheep's color — the skin (face, legs, sheared body) ALWAYS renders the
-// plain vanilla sheep.png for every color. Tinting the skin made dyed sheep
-// (esp. black) uniformly near-black with wrong face/legs — user-reported.
+// DYEING (vanilla SheepFurLayer): the fleece layer is tinted with the sheep's
+// color. USER RULE (head wool must take the dye too): the skin head also has
+// WOOL texels — its top/side/back faces (sampled by the protruding rim) and
+// the face plate's FOREHEAD row are wool-white in vanilla and stayed white on
+// colored sheep ("پشم قسمت صورت سفیده"). For non-white variants the skin head
+// gets a REGION-LIMITED tint: wool faces + forehead row take the dye, the
+// face skin / eyes / muzzle stay vanilla.
+const SHEEP_HEAD_WOOL_REGIONS: TintRegion[] = [
+  [8, 0, 6, 8],   // head top face (6×8)
+  [14, 0, 6, 8],  // head bottom face
+  [0, 8, 8, 6],   // head right side
+  [14, 8, 8, 6],  // head left side
+  [22, 8, 6, 6],  // head back
+  [8, 8, 6, 6, 'wool'], // face plate: per-texel — wool forehead + wool muzzle-frame corners take the dye; eyes/skin/nose stay vanilla
+];
+
 function buildSheep(color = 'white'): MobSkins {
   const dye = SHEEP_COLORS[color] ?? SHEEP_COLORS.white;
   const white = color === 'white';
   const fleeceFile = 'sheep_fur';
   const skinFile = 'sheep_body';
   return {
-    head: p(skinFile, 64, 32, 0, 0, 6, 6, 8),
+    head: white
+      ? p(skinFile, 64, 32, 0, 0, 6, 6, 8)
+      : { tex: tintedTex(skinFile, dye, 1, SHEEP_HEAD_WOOL_REGIONS), lay: { u: 0, v: 0, w: 6, h: 6, d: 8 }, texW: 64, texH: 32 },
     body: p(skinFile, 64, 32, 28, 8, 8, 16, 6),
     limb: p(skinFile, 64, 32, 0, 16, 4, 12, 4),
     fur: {

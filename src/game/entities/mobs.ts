@@ -124,6 +124,27 @@ function collectMats(list: THREE.MeshLambertMaterial[], mesh: THREE.Mesh): void 
   else list.push(m);
 }
 
+/** Recursively collect EVERY MeshLambertMaterial under `obj` (deduped).
+ *  The old per-builder loops only went ONE level deep, so nested parts (the
+ *  sheep's fleece-leg fur — a child of the leg mesh) were never registered:
+ *  they kept the shared builder material, never got the world-light tint and
+ *  GLOWED WHITE AT NIGHT (user report: "some body parts are bright and visible
+ *  from far away in the dark"). Deep traversal makes night-lighting complete
+ *  for every current and future nested part. */
+function collectMatsDeep(obj: THREE.Object3D, list: THREE.MeshLambertMaterial[], seen?: Set<THREE.MeshLambertMaterial>): void {
+  const mesh = obj as THREE.Mesh;
+  if (mesh.isMesh) {
+    const m = mesh.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[];
+    const set = seen ?? new Set<THREE.MeshLambertMaterial>();
+    if (Array.isArray(m)) {
+      for (const mm of m) if (mm.isMeshLambertMaterial && !set.has(mm)) { set.add(mm); list.push(mm); }
+    } else if (m.isMeshLambertMaterial && !set.has(m)) {
+      set.add(m); list.push(m);
+    }
+  }
+  for (const c of obj.children) collectMatsDeep(c, list, seen);
+}
+
 /**
  * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
  * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
@@ -285,7 +306,7 @@ function quadruped(skins: MobSkins, opts: {
     legs.push(pivot as unknown as THREE.Mesh);
   }
   for (const mesh of [body, head]) collectMats(mats, mesh);
-  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+  for (const pv of legs) collectMatsDeep(pv, mats);
   return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
 }
 
@@ -319,7 +340,7 @@ function humanoid(skins: MobSkins, thin = false): MobParts {
     (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
   }
   for (const mesh of [body, head]) collectMats(mats, mesh);
-  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+  for (const pv of legs) collectMatsDeep(pv, mats);
   for (const arm of arms) collectMats(mats, arm);
   return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
 }
@@ -410,7 +431,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         (wing as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       for (const mesh of [body, head, beak, wattle]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       for (const wing of arms) collectMats(mats, wing);
       return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
@@ -439,7 +460,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         legs.push(pivot as unknown as THREE.Mesh);
       }
       for (const mesh of [body, head]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
@@ -515,7 +536,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         }
       }
       for (const mesh of [thorax, abdomen, head]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
@@ -559,7 +580,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       for (const mesh of [body, head]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       for (const arm of arms) collectMats(mats, arm);
       return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
@@ -607,7 +628,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         legs.push(pivot as unknown as THREE.Mesh);
       }
       for (const mesh of [body, head, nose, armL, armR, bridge]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
@@ -693,7 +714,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         legs.push(pivot as unknown as THREE.Mesh);
       }
       for (const mesh of [body, head, nose, armL, armR, bridge, brim, tier2, tier3, tip]) collectMats(mats, mesh);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
@@ -751,7 +772,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       }
       for (const mesh of [body, head, nose]) collectMats(mats, mesh);
       for (const arm of arms) collectMats(mats, arm);
-      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const pv of legs) collectMatsDeep(pv, mats);
       return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
@@ -943,6 +964,15 @@ export class MobManager {
     const skinKey = variant && (type === 'sheep' || type === 'snowgolem') ? `${type}:${variant}` : type;
     const skins = getMobSkins(skinKey);
     const parts = def.builder(skins);
+    // SAFETY NET: rebuild the material list from a FULL recursive traversal so
+    // every nested part (fleece-leg fur, hat tiers, bows, …) is registered and
+    // gets a per-instance clone — a missed material keeps the shared builder
+    // material, never receives the world-light tint, and glows at night.
+    {
+      const deep: THREE.MeshLambertMaterial[] = [];
+      collectMatsDeep(parts.group, deep);
+      if (deep.length >= parts.materials.length) parts.materials = deep;
+    }
     // per-instance material clones so hurt tint is individual (array-aware: heads
     // use [plain×4, face] material arrays)
     const cloned = parts.materials.map((mm) => mm.clone());
@@ -1137,6 +1167,12 @@ export class MobManager {
       return true;
     }
     return false;
+  }
+
+  /** water at the mob's mid-body height — deep enough that buoyancy kicks in
+   *  (feet-deep puddles keep normal grounded walking instead of bobbing) */
+  private isDeepWater(m: Mob): boolean {
+    return isWaterId(this.world.getBlock(Math.floor(m.x), Math.floor(m.y + m.height * 0.5), Math.floor(m.z)));
   }
 
   /** effective light (0..15) at a mob's position */
@@ -1543,15 +1579,35 @@ export class MobManager {
 
       // ── movement + physics ──
       const prevX = m.x, prevZ = m.z;
+      // water: paddling is slower than walking (vanilla-like swim speed)
+      const swimMul = m.inWater ? 0.55 : 1;
       if (moveSpeed > 0) {
-        m.vx += (wantX * moveSpeed - m.vx) * Math.min(1, dt * 8);
-        m.vz += (wantZ * moveSpeed - m.vz) * Math.min(1, dt * 8);
+        m.vx += (wantX * moveSpeed * swimMul - m.vx) * Math.min(1, dt * 8);
+        m.vz += (wantZ * moveSpeed * swimMul - m.vz) * Math.min(1, dt * 8);
         m.targetYaw = Math.atan2(wantX, wantZ);
       } else {
         m.vx *= Math.pow(0.02, dt);
         m.vz *= Math.pow(0.02, dt);
       }
-      m.vy -= 32 * dt;
+      if (m.inWater && this.isDeepWater(m)) {
+        // ── SWIMMING (vanilla floatEntity-like): damped approach to a gentle
+        // rise — the body bobs half-submerged and paddles across, instead of
+        // being shot upward (old vy=max(vy,1.8)) and SKIMMING the surface
+        // (the "mobs walk on water" bug). Head underwater → swims up firmer. ──
+        const headBlock = this.world.getBlock(Math.floor(m.x), Math.floor(m.y + m.height * 0.85), Math.floor(m.z));
+        const headUnder = isWaterId(headBlock);
+        const targetVy = headUnder ? 2.4 : 0.9;
+        m.vy += (targetVy - m.vy) * Math.min(1, dt * 3.5);
+        m.vx *= Math.pow(0.4, dt);
+        m.vz *= Math.pow(0.4, dt);
+      } else {
+        m.vy -= 32 * dt;
+        if (m.inWater) {
+          // wading (feet-deep): grounded walk with slight water drag
+          m.vx *= Math.pow(0.7, dt);
+          m.vz *= Math.pow(0.7, dt);
+        }
+      }
       if (m.type === 'chicken') m.vy = Math.max(m.vy, -3.2);
       moveEntity(this.world, m, dt);
 
@@ -1561,13 +1617,12 @@ export class MobManager {
         if (blockedXZ) {
           if (m.def.climbs && m.state === 'chase') {
             m.vy = Math.max(m.vy, m.onGround ? 3.6 : 2.8);
+          } else if (m.inWater) {
+            m.vy = Math.max(m.vy, 3.4); // breach — enough to climb onto the shore
           } else if (m.onGround) {
             m.vy = 8.4;
           }
         }
-      }
-      if (m.inWater) {
-        m.vy = Math.max(m.vy, 1.8); // swim up
       }
 
       // ── visuals ──
@@ -1576,7 +1631,9 @@ export class MobManager {
       while (dyaw > Math.PI) dyaw -= Math.PI * 2;
       while (dyaw < -Math.PI) dyaw += Math.PI * 2;
       m.yaw += dyaw * Math.min(1, dt * 8);
-      m.group.position.set(m.x, m.y, m.z);
+      // swimming: gentle bob riding the water surface
+      const swimBob = m.inWater ? Math.sin(this.time * 2.4) * 0.035 : 0;
+      m.group.position.set(m.x, m.y + swimBob, m.z);
       m.group.rotation.y = m.yaw;
 
       // walk animation
@@ -1673,7 +1730,8 @@ export class MobManager {
         }
       }
 
-      // shadow
+      // shadow (hidden while swimming — there is no ground under the mob)
+      m.parts.shadow.visible = !m.inWater;
       m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
       const shadowScale = m.onGround ? 1 : Math.max(0.4, 1 - Math.min(1, Math.abs(m.vy) * 0.06));
       m.parts.shadow.scale.setScalar(shadowScale);
