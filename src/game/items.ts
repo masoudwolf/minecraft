@@ -112,6 +112,8 @@ export const ITEM = {
   DIAMOND_HOE: 329,
   // transport (phase 10)
   BOAT: 330,
+  // snow golem drops
+  SNOWBALL: 331,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -514,6 +516,20 @@ export const ITEMS: Record<number, ItemDef> = {
       ctx.fillStyle = '#c8c8c8';
       ctx.fillRect(5, 2, 1, 1); ctx.fillRect(6, 3, 1, 1); ctx.fillRect(7, 4, 1, 1);
       ctx.fillRect(8, 5, 1, 1); ctx.fillRect(9, 6, 1, 1); ctx.fillRect(10, 7, 1, 1);
+    },
+  },
+  [ITEM.SNOWBALL]: {
+    id: ITEM.SNOWBALL, name: 'Snowball',
+    icon: (ctx) => {
+      // round white snowball with light shading (MC style)
+      ctx.fillStyle = '#f0f4f4';
+      ctx.beginPath();
+      ctx.arc(8, 8, 5.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#dfe8e8';
+      ctx.fillRect(5, 9, 2, 2); ctx.fillRect(9, 5, 2, 2); ctx.fillRect(7, 10, 2, 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(6, 5, 2, 2); ctx.fillRect(8, 7, 1, 1);
     },
   },
   [ITEM.SPIDER_EYE]: {

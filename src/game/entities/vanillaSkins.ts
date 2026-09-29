@@ -40,7 +40,7 @@ const texCache = new Map<string, THREE.Texture>();
  */
 const decodedImages = new Map<string, HTMLImageElement>();
 export function preloadEntityTextures(files?: string[]): Promise<unknown> {
-  const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch'];
+  const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch', 'snow_golem', 'pumpkin_top', 'pumpkin_side', 'carved_pumpkin'];
   return Promise.all(
     list.map(
       (f) =>
@@ -92,7 +92,13 @@ function part(file: string, texW: number, texH: number, u: number, v: number, w:
  *   +Y ← top, −Y ← bottom. Side/top UVs are oriented so texture "up"
  *   matches world "up" and textures read non-mirrored from outside.
  */
-export function boxUV(geo: THREE.BoxGeometry, lay: BoxUVLayout, texW: number, texH: number): void {
+export interface BoxUVOptions {
+  /** map the +Z (front) face to this transparent texture rect instead of the
+   *  cross layout — used by the sheep fleece head so the real face shows. */
+  frontTransparentRect?: [number, number, number, number];
+}
+
+export function boxUV(geo: THREE.BoxGeometry, lay: BoxUVLayout, texW: number, texH: number, opts?: BoxUVOptions): void {
   const { u, v, w, h, d } = lay;
   const W = texW, H = texH;
   // region rects [x, y, rw, rh] per face: px, nx, py, ny, pz, nz
@@ -104,6 +110,7 @@ export function boxUV(geo: THREE.BoxGeometry, lay: BoxUVLayout, texW: number, te
     [u + d, v + d, w, h],     // +Z front (the FACE for heads)
     [u + 2 * d + w, v + d, w, h], // −Z back
   ];
+  if (opts?.frontTransparentRect) rects[4] = opts.frontTransparentRect;
   const uvAttr = geo.attributes.uv as THREE.BufferAttribute;
   // tiny inset (in texels) so exact region EDGES never sample the neighboring
   // row/column (transparent padding next to some MC regions)
@@ -134,9 +141,9 @@ export function boxUV(geo: THREE.BoxGeometry, lay: BoxUVLayout, texW: number, te
  * Build a box mesh textured from a vanilla part (used by mobs.ts builders).
  * World dims may differ from the MC layout dims (proportions stay close).
  */
-export function uvBox(p: MobSkinPart, w: number, h: number, d: number): THREE.Mesh {
+export function uvBox(p: MobSkinPart, w: number, h: number, d: number, opts?: BoxUVOptions): THREE.Mesh {
   const geo = new THREE.BoxGeometry(w, h, d);
-  boxUV(geo, p.lay, p.texW, p.texH);
+  boxUV(geo, p.lay, p.texW, p.texH, opts);
   const mat = new THREE.MeshLambertMaterial({ map: p.tex });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.userData.skinPart = p;
@@ -192,5 +199,36 @@ export function tintedTex(file: string, color: string, strength = 1): THREE.Text
   if (!img) return vanillaTex(file); // not preloaded yet — untinted fallback
   const out = pixelTex(tintCanvas(img, color, strength));
   tintCache.set(key, out);
+  return out;
+}
+
+// ─── Composite box-cross texture from block textures (snow golem pumpkin) ────
+// Assembles a standard 8×8×8 box-UV cross onto one canvas: top/bottom from
+// `topFile`, side faces from `sideFile`, front face from `frontFile` (the
+// carved pumpkin face). Falls back to a plain side texture until preloaded.
+
+const crossCache = new Map<string, THREE.Texture>();
+
+export function boxCrossTex(topFile: string, sideFile: string, frontFile: string): THREE.Texture {
+  const key = `${topFile}|${sideFile}|${frontFile}`;
+  const hit = crossCache.get(key);
+  if (hit) return hit;
+  const top = decodedImages.get(topFile);
+  const side = decodedImages.get(sideFile);
+  const front = decodedImages.get(frontFile);
+  if (!top || !side || !front) return vanillaTex(sideFile); // preload not done yet
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 32;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  // box-UV cross for an 8×8×8 box at texOffs (0,0):
+  ctx.drawImage(top, 8, 0);   // +Y top face (8,0) 8×8
+  ctx.drawImage(top, 16, 0);  // −Y bottom face (16,0) 8×8
+  ctx.drawImage(side, 0, 8);  // −X east face (0,8) 8×8
+  ctx.drawImage(front, 8, 8); // +Z front face (8,8) — the carved face
+  ctx.drawImage(side, 16, 8); // +X west face (16,8) 8×8
+  ctx.drawImage(side, 24, 8); // −Z back face (24,8) 8×8
+  const out = pixelTex(c);
+  crossCache.set(key, out);
   return out;
 }

@@ -1,0 +1,1653 @@
+     1→// ─── Mobs: box-model entities, AI, spawning, combat ──────────────────────────
+     2→import * as THREE from 'three';
+     3→import { moveEntity, type AABBEntity } from '../physics';
+     4→import { BLOCK, isWaterId } from '../blocks';
+     5→import { getMobSkins, type MobSkinPart, type MobSkins } from './mobSkins';
+     6→import { boxUV } from './vanillaSkins';
+     7→import { audio } from '../audio';
+     8→import { ITEM } from '../items';
+     9→
+    10→export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem';
+    11→
+    12→interface MobDef {
+    13→  hostile: boolean;
+    14→  width: number;
+    15→  height: number;
+    16→  health: number;
+    17→  speed: number;
+    18→  /** contact/attack damage to player */
+    19→  damage: number;
+    20→  drops: { id: number; min: number; max: number }[];
+    21→  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem';
+    22→  /** spiders are neutral in daylight (still hostile in dark / when provoked) */
+    23→  neutralInDay?: boolean;
+    24→  /** spiders climb walls when chasing */
+    25→  climbs?: boolean;
+    26→  /** endermen teleport */
+    27→  teleports?: boolean;
+    28→  builder: (skins: ReturnType<typeof getMobSkins>) => MobParts;
+    29→}
+    30→
+    31→export interface MobParts {
+    32→  group: THREE.Group;
+    33→  head: THREE.Mesh;
+    34→  legs: THREE.Mesh[];
+    35→  arms: THREE.Mesh[];
+    36→  materials: THREE.MeshLambertMaterial[];
+    37→  shadow: THREE.Mesh;
+    38→}
+    39→
+    40→interface Mob extends AABBEntity {
+    41→  type: MobType;
+    42→  def: MobDef;
+    43→  group: THREE.Group;
+    44→  parts: MobParts;
+    45→  health: number;
+    46→  yaw: number;
+    47→  targetYaw: number;
+    48→  state: 'idle' | 'walk' | 'flee' | 'chase';
+    49→  stateTimer: number;
+    50→  walkPhase: number;
+    51→  hurtT: number;
+    52→  attackCd: number;
+    53→  ambientCd: number;
+    54→  burnTimer: number;
+    55→  burning: boolean;
+    56→  fuse: number;          // creeper
+    57→  /** enderman: has been provoked (stared at / hit) */
+    58→  provoked: boolean;
+    59→  /** enderman teleport cooldown */
+    60→  teleportCd: number;
+    61→  /** enderman water damage tick */
+    62→  waterHurtT: number;
+    63→  /** sheep wool color variant ('' = default white) */
+    64→  variant: string;
+    65→  dead: boolean;
+    66→  deathT: number;
+    67→  wanderX: number;
+    68→  wanderZ: number;
+    69→  /** base state tint (hurt red / creeper flash / enderman purple) before world light */
+    70→  tintR: number;
+    71→  tintG: number;
+    72→  tintB: number;
+    73→  /** smoothed world-light factor applied over the base tint (night realism) */
+    74→  lightF: number;
+    75→  lastAppliedF: number;
+    76→}
+    77→
+    78→/** serialized mob for world saves */
+    79→export interface SavedMob {
+    80→  type: string;
+    81→  x: number; y: number; z: number;
+    82→  health: number;
+    83→  yaw: number;
+    84→  /** sheep wool color variant (white/light_gray/gray/brown/black) */
+    85→  variant?: string;
+    86→}
+    87→
+    88→interface Arrow {
+    89→  x: number; y: number; z: number;
+    90→  vx: number; vy: number; vz: number;
+    91→  life: number;
+    92→  stuck: number;
+    93→  mesh: THREE.Mesh;
+    94→  /** player-shot arrow: hits mobs, sticks are pickupable */
+    95→  fromPlayer: boolean;
+    96→  /** damage on hit (player arrows) */
+    97→  dmg: number;
+    98→}
+    99→
+   100→/** witch splash potion projectile */
+   101→interface Potion {
+   102→  x: number; y: number; z: number;
+   103→  vx: number; vy: number; vz: number;
+   104→  life: number;
+   105→  mesh: THREE.Mesh;
+   106→}
+   107→
+   108→// ─── Model builders (vanilla textures + MC box-UV mapping) ───────────────────
+   109→/** Build a box mesh textured from a vanilla skin part via standard MC box UVs. */
+   110→function boxPart(p: MobSkinPart, w: number, h: number, d: number, tag: string): THREE.Mesh {
+   111→  const geo = new THREE.BoxGeometry(w, h, d);
+   112→  boxUV(geo, p.lay, p.texW, p.texH);
+   113→  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: p.tex }));
+   114→  mesh.userData.part = tag;
+   115→  return mesh;
+   116→}
+   117→
+   118→/** Collect a mesh's material(s) into the parts list (per-instance tint/light). */
+   119→function collectMats(list: THREE.MeshLambertMaterial[], mesh: THREE.Mesh): void {
+   120→  const m = mesh.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[];
+   121→  if (Array.isArray(m)) list.push(...m);
+   122→  else list.push(m);
+   123→}
+   124→
+   125→/**
+   126→ * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
+   127→ * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
+   128→ * animating pivot.rotation.x swings the leg from the top — like MC. `furPart`
+   129→ * optionally adds an inflated fleece box (sheep) that rides the swing; like
+   130→ * vanilla, the fleece leg wraps only the UPPER HALF of the leg.
+   131→ */
+   132→function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }): THREE.Group {
+   133→  const pivot = new THREE.Group();
+   134→  pivot.position.set(hipX, hipY, hipZ);
+   135→  pivot.userData.side = side;
+   136→  const leg = boxPart(p, w, h, d, 'limb');
+   137→  leg.position.y = -h / 2; // hang from the hip
+   138→  pivot.add(leg);
+   139→  if (furPart) {
+   140→    const f = furPart.inflate;
+   141→    const furH = h * 0.5 + f * 2;
+   142→    const fur = boxPart(furPart.part, w + f * 2, furH, d + f * 2, 'fur');
+   143→    leg.add(fur);
+   144→    fur.position.y = h / 2 - furH / 2 + f * 0.5; // top-aligned wrap
+   145→  }
+   146→  return pivot;
+   147→}
+   148→
+   149→function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
+   150→  const geo = new THREE.CircleGeometry(radius, 12);
+   151→  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+   152→  const mesh = new THREE.Mesh(geo, mat);
+   153→  mesh.rotation.x = -Math.PI / 2;
+   154→  mesh.renderOrder = 1;
+   155→  scene.add(mesh);
+   156→  return mesh;
+   157→}
+   158→
+   159→function quadruped(skins: MobSkins, opts: {
+   160→  bodyW: number; bodyH: number; bodyD: number; bodyY: number;
+   161→  legW: number; legH: number;
+   162→  headS: number; headY: number; headZ: number;
+   163→  shadowR: number;
+   164→  fur?: { head: MobSkinPart; body: MobSkinPart; limb: MobSkinPart; inflate: number };
+   165→}): MobParts {
+   166→  const group = new THREE.Group();
+   167→  const mats: THREE.MeshLambertMaterial[] = [];
+   168→  const body = boxPart(skins.body, opts.bodyW, opts.bodyH, opts.bodyD, 'body');
+   169→  body.position.y = opts.bodyY;
+   170→  group.add(body);
+   171→  if (opts.fur) {
+   172→    // fleece layer as a CHILD of the body — rides along, inflates by ~MC 1.75u
+   173→    const f = opts.fur.inflate;
+   174→    const furBody = boxPart(opts.fur.body, opts.bodyW + f * 2, opts.bodyH + f * 2, opts.bodyD + f * 2, 'fur');
+   175→    body.add(furBody);
+   176→    furBody.position.set(0, 0, 0);
+   177→  }
+   178→  const head = boxPart(skins.head, opts.headS, opts.headS, opts.headS, 'head');
+   179→  head.position.set(0, opts.headY, opts.headZ);
+   180→  group.add(head);
+   181→  if (opts.fur) {
+   182→    const f = opts.fur.inflate * 0.6;
+   183→    const furHead = boxPart(opts.fur.head, opts.headS + f * 2, opts.headS + f * 2, opts.headS + f * 2, 'fur');
+   184→    head.add(furHead);
+   185→    furHead.position.set(0, 0, 0);
+   186→  }
+   187→  const legs: THREE.Mesh[] = [];
+   188→  const lx = opts.bodyW / 2 - opts.legW / 2;
+   189→  const lz = opts.bodyD / 2 - opts.legW / 2;
+   190→  const hipY = opts.bodyY - opts.bodyH / 2; // hips at the body's underside
+   191→  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   192→    const pivot = legPivot(skins.limb, opts.legW, opts.legH, opts.legW, sx * lx, hipY, sz * lz, sx, opts.fur ? { part: opts.fur.limb, inflate: opts.fur.inflate * 0.5 } : undefined);
+   193→    group.add(pivot);
+   194→    legs.push(pivot as unknown as THREE.Mesh);
+   195→  }
+   196→  for (const mesh of [body, head]) collectMats(mats, mesh);
+   197→  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   198→  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   199→}
+   200→
+   201→function humanoid(skins: MobSkins, thin = false): MobParts {
+   202→  const lw = thin ? 0.16 : 0.25;
+   203→  const aw = thin ? 0.14 : 0.22;
+   204→  const group = new THREE.Group();
+   205→  const mats: THREE.MeshLambertMaterial[] = [];
+   206→  const body = boxPart(skins.body, 0.5, 0.72, 0.26, 'body');
+   207→  body.position.y = 1.1;
+   208→  group.add(body);
+   209→  const head = boxPart(skins.head, 0.5, 0.5, 0.5, 'head');
+   210→  head.position.y = 1.72;
+   211→  group.add(head);
+   212→  const legs: THREE.Mesh[] = [];
+   213→  for (const sx of [-1, 1]) {
+   214→    const pivot = legPivot(skins.limb, lw, 0.74, lw, sx * 0.125, 0.74, 0, sx);
+   215→    group.add(pivot);
+   216→    legs.push(pivot as unknown as THREE.Mesh);
+   217→  }
+   218→  const arms: THREE.Mesh[] = [];
+   219→  const armPart = skins.limb2 ?? skins.limb;
+   220→  for (const sx of [-1, 1]) {
+   221→    const pivot = new THREE.Group();
+   222→    pivot.position.set(sx * (0.25 + aw / 2), 1.42, 0);
+   223→    const arm = boxPart(armPart, aw, 0.7, aw, 'limb');
+   224→    arm.position.y = -0.32;
+   225→    pivot.add(arm);
+   226→    group.add(pivot);
+   227→    arms.push(arm);
+   228→    (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+   229→  }
+   230→  for (const mesh of [body, head]) collectMats(mats, mesh);
+   231→  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   232→  for (const arm of arms) collectMats(mats, arm);
+   233→  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   234→}
+   235→
+   236→// ─── Mob definitions ─────────────────────────────────────────────────────────
+   237→/** Standalone model builder (Asset Viewer / QA): no world needed. */
+   238→export function buildMobModel(type: string, variant?: string): MobParts | null {
+   239→  const base = (type === 'mooshroom_brown' ? 'mooshroom' : type) as MobType;
+   240→  const def = MOB_DEFS[base];
+   241→  if (!def) return null;
+   242→  const skins = getMobSkins(variant ? `${type}:${variant}` : type);
+   243→  return def.builder(skins);
+   244→}
+   245→
+   246→const MOB_DEFS: Record<MobType, MobDef> = {
+   247→  pig: {
+   248→    hostile: false, width: 0.9, height: 0.9, health: 10, speed: 1.1, damage: 0,
+   249→    drops: [{ id: ITEM.PORKCHOP, min: 1, max: 2 }], sound: 'oink',
+   250→    builder: (s) => quadruped(s, { bodyW: 0.62, bodyH: 0.5, bodyD: 1.0, bodyY: 0.55, legW: 0.24, legH: 0.32, headS: 0.5, headY: 0.62, headZ: 0.62, shadowR: 0.45 }),
+   251→  },
+   252→  cow: {
+   253→    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+   254→    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'moo',
+   255→    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+   256→  },
+   257→  sheep: {
+   258→    hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
+   259→    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }, { id: BLOCK.WOOL, min: 1, max: 2 }], sound: 'baa',
+   260→    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48, fur: s.fur }),
+   261→  },
+   262→  chicken: {
+   263→    hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
+   264→    drops: [{ id: ITEM.CHICKEN_RAW, min: 1, max: 1 }, { id: ITEM.FEATHER, min: 0, max: 2 }], sound: 'cluck',
+   265→    // proper BIPEDAL bird: 2 legs (not the quadruped's 4!), 3D beak + wattle,
+   266→    // side wings that flap while airborne (MC chicken)
+   267→    builder: (s) => {
+   268→      const group = new THREE.Group();
+   269→      const mats: THREE.MeshLambertMaterial[] = [];
+   270→      const body = boxPart(s.body, 0.38, 0.38, 0.5, 'body');
+   271→      body.position.y = 0.5;
+   272→      group.add(body);
+   273→      const head = boxPart(s.head, 0.26, 0.26, 0.26, 'head');
+   274→      head.position.set(0, 0.78, 0.3);
+   275→      group.add(head);
+   276→      // 3D beak (vanilla texture) protruding from the face + red wattle under it
+   277→      const beak = boxPart(s.extra!, 0.12, 0.07, 0.09, 'beak');
+   278→      beak.position.set(0, 0.77, 0.3 + 0.13 + 0.035);
+   279→      group.add(beak);
+   280→      const wattle = boxPart(s.extra2!, 0.08, 0.1, 0.05, 'wattle');
+   281→      wattle.position.set(0, 0.7, 0.3 + 0.13 + 0.015);
+   282→      group.add(wattle);
+   283→      // TWO legs with hip pivots at the body underside (front-ish, MC-like)
+   284→      const legs: THREE.Mesh[] = [];
+   285→      for (const sx of [-1, 1]) {
+   286→        const pivot = legPivot(s.legsBaked ?? s.limb, 0.06, 0.31, 0.06, sx * 0.06, 0.31, 0.07, sx);
+   287→        group.add(pivot);
+   288→        legs.push(pivot as unknown as THREE.Mesh);
+   289→      }
+   290→      // wings folded at the sides — exposed via parts.arms so the animator
+   291→      // can flap them while the chicken is airborne
+   292→      const arms: THREE.Mesh[] = [];
+   293→      for (const sx of [-1, 1]) {
+   294→        const pivot = new THREE.Group();
+   295→        pivot.position.set(sx * (0.19 + 0.03), 0.62, 0);
+   296→        pivot.userData.side = sx;
+   297→        const wing = boxPart(s.wing ?? s.body, 0.06, 0.28, 0.36, 'wing');
+   298→        wing.position.y = -0.14;
+   299→        pivot.add(wing);
+   300→        group.add(pivot);
+   301→        arms.push(wing);
+   302→        (wing as unknown as { pivot: THREE.Group }).pivot = pivot;
+   303→      }
+   304→      for (const mesh of [body, head, beak, wattle]) collectMats(mats, mesh);
+   305→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   306→      for (const wing of arms) collectMats(mats, wing);
+   307→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   308→    },
+   309→  },
+   310→  zombie: {
+   311→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.9, damage: 3,
+   312→    drops: [{ id: ITEM.ROTTEN_FLESH, min: 1, max: 2 }], sound: 'groan',
+   313→    builder: (s) => humanoid(s),
+   314→  },
+   315→  creeper: {
+   316→    hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
+   317→    drops: [], sound: 'hiss',
+   318→    builder: (s) => {
+   319→      const group = new THREE.Group();
+   320→      const mats: THREE.MeshLambertMaterial[] = [];
+   321→      const body = boxPart(s.body, 0.5, 0.78, 0.32, 'body');
+   322→      body.position.y = 0.76;
+   323→      group.add(body);
+   324→      const head = boxPart(s.head, 0.52, 0.52, 0.52, 'head');
+   325→      head.position.y = 1.42;
+   326→      group.add(head);
+   327→      const legs: THREE.Mesh[] = [];
+   328→      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   329→        const pivot = legPivot(s.limb, 0.24, 0.38, 0.24, sx * 0.14, 0.38, sz * 0.18, sx);
+   330→        group.add(pivot);
+   331→        legs.push(pivot as unknown as THREE.Mesh);
+   332→      }
+   333→      for (const mesh of [body, head]) collectMats(mats, mesh);
+   334→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   335→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   336→    },
+   337→  },
+   338→  skeleton: {
+   339→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
+   340→    drops: [
+   341→      { id: ITEM.ARROW, min: 0, max: 2 },
+   342→      { id: ITEM.BONE, min: 0, max: 2 },
+   343→    ], sound: 'rattle',
+   344→    builder: (s) => humanoid(s, true),
+   345→  },
+   346→  spider: {
+   347→    hostile: true, width: 1.25, height: 0.9, health: 16, speed: 2.15, damage: 2,
+   348→    drops: [{ id: ITEM.STRING, min: 1, max: 2 }, { id: ITEM.SPIDER_EYE, min: 0, max: 1 }], sound: 'spider',
+   349→    neutralInDay: true, climbs: true,
+   350→    builder: (s) => {
+   351→      const group = new THREE.Group();
+   352→      const mats: THREE.MeshLambertMaterial[] = [];
+   353→      // abdomen (back) + thorax (front) — flat wide body
+   354→      const abdomen = boxPart(s.body, 0.8, 0.45, 0.8, 'body');
+   355→      abdomen.position.set(0, 0.55, -0.34);
+   356→      group.add(abdomen);
+   357→      const head = boxPart(s.head, 0.52, 0.44, 0.5, 'head');
+   358→      head.position.set(0, 0.55, 0.5);
+   359→      group.add(head);
+   360→      // 8 legs: 4 per side, thin boxes angled out from pivots on the body
+   361→      const legs: THREE.Mesh[] = [];
+   362→      for (const side of [-1, 1]) {
+   363→        for (let i = 0; i < 4; i++) {
+   364→          const pivot = new THREE.Group();
+   365→          pivot.position.set(side * 0.36, 0.58, -0.42 + i * 0.26);
+   366→          // base outward yaw spread
+   367→          const baseYaw = side * (0.9 - Math.abs(i - 1.5) * 0.22);
+   368→          pivot.rotation.y = baseYaw;
+   369→          pivot.userData.baseYaw = baseYaw;
+   370→          const leg = boxPart(s.limb, 0.62, 0.09, 0.09, 'limb');
+   371→          leg.position.set(side * 0.31, -0.06, 0);
+   372→          pivot.add(leg);
+   373→          // knee tip angled down
+   374→          const tip = boxPart(s.limb, 0.34, 0.08, 0.08, 'limb');
+   375→          tip.position.set(side * 0.24, -0.16, 0);
+   376→          pivot.add(tip);
+   377→          group.add(pivot);
+   378→          legs.push(pivot as unknown as THREE.Mesh);
+   379→        }
+   380→      }
+   381→      for (const mesh of [abdomen, head]) collectMats(mats, mesh);
+   382→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   383→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   384→    },
+   385→  },
+   386→  enderman: {
+   387→    hostile: true, width: 0.55, height: 2.75, health: 40, speed: 2.9, damage: 4,
+   388→    drops: [{ id: ITEM.ENDER_PEARL, min: 1, max: 1 }], sound: 'enderman',
+   389→    teleports: true, neutralInDay: true,
+   390→    builder: (s) => {
+   391→      const group = new THREE.Group();
+   392→      const mats: THREE.MeshLambertMaterial[] = [];
+   393→      const body = boxPart(s.body, 0.42, 0.8, 0.26, 'body');
+   394→      body.position.y = 1.75;
+   395→      group.add(body);
+   396→      const head = boxPart(s.head, 0.46, 0.42, 0.46, 'head');
+   397→      head.position.y = 2.44;
+   398→      group.add(head);
+   399→      const legs: THREE.Mesh[] = [];
+   400→      for (const sx of [-1, 1]) {
+   401→        const pivot = legPivot(s.limb, 0.13, 1.35, 0.13, sx * 0.11, 1.35, 0, sx);
+   402→        group.add(pivot);
+   403→        legs.push(pivot as unknown as THREE.Mesh);
+   404→      }
+   405→      const arms: THREE.Mesh[] = [];
+   406→      const armPart = s.limb2 ?? s.limb;
+   407→      for (const sx of [-1, 1]) {
+   408→        const pivot = new THREE.Group();
+   409→        pivot.position.set(sx * 0.29, 2.1, 0);
+   410→        const arm = boxPart(armPart, 0.11, 1.25, 0.11, 'limb');
+   411→        arm.position.y = -0.62;
+   412→        pivot.add(arm);
+   413→        group.add(pivot);
+   414→        arms.push(arm);
+   415→        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+   416→      }
+   417→      for (const mesh of [body, head]) collectMats(mats, mesh);
+   418→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   419→      for (const arm of arms) collectMats(mats, arm);
+   420→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   421→    },
+   422→  },
+   423→  villager: {
+   424→    hostile: false, width: 0.6, height: 1.95, health: 20, speed: 0.85, damage: 0,
+   425→    drops: [], sound: 'villager',
+   426→    builder: (s) => {
+   427→      const group = new THREE.Group();
+   428→      const mats: THREE.MeshLambertMaterial[] = [];
+   429→      // robe torso
+   430→      const body = boxPart(s.body, 0.56, 0.72, 0.32, 'body');
+   431→      body.position.y = 1.08;
+   432→      group.add(body);
+   433→      // robe skirt over legs
+   434→      const skirt = boxPart(s.body, 0.54, 0.42, 0.3, 'body');
+   435→      skirt.position.y = 0.51;
+   436→      group.add(skirt);
+   437→      // head + long nose (vanilla villager face: unibrow + green eyes + nose)
+   438→      const head = boxPart(s.head, 0.5, 0.5, 0.5, 'head');
+   439→      head.position.y = 1.69;
+   440→      group.add(head);
+   441→      const nose = boxPart(s.head2!, 0.13, 0.26, 0.11, 'nose');
+   442→      nose.position.set(0, 1.63, 0.31);
+   443→      group.add(nose);
+   444→      // crossed arms: single horizontal box on the chest
+   445→      const armsBox = boxPart(s.limb2 ?? s.limb, 0.58, 0.16, 0.16, 'arm');
+   446→      armsBox.position.set(0, 1.26, 0.24);
+   447→      group.add(armsBox);
+   448→      // short legs under the skirt (hip pivots so they swing from the top)
+   449→      const legs: THREE.Mesh[] = [];
+   450→      for (const sx of [-1, 1]) {
+   451→        const pivot = legPivot(s.limb, 0.2, 0.32, 0.2, sx * 0.12, 0.32, 0, sx);
+   452→        group.add(pivot);
+   453→        legs.push(pivot as unknown as THREE.Mesh);
+   454→      }
+   455→      for (const mesh of [body, skirt, head, nose, armsBox]) collectMats(mats, mesh);
+   456→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   457→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   458→    },
+   459→  },
+   460→  witch: {
+   461→    hostile: true, width: 0.6, height: 1.95, health: 26, speed: 1.5, damage: 0,
+   462→    drops: [
+   463→      { id: ITEM.STICK, min: 0, max: 2 },
+   464→      { id: ITEM.SPIDER_EYE, min: 0, max: 1 },
+   465→    ], sound: 'witch',
+   466→    // ranged caster: keeps distance and lobs splash potions (poison on hit)
+   467→    builder: (s) => {
+   468→      const parts = humanoid(s);
+   469→      const extra: THREE.MeshLambertMaterial[] = [];
+   470→      const group = parts.group;
+   471→      // long hooked nose (villager-style, vanilla texture region)
+   472→      const nose = boxPart(s.head2!, 0.12, 0.3, 0.12, 'nose');
+   473→      nose.position.set(0, 1.62, 0.3);
+   474→      group.add(nose);
+   475→      // pointy hat: brim + tapering cone boxes, slightly tilted (MC witch)
+   476→      const brim = boxPart(s.hat!, 0.6, 0.06, 0.6, 'hat');
+   477→      brim.position.set(0, 1.99, 0);
+   478→      group.add(brim);
+   479→      const cone1 = boxPart(s.hat1!, 0.44, 0.2, 0.44, 'hat');
+   480→      cone1.position.set(0, 2.11, -0.02);
+   481→      group.add(cone1);
+   482→      const cone2 = boxPart(s.hat2!, 0.28, 0.18, 0.28, 'hat');
+   483→      cone2.position.set(0, 2.29, -0.06);
+   484→      group.add(cone2);
+   485→      const tip = boxPart(s.hat3!, 0.13, 0.16, 0.13, 'hat');
+   486→      tip.position.set(0.02, 2.45, -0.1);
+   487→      tip.rotation.z = -0.25;
+   488→      group.add(tip);
+   489→      collectMats(extra, nose);
+   490→      for (const hat of [brim, cone1, cone2, tip]) collectMats(extra, hat);
+   491→      return { group, head: parts.head, legs: parts.legs, arms: parts.arms, materials: [...parts.materials, ...extra], shadow: parts.shadow };
+   492→    },
+   493→  },
+   494→  mooshroom: {
+   495→    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+   496→    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'mooshroom',
+   497→    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+   498→  },
+   499→  golem: {
+   500→    // village defender: passive to players, hunts hostile mobs (MC iron golem)
+   501→    hostile: false, width: 1.3, height: 2.7, health: 100, speed: 1.35, damage: 0,
+   502→    drops: [{ id: ITEM.IRON_INGOT, min: 3, max: 5 }], sound: 'golem',
+   503→    builder: (s) => {
+   504→      const group = new THREE.Group();
+   505→      const mats: THREE.MeshLambertMaterial[] = [];
+   506→      // massive torso
+   507→      const body = boxPart(s.body, 1.0, 0.92, 0.55, 'body');
+   508→      body.position.y = 1.58;
+   509→      group.add(body);
+   510→      // hip block
+   511→      const hips = boxPart(s.body, 0.82, 0.3, 0.5, 'body');
+   512→      hips.position.y = 1.02;
+   513→      group.add(hips);
+   514→      // head with long villager-style nose
+   515→      const head = boxPart(s.head, 0.62, 0.56, 0.62, 'head');
+   516→      head.position.y = 2.36;
+   517→      group.add(head);
+   518→      const nose = boxPart(s.head2!, 0.18, 0.34, 0.16, 'nose');
+   519→      nose.position.set(0, 2.26, 0.37);
+   520→      group.add(nose);
+   521→      // long hanging arms with pivots (swing while walking)
+   522→      const arms: THREE.Mesh[] = [];
+   523→      const armPart = s.limb2 ?? s.limb;
+   524→      for (const sx of [-1, 1]) {
+   525→        const pivot = new THREE.Group();
+   526→        pivot.position.set(sx * 0.64, 1.95, 0);
+   527→        const arm = boxPart(armPart, 0.3, 1.05, 0.3, 'limb');
+   528→        arm.position.y = -0.5;
+   529→        pivot.add(arm);
+   530→        group.add(pivot);
+   531→        arms.push(arm);
+   532→        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+   533→      }
+   534→      // sturdy legs (hip pivots; 0.88 tall so the top meets the hip block)
+   535→      const legs: THREE.Mesh[] = [];
+   536→      for (const sx of [-1, 1]) {
+   537→        const pivot = legPivot(s.limb, 0.34, 0.88, 0.34, sx * 0.2, 0.88, 0, sx);
+   538→        group.add(pivot);
+   539→        legs.push(pivot as unknown as THREE.Mesh);
+   540→      }
+   541→      for (const mesh of [body, hips, head, nose]) collectMats(mats, mesh);
+   542→      for (const arm of arms) collectMats(mats, arm);
+   543→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   544→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   545→    },
+   546→  },
+   547→};
+   548→
+   549→// ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
+   550→export interface MobHit { mob: Mob; dist: number }
+   551→
+   552→function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, e: AABBEntity, maxDist: number): number | null {
+   553→  const half = e.width / 2;
+   554→  const minX = e.x - half, maxX = e.x + half;
+   555→  const minY = e.y, maxY = e.y + e.height;
+   556→  const minZ = e.z - half, maxZ = e.z + half;
+   557→  let tmin = 0;
+   558→  let tmax = maxDist;
+   559→  for (const [o, d, min, max] of [[ox, dx, minX, maxX], [oy, dy, minY, maxY], [oz, dz, minZ, maxZ]] as const) {
+   560→    if (Math.abs(d) < 1e-9) {
+   561→      if (o < min || o > max) return null;
+   562→    } else {
+   563→      let t1 = (min - o) / d;
+   564→      let t2 = (max - o) / d;
+   565→      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+   566→      tmin = Math.max(tmin, t1);
+   567→      tmax = Math.min(tmax, t2);
+   568→      if (tmin > tmax) return null;
+   569→    }
+   570→  }
+   571→  return tmin;
+   572→}
+   573→
+   574→// ─── MobManager ──────────────────────────────────────────────────────────────
+   575→export interface MobCallbacks {
+   576→  damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
+   577→  /** witch splash potion: apply poison for N seconds (ticks 1 dmg / 1.5s, non-lethal) */
+   578→  poisonPlayer?: (seconds: number) => void;
+   579→  spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
+   580→  spawnXP: (x: number, y: number, z: number, value: number) => void;
+   581→  explodeParticles: (x: number, y: number, z: number) => void;
+   582→  deathParticles: (x: number, y: number, z: number) => void;
+   583→  fireParticle: (x: number, y: number, z: number) => void;
+   584→  /** purple burst for enderman teleport (both ends) */
+   585→  teleportParticles: (x: number, y: number, z: number) => void;
+   586→  /** unit forward vector of the player's look direction (enderman stare check) */
+   587→  playerForward: { x: number; y: number; z: number };
+   588→  playerX: number;
+   589→  playerY: number;
+   590→  playerZ: number;
+   591→  /** creative players are ignored by hostile AI (like MC) */
+   592→  playerCreative: boolean;
+   593→  /** explosions chain-ignite TNT blocks in the blast (engine primes them) */
+   594→  igniteTnt?: (x: number, y: number, z: number) => void;
+   595→  /** a player arrow killed a mob — arg: distance from shooter (achievements) */
+   596→  killByPlayer?: (dist: number) => void;
+   597→}
+   598→
+   599→export class MobManager {
+   600→  mobs: Mob[] = [];
+   601→  arrows: Arrow[] = [];
+   602→  potions: Potion[] = [];
+   603→  private scene: THREE.Scene;
+   604→  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string };
+   605→  private spawnTimer = 0;
+   606→  private arrowMat: THREE.MeshLambertMaterial;
+   607→  private playerArrowMat: THREE.MeshLambertMaterial;
+   608→  private potionMat: THREE.MeshLambertMaterial;
+   609→  private time = 0;
+   610→  /** most recent callbacks (for hurt→teleport outside update loop) */
+   611→  private lastCb: MobCallbacks | null = null;
+   612→
+   613→  constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string }) {
+   614→    this.scene = scene;
+   615→    this.world = world;
+   616→    this.arrowMat = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+   617→    this.playerArrowMat = new THREE.MeshLambertMaterial({ color: 0xc8a06a });
+   618→    this.potionMat = new THREE.MeshLambertMaterial({ color: 0xa44fd8, transparent: true, opacity: 0.92 });
+   619→  }
+   620→
+   621→  get count(): number {
+   622→    return this.mobs.length;
+   623→  }
+   624→
+   625→  /** QA/testing helper: force-spawn a mob at position (variant for sheep) */
+   626→  debugSpawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
+   627→    return this.spawn(type, x, y, z, variant);
+   628→  }
+   629→
+   630→  clear(): void {
+   631→    for (const m of this.mobs) {
+   632→      this.scene.remove(m.group);
+   633→      this.scene.remove(m.parts.shadow);
+   634→    }
+   635→    this.mobs = [];
+   636→    for (const a of this.arrows) this.scene.remove(a.mesh);
+   637→    this.arrows = [];
+   638→    for (const p of this.potions) this.scene.remove(p.mesh);
+   639→    this.potions = [];
+   640→  }
+   641→
+   642→  /** raycast mobs for attacks; returns nearest hit within reach */
+   643→  raycastMob(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number): MobHit | null {
+   644→    let best: MobHit | null = null;
+   645→    for (const m of this.mobs) {
+   646→      if (m.dead) continue;
+   647→      const t = rayAABB(ox, oy, oz, dx, dy, dz, m, reach);
+   648→      if (t !== null && (!best || t < best.dist)) best = { mob: m, dist: t };
+   649→    }
+   650→    return best;
+   651→  }
+   652→
+   653→  /** serialize live mobs for the world save (excludes dying) */
+   654→  serialize(): SavedMob[] {
+   655→    const out: SavedMob[] = [];
+   656→    for (const m of this.mobs) {
+   657→      if (m.dead) continue;
+   658→      out.push({
+   659→        type: m.type,
+   660→        x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2),
+   661→        health: Math.max(1, Math.round(m.health)),
+   662→        yaw: +m.yaw.toFixed(2),
+   663→        ...(m.variant ? { variant: m.variant } : {}),
+   664→      });
+   665→      if (out.length >= 28) break;
+   666→    }
+   667→    return out;
+   668→  }
+   669→
+   670→  /** restore mobs from a save; suppresses the spawn burst right after */
+   671→  restore(list: SavedMob[]): void {
+   672→    for (const s of list) {
+   673→      if (!(s.type in MOB_DEFS)) continue;
+   674→      if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z)) continue;
+   675→      const m = this.spawn(s.type as MobType, s.x, s.y, s.z, s.variant ?? '');
+   676→      if (m) {
+   677→        m.health = Math.max(1, Math.min(m.def.health, Math.round(s.health)));
+   678→        m.yaw = Number.isFinite(s.yaw) ? s.yaw : m.yaw;
+   679→        m.targetYaw = m.yaw;
+   680→      }
+   681→    }
+   682→    this.spawnTimer = 6;
+   683→  }
+   684→
+   685→  private spawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
+   686→    const def = MOB_DEFS[type];
+   687→    const skinKey = variant && type === 'sheep' ? `sheep:${variant}` : type;
+   688→    const skins = getMobSkins(skinKey);
+   689→    const parts = def.builder(skins);
+   690→    // per-instance material clones so hurt tint is individual (array-aware: heads
+   691→    // use [plain×4, face] material arrays)
+   692→    const cloned = parts.materials.map((mm) => mm.clone());
+   693→    const mapping = new Map<THREE.Material, THREE.Material>();
+   694→    parts.materials.forEach((mm, i2) => mapping.set(mm, cloned[i2]));
+   695→    parts.group.traverse((obj) => {
+   696→      const mesh = obj as THREE.Mesh;
+   697→      if (!mesh.isMesh) return;
+   698→      if (Array.isArray(mesh.material)) {
+   699→        mesh.material = mesh.material.map((mm) => mapping.get(mm) ?? mm);
+   700→      } else if (mapping.has(mesh.material as THREE.Material)) {
+   701→        mesh.material = mapping.get(mesh.material) as THREE.Material;
+   702→      }
+   703→    });
+   704→    parts.materials = cloned;
+   705→    this.scene.add(parts.group);
+   706→    const shadow = makeShadow(def.width * 0.55, this.scene);
+   707→    const mob: Mob = {
+   708→      type, def,
+   709→      x, y, z, vx: 0, vy: 0, vz: 0,
+   710→      width: def.width, height: def.height,
+   711→      onGround: false, inWater: false,
+   712→      group: parts.group, parts,
+   713→      health: def.health,
+   714→      yaw: Math.random() * Math.PI * 2,
+   715→      targetYaw: 0,
+   716→      state: 'idle',
+   717→      stateTimer: 1 + Math.random() * 3,
+   718→      walkPhase: 0,
+   719→      hurtT: 0, attackCd: 0, ambientCd: 3 + Math.random() * 6,
+   720→      burnTimer: 0, burning: false,
+   721→      fuse: -1, dead: false, deathT: 0,
+   722→      provoked: false, teleportCd: 0, waterHurtT: 0,
+   723→      variant: type === 'sheep' ? (variant || 'white') : '',
+   724→      wanderX: x, wanderZ: z,
+   725→      tintR: 1, tintG: 1, tintB: 1,
+   726→      lightF: 1, lastAppliedF: 1,
+   727→    };
+   728→    mob.targetYaw = mob.yaw;
+   729→    parts.shadow = shadow;
+   730→    this.mobs.push(mob);
+   731→    return mob;
+   732→  }
+   733→
+   734→  private trySpawnMob(playerX: number, playerY: number, playerZ: number, sunLevel: number, passiveCount: number, hostileCount: number): void {
+   735→    const angle = Math.random() * Math.PI * 2;
+   736→    const dist = 16 + Math.random() * 26;
+   737→    const x = Math.floor(playerX + Math.cos(angle) * dist) + 0.5;
+   738→    const z = Math.floor(playerZ + Math.sin(angle) * dist) + 0.5;
+   739→    const cx = Math.floor(x);
+   740→    const cz = Math.floor(z);
+   741→    // find surface
+   742→    let sy = -1;
+   743→    for (let y = 95; y > 2; y--) {
+   744→      const id = this.world.getBlock(cx, y, cz);
+   745→      if (id !== 0 && !isWaterId(id)) {
+   746→        sy = y;
+   747→        break;
+   748→      }
+   749→    }
+   750→    if (sy < 3) return;
+   751→    const above = this.world.getBlock(cx, sy + 1, cz);
+   752→    const above2 = this.world.getBlock(cx, sy + 2, cz);
+   753→    if (above !== 0 || above2 !== 0) return;
+   754→    const groundId = this.world.getBlock(cx, sy, cz);
+   755→    if (isWaterId(groundId)) return;
+   756→
+   757→    const l = this.world.getLight(cx, sy + 1, cz);
+   758→    if (l < 0) return;
+   759→    const skyL = l >> 4;
+   760→    const blkL = l & 15;
+   761→    const effLight = Math.max(blkL, skyL * sunLevel);
+   762→
+   763→    // villagers live on village grounds (planks / cobblestone); mooshrooms on mycelium
+   764→    if (groundId === BLOCK.PLANKS || groundId === BLOCK.COBBLESTONE) {
+   765→      // swamp planks/cobble = witch hut grounds: keep a witch around (day or night)
+   766→      if (this.world.biomeAt?.(cx, cz) === 'swamp') {
+   767→        const witchCount = this.mobs.filter((m2) => m2.type === 'witch').length;
+   768→        if (witchCount < 1 && Math.random() < 0.3) {
+   769→          this.spawn('witch', x, sy + 1, z);
+   770→        }
+   771→        return;
+   772→      }
+   773→      // iron golem: at most one patrolling each village chunk roll
+   774→      const golemCount = this.mobs.filter((m2) => m2.type === 'golem').length;
+   775→      if (golemCount < 1 && Math.random() < 0.22 && skyL >= 9 && sunLevel > 0.55) {
+   776→        this.spawn('golem', x, sy + 1, z);
+   777→        return;
+   778→      }
+   779→      const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
+   780→      if (villagerCount < 5 && skyL >= 9 && sunLevel > 0.55) {
+   781→        const herd = 1 + Math.floor(Math.random() * 2);
+   782→        for (let i = 0; i < herd; i++) this.spawn('villager', x + (Math.random() - 0.5) * 2, sy + 1, z + (Math.random() - 0.5) * 2);
+   783→      }
+   784→      return;
+   785→    }
+   786→    if (groundId === BLOCK.MYCELIUM) {
+   787→      const passiveNow = passiveCount + this.mobs.filter((m) => m.type === 'mooshroom').length;
+   788→      if (passiveNow < 12 && skyL >= 9 && sunLevel > 0.55) {
+   789→        const herd = 1 + Math.floor(Math.random() * 2);
+   790→        for (let i = 0; i < herd; i++) this.spawn('mooshroom', x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3);
+   791→      }
+   792→      return;
+   793→    }
+   794→
+   795→    const wantHostile = hostileCount < 12 && (effLight < 6);
+   796→    const wantPassive = passiveCount < 10 && skyL >= 9 && sunLevel > 0.55 && (groundId === BLOCK.GRASS || groundId === BLOCK.SNOW_GRASS);
+   797→
+   798→    if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
+   799→      const roll = Math.random();
+   800→      const isSwamp = this.world.biomeAt?.(cx, cz) === 'swamp';
+   801→      const type: MobType = roll < 0.32 ? 'zombie' : roll < 0.58 ? 'skeleton' : roll < 0.74 ? 'creeper' : roll < 0.86 ? 'spider' : roll < 0.95 && isSwamp ? 'witch' : 'enderman';
+   802→      this.spawn(type, x, sy + 1, z);
+   803→    } else if (wantPassive) {
+   804→      const roll = Math.random();
+   805→      const type: MobType = roll < 0.3 ? 'pig' : roll < 0.55 ? 'sheep' : roll < 0.8 ? 'cow' : 'chicken';
+   806→      // spawn small herd for passive
+   807→      const herd = 1 + Math.floor(Math.random() * 3);
+   808→      for (let i = 0; i < herd; i++) {
+   809→        this.spawn(type, x + (Math.random() - 0.5) * 3, sy + 1, z + (Math.random() - 0.5) * 3, type === 'sheep' ? pickSheepVariant() : '');
+   810→      }
+   811→    }
+   812→  }
+   813→
+   814→  hurtMob(mob: Mob, dmg: number, kx: number, kz: number, cb?: MobCallbacks): boolean {
+   815→    if (mob.dead) return false;
+   816→    mob.health -= dmg;
+   817→    mob.hurtT = 0.4;
+   818→    const len = Math.hypot(kx, kz) || 1;
+   819→    mob.vx += (kx / len) * 7;
+   820→    mob.vz += (kz / len) * 7;
+   821→    mob.vy = Math.max(mob.vy, 4.4);
+   822→    audio.mobHurt(mob.def.sound);
+   823→    if (mob.def.hostile) {
+   824→      mob.state = 'chase';
+   825→      if (mob.type === 'spider' || mob.type === 'enderman') mob.provoked = true;
+   826→    } else if (mob.type === 'golem') {
+   827→      // golems never flee — they stoically keep patrolling
+   828→      mob.state = 'idle';
+   829→    } else {
+   830→      mob.state = 'flee';
+   831→      mob.stateTimer = 4;
+   832→      mob.wanderX = mob.x + (mob.x - kx) * 10;
+   833→      mob.wanderZ = mob.z + (mob.z - kz) * 10;
+   834→    }
+   835→    // endermen often warp away when hurt (MC behavior)
+   836→    const ecb = cb ?? this.lastCb;
+   837→    if (mob.type === 'enderman' && !mob.dead && ecb && Math.random() < 0.55) {
+   838→      this.teleportNear(mob, mob.x, mob.z, 7, 15, ecb);
+   839→    }
+   840→    if (mob.health <= 0) {
+   841→      mob.dead = true;
+   842→      mob.deathT = 0.45;
+   843→      if (mob.type === 'creeper' && mob.fuse >= 0) mob.fuse = -1;
+   844→      return true;
+   845→    }
+   846→    return false;
+   847→  }
+   848→
+   849→  /** enderman teleport: find a valid surface spot within [minR,maxR] of (cx,cz) */
+   850→  private teleportNear(m: Mob, cx: number, cz: number, minR: number, maxR: number, cb: MobCallbacks): boolean {
+   851→    const ox = m.x, oy = m.y, oz = m.z;
+   852→    for (let i = 0; i < 14; i++) {
+   853→      const a = Math.random() * Math.PI * 2;
+   854→      const r = minR + Math.random() * (maxR - minR);
+   855→      const x = Math.floor(cx + Math.cos(a) * r);
+   856→      const z = Math.floor(cz + Math.sin(a) * r);
+   857→      let sy = -1;
+   858→      for (let y = 95; y > 2; y--) {
+   859→        const id = this.world.getBlock(x, y, z);
+   860→        if (id !== 0 && !isWaterId(id)) { sy = y; break; }
+   861→      }
+   862→      if (sy < 3) continue;
+   863→      // head room for full height
+   864→      const top = Math.ceil(m.def.height);
+   865→      let clear = true;
+   866→      for (let yy = sy + 1; yy <= sy + top; yy++) {
+   867→        if (this.world.getBlock(x, yy, z) !== 0) { clear = false; break; }
+   868→      }
+   869→      if (!clear) continue;
+   870→      m.x = x + 0.5; m.y = sy + 1; m.z = z + 0.5;
+   871→      m.vx = 0; m.vy = 0; m.vz = 0;
+   872→      m.state = 'idle'; m.stateTimer = 1;
+   873→      cb.teleportParticles(ox, oy + m.height * 0.4, oz);
+   874→      cb.teleportParticles(m.x, m.y + m.height * 0.4, m.z);
+   875→      audio.enderTeleport();
+   876→      return true;
+   877→    }
+   878→    return false;
+   879→  }
+   880→
+   881→  /** effective light (0..15) at a mob's position */
+   882→  private lightAt(m: Mob, sunLevel: number): number {
+   883→    const l = this.world.getLight(Math.floor(m.x), Math.floor(m.y + 0.5), Math.floor(m.z));
+   884→    if (l < 0) return 15;
+   885→    return Math.max(l & 15, (l >> 4) * sunLevel);
+   886→  }
+   887→
+   888→  /** creeper explosion */
+   889→  private explode(x: number, y: number, z: number, cb: MobCallbacks): void {
+   890→    audio.boom();
+   891→    const R = 2.6;
+   892→    for (let bx = Math.floor(x - R); bx <= Math.floor(x + R); bx++)
+   893→      for (let by = Math.floor(y - R); by <= Math.floor(y + R); by++)
+   894→        for (let bz = Math.floor(z - R); bz <= Math.floor(z + R); bz++) {
+   895→          const d = Math.hypot(bx + 0.5 - x, by + 0.5 - y, bz + 0.5 - z);
+   896→          if (d > R) continue;
+   897→          const id = this.world.getBlock(bx, by, bz);
+   898→          if (id !== 0 && id !== BLOCK.BEDROCK && id !== BLOCK.WATER) {
+   899→            // chain reaction: TNT in the blast primes instead of vanishing
+   900→            if (id === BLOCK.TNT) {
+   901→              cb.igniteTnt?.(bx, by, bz);
+   902→              continue;
+   903→            }
+   904→            this.world.setBlock(bx, by, bz, 0);
+   905→          }
+   906→        }
+   907→    // damage nearby mobs (chain) + player
+   908→    for (const m of this.mobs) {
+   909→      if (m.dead) continue;
+   910→      const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+   911→      if (d < R * 2 && m.type !== 'creeper') {
+   912→        this.hurtMob(m, Math.max(1, Math.round(14 * (1 - d / (R * 2)))), m.x - x, m.z - z, cb);
+   913→      }
+   914→    }
+   915→    const pd = Math.hypot(cb.playerX - x, cb.playerY - y, cb.playerZ - z);
+   916→    if (pd < R * 2) {
+   917→      cb.damagePlayer(Math.max(1, Math.round(16 * (1 - pd / (R * 2)))), x, z);
+   918→    }
+   919→    cb.explodeParticles(x, y, z);
+   920→  }
+   921→
+   922→  update(dt: number, player: AABBEntity & { eyeY(): number }, sunLevel: number, cb: MobCallbacks): void {
+   923→    this.time += dt;
+   924→    this.lastCb = cb;
+   925→    // ── spawning ──
+   926→    this.spawnTimer -= dt;
+   927→    if (this.spawnTimer <= 0) {
+   928→      this.spawnTimer = 1.6;
+   929→      let passive = 0, hostile = 0;
+   930→      for (const m of this.mobs) {
+   931→        if (m.def.hostile) hostile++; else passive++;
+   932→      }
+   933→      if (this.mobs.length < 22 && Math.random() < 0.5) {
+   934→        this.trySpawnMob(player.x, player.y, player.z, sunLevel, passive, hostile);
+   935→      }
+   936→    }
+   937→
+   938→    // ── mobs ──
+   939→    for (let i = this.mobs.length - 1; i >= 0; i--) {
+   940→      const m = this.mobs[i];
+   941→      const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y, player.z - m.z);
+   942→
+   943→      // despawn far / invalid: NaN or below-world positions never heal on their
+   944→      // own and NaN breaks the distance check (NaN > 64 === false), so mobs that
+   945→      // glitch out would otherwise persist forever
+   946→      if (
+   947→        distToPlayer > 64 ||
+   948→        !Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.z) ||
+   949→        m.y < -20
+   950→      ) {
+   951→        this.scene.remove(m.group);
+   952→        this.scene.remove(m.parts.shadow);
+   953→        this.mobs.splice(i, 1);
+   954→        continue;
+   955→      }
+   956→
+   957→      // death animation
+   958→      if (m.dead) {
+   959→        m.deathT -= dt;
+   960→        m.group.rotation.z = Math.min(Math.PI / 2, m.group.rotation.z + dt * 6);
+   961→        this.setTint(m, 1, 0.35, 0.35);
+   962→        if (m.deathT <= 0) {
+   963→          for (const drop of m.def.drops) {
+   964→            const n = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+   965→            // sheep drop wool matching their color variant
+   966→            const dropId = m.type === 'sheep' && drop.id === BLOCK.WOOL ? sheepWoolId(m.variant) : drop.id;
+   967→            for (let d = 0; d < n; d++) {
+   968→              cb.spawnDrop(dropId, m.x, m.y + 0.4, m.z);
+   969→            }
+   970→          }
+   971→          cb.spawnXP(m.x, m.y + 0.4, m.z, m.def.hostile ? 5 : 1 + Math.floor(Math.random() * 3));
+   972→          cb.deathParticles(m.x, m.y + m.height / 2, m.z);
+   973→          this.scene.remove(m.group);
+   974→          this.scene.remove(m.parts.shadow);
+   975→          this.mobs.splice(i, 1);
+   976→        }
+   977→        continue;
+   978→      }
+   979→
+   980→      // hurt tint decay
+   981→      if (m.hurtT > 0) {
+   982→        m.hurtT -= dt;
+   983→        this.setTint(m, 1, 0.35, 0.35);
+   984→        if (m.hurtT <= 0) this.setTint(m, 1, 1, 1);
+   985→      }
+   986→
+   987→      // ambient sound
+   988→      m.ambientCd -= dt;
+   989→      if (m.ambientCd <= 0 && distToPlayer < 18) {
+   990→        m.ambientCd = 5 + Math.random() * 9;
+   991→        audio.mobAmbient(m.def.sound, distToPlayer);
+   992→      }
+   993→
+   994→      // ── AI ──
+   995→      m.attackCd -= dt;
+   996→      m.stateTimer -= dt;
+   997→      let moveSpeed = 0;
+   998→      let wantX = 0, wantZ = 0;
+   999→
+  1000→      // creative players are invisible to hostile AI: treat hostiles as passive wanderers
+  1001→      const hostileActive = m.def.hostile && !cb.playerCreative;
+  1002→
+  1003→      if (m.type === 'golem') {
+  1004→        // ── iron golem: patrol, and charge the nearest hostile mob ──
+  1005→        let prey: Mob | null = null;
+  1006→        let preyDist = 11;
+  1007→        for (const o of this.mobs) {
+  1008→          if (o.dead || !o.def.hostile) continue;
+  1009→          const d = Math.hypot(o.x - m.x, o.y - m.y, o.z - m.z);
+  1010→          if (d < preyDist) { preyDist = d; prey = o; }
+  1011→        }
+  1012→        if (prey) {
+  1013→          m.state = 'chase';
+  1014→          const dx = prey.x - m.x;
+  1015→          const dz = prey.z - m.z;
+  1016→          const len = Math.hypot(dx, dz) || 1;
+  1017→          wantX = dx / len; wantZ = dz / len;
+  1018→          moveSpeed = m.def.speed;
+  1019→          if (preyDist < 2.4 && m.attackCd <= 0) {
+  1020→            m.attackCd = 1.5;
+  1021→            // hammer blow: heavy damage + MC-style launch into the air
+  1022→            this.hurtMob(prey, 9, dx, dz, cb);
+  1023→            if (!prey.dead) {
+  1024→              prey.vy = 8.5;
+  1025→              prey.vx += (dx / len) * 5;
+  1026→              prey.vz += (dz / len) * 5;
+  1027→            }
+  1028→            audio.golemSmash(preyDist);
+  1029→            cb.explodeParticles(m.x + (dx / len) * 1.4, m.y + 1.9, m.z + (dz / len) * 1.4);
+  1030→          }
+  1031→        } else {
+  1032→          // patrol: villager-style wander
+  1033→          wanderAI(m, dt);
+  1034→          if (m.state === 'walk') {
+  1035→            const dx = m.wanderX - m.x;
+  1036→            const dz = m.wanderZ - m.z;
+  1037→            const len = Math.hypot(dx, dz);
+  1038→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 4; }
+  1039→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.45; }
+  1040→          }
+  1041→        }
+  1042→      } else if (!hostileActive) {
+  1043→        // passive
+  1044→        if (m.state === 'flee') {
+  1045→          const dx = m.x - player.x;
+  1046→          const dz = m.z - player.z;
+  1047→          const len = Math.hypot(dx, dz) || 1;
+  1048→          wantX = dx / len; wantZ = dz / len;
+  1049→          moveSpeed = m.def.speed * 1.7;
+  1050→          if (m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1051→        } else if (m.state === 'walk') {
+  1052→          const dx = m.wanderX - m.x;
+  1053→          const dz = m.wanderZ - m.z;
+  1054→          const len = Math.hypot(dx, dz);
+  1055→          if (len < 0.8 || m.stateTimer <= 0) {
+  1056→            m.state = 'idle';
+  1057→            m.stateTimer = 2 + Math.random() * 4;
+  1058→          } else {
+  1059→            wantX = dx / len; wantZ = dz / len;
+  1060→            moveSpeed = m.def.speed;
+  1061→          }
+  1062→        } else {
+  1063→          if (m.stateTimer <= 0) {
+  1064→            m.state = 'walk';
+  1065→            m.stateTimer = 4 + Math.random() * 5;
+  1066→            const a = Math.random() * Math.PI * 2;
+  1067→            const r = 3 + Math.random() * 6;
+  1068→            m.wanderX = m.x + Math.cos(a) * r;
+  1069→            m.wanderZ = m.z + Math.sin(a) * r;
+  1070→          }
+  1071→        }
+  1072→      } else if (m.type === 'zombie') {
+  1073→        // burn in sunlight
+  1074→        this.updateBurning(m, dt, sunLevel, cb);
+  1075→        if (distToPlayer < 24) {
+  1076→          m.state = 'chase';
+  1077→          const dx = player.x - m.x;
+  1078→          const dz = player.z - m.z;
+  1079→          const len = Math.hypot(dx, dz) || 1;
+  1080→          wantX = dx / len; wantZ = dz / len;
+  1081→          moveSpeed = m.def.speed;
+  1082→          if (distToPlayer < 1.7 && m.attackCd <= 0) {
+  1083→            m.attackCd = 1.1;
+  1084→            cb.damagePlayer(m.def.damage, m.x, m.z);
+  1085→            audio.zombieAttack();
+  1086→          }
+  1087→        } else {
+  1088→          wanderAI(m, dt);
+  1089→          if (m.state === 'walk') {
+  1090→            const dx = m.wanderX - m.x;
+  1091→            const dz = m.wanderZ - m.z;
+  1092→            const len = Math.hypot(dx, dz);
+  1093→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1094→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+  1095→          }
+  1096→        }
+  1097→      } else if (m.type === 'skeleton') {
+  1098→        this.updateBurning(m, dt, sunLevel, cb);
+  1099→        if (distToPlayer < 17) {
+  1100→          m.state = 'chase';
+  1101→          const dx = player.x - m.x;
+  1102→          const dz = player.z - m.z;
+  1103→          const len = Math.hypot(dx, dz) || 1;
+  1104→          // keep distance ~8
+  1105→          if (distToPlayer > 9.5) { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed; }
+  1106→          else if (distToPlayer < 6) { wantX = -dx / len; wantZ = -dz / len; moveSpeed = m.def.speed * 0.8; }
+  1107→          else {
+  1108→            // strafe
+  1109→            wantX = -dz / len * 0.6; wantZ = dx / len * 0.6;
+  1110→            moveSpeed = m.def.speed * 0.5;
+  1111→          }
+  1112→          if (m.attackCd <= 0 && distToPlayer < 15) {
+  1113→            m.attackCd = 2.2;
+  1114→            this.shootArrow(m, player);
+  1115→          }
+  1116→        } else {
+  1117→          wanderAI(m, dt);
+  1118→          if (m.state === 'walk') {
+  1119→            const dx = m.wanderX - m.x;
+  1120→            const dz = m.wanderZ - m.z;
+  1121→            const len = Math.hypot(dx, dz);
+  1122→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1123→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+  1124→          }
+  1125→        }
+  1126→      } else if (m.type === 'witch') {
+  1127→        // ranged caster: hold 5.5-9.5 blocks, strafe, lob splash potions
+  1128→        if (distToPlayer < 15 && !cb.playerCreative) {
+  1129→          m.state = 'chase';
+  1130→          const dx = player.x - m.x;
+  1131→          const dz = player.z - m.z;
+  1132→          const len = Math.hypot(dx, dz) || 1;
+  1133→          if (distToPlayer > 9.5) { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed; }
+  1134→          else if (distToPlayer < 5.5) { wantX = -dx / len; wantZ = -dz / len; moveSpeed = m.def.speed * 0.75; }
+  1135→          else {
+  1136→            wantX = -dz / len * 0.55; wantZ = dx / len * 0.55;
+  1137→            moveSpeed = m.def.speed * 0.45;
+  1138→          }
+  1139→          if (m.attackCd <= 0 && distToPlayer < 14) {
+  1140→            m.attackCd = 2.8;
+  1141→            this.throwPotion(m, player);
+  1142→          }
+  1143→        } else {
+  1144→          wanderAI(m, dt);
+  1145→          if (m.state === 'walk') {
+  1146→            const dx = m.wanderX - m.x;
+  1147→            const dz = m.wanderZ - m.z;
+  1148→            const len = Math.hypot(dx, dz);
+  1149→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1150→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+  1151→          }
+  1152→        }
+  1153→      } else if (m.type === 'spider') {
+  1154→        // spiders are neutral in bright light unless provoked (MC behavior)
+  1155→        const light = this.lightAt(m, sunLevel);
+  1156→        const aggressive = (m.provoked || light < 8) && !cb.playerCreative;
+  1157→        if (aggressive && distToPlayer < 20) {
+  1158→          m.state = 'chase';
+  1159→          const dx = player.x - m.x;
+  1160→          const dz = player.z - m.z;
+  1161→          const len = Math.hypot(dx, dz) || 1;
+  1162→          wantX = dx / len; wantZ = dz / len;
+  1163→          moveSpeed = m.def.speed;
+  1164→          if (distToPlayer < 2.1 && m.attackCd <= 0) {
+  1165→            m.attackCd = 1.2;
+  1166→            cb.damagePlayer(m.def.damage, m.x, m.z);
+  1167→            audio.zombieAttack();
+  1168→          }
+  1169→        } else {
+  1170→          if (m.state === 'chase') { m.state = 'idle'; m.stateTimer = 2; }
+  1171→          wanderAI(m, dt);
+  1172→          if (m.state === 'walk') {
+  1173→            const dx = m.wanderX - m.x;
+  1174→            const dz = m.wanderZ - m.z;
+  1175→            const len = Math.hypot(dx, dz);
+  1176→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1177→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.5; }
+  1178→          }
+  1179→        }
+  1180→      } else if (m.type === 'enderman') {
+  1181→        // water burns endermen — take damage + warp out
+  1182→        if (m.inWater) {
+  1183→          m.waterHurtT += dt;
+  1184→          if (m.waterHurtT > 1) {
+  1185→            m.waterHurtT = 0;
+  1186→            this.hurtMob(m, 1, 0, 0.01, cb);
+  1187→          }
+  1188→          if (!m.dead && Math.random() < 0.6) {
+  1189→            this.teleportNear(m, cb.playerX, cb.playerZ, 8, 16, cb);
+  1190→          }
+  1191→        }
+  1192→        if (m.dead) continue;
+  1193→        // stare provocation: player looking at the enderman within ~13° cone
+  1194→        if (!m.provoked && !cb.playerCreative) {
+  1195→          const dx = m.x - cb.playerX;
+  1196→          const dy = (m.y + m.height * 0.85) - (cb.playerY + 1.62);
+  1197→          const dz = m.z - cb.playerZ;
+  1198→          const len = Math.hypot(dx, dy, dz);
+  1199→          if (len < 26 && len > 0.5) {
+  1200→            const dot = (dx * cb.playerForward.x + dy * cb.playerForward.y + dz * cb.playerForward.z) / len;
+  1201→            if (dot > 0.975) {
+  1202→              m.provoked = true;
+  1203→              m.teleportCd = 2;
+  1204→              audio.enderStare();
+  1205→            }
+  1206→          }
+  1207→        }
+  1208→        if (m.provoked && !cb.playerCreative) {
+  1209→          m.state = 'chase';
+  1210→          m.teleportCd -= dt;
+  1211→          const dx = player.x - m.x;
+  1212→          const dz = player.z - m.z;
+  1213→          const len = Math.hypot(dx, dz) || 1;
+  1214→          wantX = dx / len; wantZ = dz / len;
+  1215→          moveSpeed = m.def.speed;
+  1216→          if (distToPlayer < 2.2 && m.attackCd <= 0) {
+  1217→            m.attackCd = 1.0;
+  1218→            cb.damagePlayer(m.def.damage, m.x, m.z);
+  1219→            audio.zombieAttack();
+  1220→          }
+  1221→          // reposition closer via warp when far
+  1222→          if (m.teleportCd <= 0 && distToPlayer > 9) {
+  1223→            m.teleportCd = 4 + Math.random() * 3;
+  1224→            this.teleportNear(m, player.x, player.z, 4, 8, cb);
+  1225→          }
+  1226→        } else {
+  1227→          m.teleportCd -= dt;
+  1228→          if (m.teleportCd <= 0) {
+  1229→            m.teleportCd = 12 + Math.random() * 14;
+  1230→            // endermen dislike daylight — occasionally warp away
+  1231→            if (sunLevel > 0.8 && Math.random() < 0.5) {
+  1232→              this.teleportNear(m, m.x, m.z, 8, 18, cb);
+  1233→            }
+  1234→          }
+  1235→          wanderAI(m, dt);
+  1236→          if (m.state === 'walk') {
+  1237→            const dx = m.wanderX - m.x;
+  1238→            const dz = m.wanderZ - m.z;
+  1239→            const len = Math.hypot(dx, dz);
+  1240→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1241→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.4; }
+  1242→          }
+  1243→        }
+  1244→      } else if (m.type === 'creeper') {
+  1245→        if (m.fuse >= 0) {
+  1246→          // fused: flash + wait
+  1247→          m.fuse += dt;
+  1248→          const flash = Math.sin(m.fuse * 22) > 0 ? 1 : 0;
+  1249→          this.setTint(m, 1, 1 + flash * 1.2, 1 + flash * 1.2);
+  1250→          if (distToPlayer > 5) {
+  1251→            m.fuse = -1;
+  1252→            this.setTint(m, 1, 1, 1);
+  1253→          } else if (m.fuse > 1.5) {
+  1254→            this.explode(m.x, m.y + 0.8, m.z, cb);
+  1255→            this.scene.remove(m.group);
+  1256→            this.scene.remove(m.parts.shadow);
+  1257→            this.mobs.splice(i, 1);
+  1258→            continue;
+  1259→          }
+  1260→        } else if (distToPlayer < 13) {
+  1261→          m.state = 'chase';
+  1262→          const dx = player.x - m.x;
+  1263→          const dz = player.z - m.z;
+  1264→          const len = Math.hypot(dx, dz) || 1;
+  1265→          wantX = dx / len; wantZ = dz / len;
+  1266→          moveSpeed = m.def.speed;
+  1267→          if (distToPlayer < 2.4) {
+  1268→            m.fuse = 0;
+  1269→            audio.fuseHiss();
+  1270→          }
+  1271→        } else {
+  1272→          wanderAI(m, dt);
+  1273→          if (m.state === 'walk') {
+  1274→            const dx = m.wanderX - m.x;
+  1275→            const dz = m.wanderZ - m.z;
+  1276→            const len = Math.hypot(dx, dz);
+  1277→            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+  1278→            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+  1279→          }
+  1280→        }
+  1281→      }
+  1282→
+  1283→      // ── movement + physics ──
+  1284→      const prevX = m.x, prevZ = m.z;
+  1285→      if (moveSpeed > 0) {
+  1286→        m.vx += (wantX * moveSpeed - m.vx) * Math.min(1, dt * 8);
+  1287→        m.vz += (wantZ * moveSpeed - m.vz) * Math.min(1, dt * 8);
+  1288→        m.targetYaw = Math.atan2(wantX, wantZ);
+  1289→      } else {
+  1290→        m.vx *= Math.pow(0.02, dt);
+  1291→        m.vz *= Math.pow(0.02, dt);
+  1292→      }
+  1293→      m.vy -= 32 * dt;
+  1294→      if (m.type === 'chicken') m.vy = Math.max(m.vy, -3.2);
+  1295→      moveEntity(this.world, m, dt);
+  1296→
+  1297→      // jump when blocked — spiders climb instead (even mid-wall while chasing)
+  1298→      if (moveSpeed > 0) {
+  1299→        const blockedXZ = Math.hypot(m.x - prevX, m.z - prevZ) < moveSpeed * dt * 0.3;
+  1300→        if (blockedXZ) {
+  1301→          if (m.def.climbs && m.state === 'chase') {
+  1302→            m.vy = Math.max(m.vy, m.onGround ? 3.6 : 2.8);
+  1303→          } else if (m.onGround) {
+  1304→            m.vy = 8.4;
+  1305→          }
+  1306→        }
+  1307→      }
+  1308→      if (m.inWater) {
+  1309→        m.vy = Math.max(m.vy, 1.8); // swim up
+  1310→      }
+  1311→
+  1312→      // ── visuals ──
+  1313→      // smooth yaw
+  1314→      let dyaw = m.targetYaw - m.yaw;
+  1315→      while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+  1316→      while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+  1317→      m.yaw += dyaw * Math.min(1, dt * 8);
+  1318→      m.group.position.set(m.x, m.y, m.z);
+  1319→      m.group.rotation.y = m.yaw;
+  1320→
+  1321→      // walk animation
+  1322→      const hSpeed = Math.hypot(m.vx, m.vz);
+  1323→      m.walkPhase += hSpeed * dt * 3.2;
+  1324→      const swing = Math.sin(m.walkPhase * 2.4) * Math.min(1, hSpeed / m.def.speed) * 0.65;
+  1325→      const legs = m.parts.legs;
+  1326→      if (m.type === 'spider') {
+  1327→        // 8 sideways legs: fore-aft pivot swing (rotation.y around body) + slight bob
+  1328→        const amp = 0.45 * Math.min(1, hSpeed / m.def.speed);
+  1329→        for (let li = 0; li < legs.length; li++) {
+  1330→          const pivot = legs[li] as unknown as THREE.Object3D & { userData: { baseYaw?: number } };
+  1331→          const base = pivot.userData.baseYaw ?? 0;
+  1332→          const idx = li % 4;
+  1333→          const phase = m.walkPhase * 2.6 + idx * 1.5 + (li < 4 ? 0 : Math.PI * 0.5);
+  1334→          pivot.rotation.y = base + Math.sin(phase) * amp;
+  1335→          pivot.rotation.x = Math.cos(phase) * amp * 0.35;
+  1336→        }
+  1337→      } else if (legs.length === 4) {
+  1338→        legs[0].rotation.x = swing;
+  1339→        legs[3].rotation.x = swing;
+  1340→        legs[1].rotation.x = -swing;
+  1341→        legs[2].rotation.x = -swing;
+  1342→      } else {
+  1343→        legs[0].rotation.x = swing;
+  1344→        if (legs[1]) legs[1].rotation.x = -swing;
+  1345→      }
+  1346→      // arms: zombie reaches forward; enderman hangs/swings (raised when provoked);
+  1347→      // chicken wings flap while airborne
+  1348→      for (const arm of m.parts.arms) {
+  1349→        const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+  1350→        if (!pivot) continue;
+  1351→        if (m.type === 'chicken') {
+  1352→          // wings fold against the body on the ground; flap fast while falling
+  1353→          // (slow-fall glide). side -1 left / +1 right → mirror the z rotation
+  1354→          const side = ((pivot.userData.side as number) || 1);
+  1355→          const flap = !m.onGround ? Math.sin(this.time * 26) * 0.85 : 0;
+  1356→          pivot.rotation.z = side * flap;
+  1357→          pivot.rotation.x = 0;
+  1358→          continue;
+  1359→        }
+  1360→        if (m.type === 'zombie') {
+  1361→          pivot.rotation.x = -Math.PI / 2 + Math.sin(m.walkPhase * 2.4) * 0.12;
+  1362→          pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.06;
+  1363→        } else if (m.type === 'golem') {
+  1364→          // heavy pendulum sway; raised when charging a target
+  1365→          const raised = m.state === 'chase' ? -1.2 : 0;
+  1366→          pivot.rotation.x = raised + Math.sin(m.walkPhase * 2.4 + (pivot === (m.parts.arms[0] as unknown as { pivot?: THREE.Group }).pivot ? 0 : Math.PI)) * 0.3;
+  1367→          pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.05;
+  1368→        } else if (m.type === 'enderman') {
+  1369→          if (m.provoked) {
+  1370→            pivot.rotation.x = -1.15 + Math.sin(m.walkPhase * 2.4) * 0.1;
+  1371→            pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.04;
+  1372→          } else {
+  1373→            pivot.rotation.x = Math.sin(m.walkPhase * 2.4) * 0.35;
+  1374→            pivot.rotation.z = 0;
+  1375→          }
+  1376→        }
+  1377→      }
+  1378→      // head bob
+  1379→      m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
+  1380→      // enderman glows purple when provoked
+  1381→      if (m.type === 'enderman' && m.hurtT <= 0) {
+  1382→        if (m.provoked) this.setTint(m, 1, 0.72, 1.12);
+  1383→        else this.setTint(m, 1, 1, 1);
+  1384→      }
+  1385→
+  1386→      // ── world-light shading: entities obey voxel light (night realism) ──
+  1387→      // same formula as the terrain shader: brightness = max(blockLight, skyLight × sunLevel).
+  1388→      // Mobs go dark on the surface at night, stay visible near torches, and are
+  1389→      // near-black in unlit caves — instead of glowing under scene lights.
+  1390→      {
+  1391→        const lb = this.world.getLightForMesh(Math.floor(m.x), Math.floor(m.y + m.height * 0.7), Math.floor(m.z));
+  1392→        const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel));
+  1393→        m.lightF += (target - m.lightF) * Math.min(1, dt * 6);
+  1394→        if (Math.abs(m.lightF - m.lastAppliedF) > 0.004) {
+  1395→          const f = m.lightF;
+  1396→          for (const mm of m.parts.materials) mm.color.setRGB(m.tintR * f, m.tintG * f, m.tintB * f);
+  1397→          m.lastAppliedF = f;
+  1398→        }
+  1399→      }
+  1400→
+  1401→      // shadow
+  1402→      m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
+  1403→      const shadowScale = m.onGround ? 1 : Math.max(0.4, 1 - Math.min(1, Math.abs(m.vy) * 0.06));
+  1404→      m.parts.shadow.scale.setScalar(shadowScale);
+  1405→
+  1406→      // burning visual
+  1407→      if (m.burning && Math.random() < dt * 12) {
+  1408→        cb.fireParticle(m.x + (Math.random() - 0.5) * 0.5, m.y + Math.random() * m.height, m.z + (Math.random() - 0.5) * 0.5);
+  1409→      }
+  1410→    }
+  1411→
+  1412→    // ── arrows ──
+  1413→    for (let i = this.arrows.length - 1; i >= 0; i--) {
+  1414→      const a = this.arrows[i];
+  1415→      a.life -= dt;
+  1416→      if (a.life <= 0 || a.stuck > (a.fromPlayer ? 45 : 0.8)) {
+  1417→        this.scene.remove(a.mesh);
+  1418→        this.arrows.splice(i, 1);
+  1419→        continue;
+  1420→      }
+  1421→      if (a.stuck > 0) {
+  1422→        a.stuck += dt;
+  1423→        // stuck player arrows are pickupable: walk near them to collect
+  1424→        if (a.fromPlayer && a.stuck > 0.8) {
+  1425→          const dxp = a.x - player.x, dyp = a.y - (player.y + player.height * 0.5), dzp = a.z - player.z;
+  1426→          if (Math.hypot(dxp, dyp, dzp) < 1.5) {
+  1427→            cb.spawnDrop(ITEM.ARROW, a.x, a.y, a.z);
+  1428→            this.scene.remove(a.mesh);
+  1429→            this.arrows.splice(i, 1);
+  1430→            continue;
+  1431→          }
+  1432→        }
+  1433→        continue;
+  1434→      }
+  1435→      // substepped movement so fast arrows can't tunnel through mobs/blocks
+  1436→      const speedLen = Math.hypot(a.vx, a.vy, a.vz);
+  1437→      const steps = Math.max(1, Math.ceil((speedLen * dt) / 0.45));
+  1438→      const sdt = dt / steps;
+  1439→      let done = false;
+  1440→      for (let s = 0; s < steps && !done; s++) {
+  1441→        a.vy -= 18 * sdt;
+  1442→        const nx = a.x + a.vx * sdt;
+  1443→        const ny = a.y + a.vy * sdt;
+  1444→        const nz = a.z + a.vz * sdt;
+  1445→        // block hit
+  1446→        const bid = this.world.getBlock(Math.floor(nx), Math.floor(ny), Math.floor(nz));
+  1447→        if (bid !== 0) {
+  1448→          a.stuck = 0.001;
+  1449→          audio.arrowHit();
+  1450→          done = true;
+  1451→          break;
+  1452→        }
+  1453→        a.x = nx; a.y = ny; a.z = nz;
+  1454→        if (a.fromPlayer) {
+  1455→          // mob hit: point-in-expanded-AABB test per mob
+  1456→          for (const m of this.mobs) {
+  1457→            if (m.dead) continue;
+  1458→            if (
+  1459→              a.x > m.x - m.width / 2 - 0.15 && a.x < m.x + m.width / 2 + 0.15 &&
+  1460→              a.y > m.y - 0.1 && a.y < m.y + m.height + 0.1 &&
+  1461→              a.z > m.z - m.width / 2 - 0.15 && a.z < m.z + m.width / 2 + 0.15
+  1462→            ) {
+  1463→              const klen = Math.hypot(a.vx, a.vz) || 1;
+  1464→              const shooterDist = Math.hypot(a.x - cb.playerX, a.y - cb.playerY, a.z - cb.playerZ);
+  1465→              this.hurtMob(m, a.dmg, (a.vx / klen) * 4.5, (a.vz / klen) * 4.5, cb);
+  1466→              // hurtMob sets dead=true immediately on lethal damage
+  1467→              if (m.dead) cb.killByPlayer?.(shooterDist);
+  1468→              a.life = 0;
+  1469→              done = true;
+  1470→              break;
+  1471→            }
+  1472→          }
+  1473→          if (done) break;
+  1474→        } else {
+  1475→          // player hit
+  1476→          const px = player.x, py = player.y + player.height * 0.5, pz = player.z;
+  1477→          if (Math.hypot(a.x - px, a.y - py, a.z - pz) < 0.75) {
+  1478→            cb.damagePlayer(3, a.x - a.vx, a.z - a.vz);
+  1479→            a.life = 0;
+  1480→            done = true;
+  1481→            break;
+  1482→          }
+  1483→        }
+  1484→      }
+  1485→      if (done) continue;
+  1486→      a.mesh.position.set(a.x, a.y, a.z);
+  1487→      a.mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
+  1488→    }
+  1489→
+  1490→    // ── witch potions ──
+  1491→    for (let i = this.potions.length - 1; i >= 0; i--) {
+  1492→      const po = this.potions[i];
+  1493→      po.life -= dt;
+  1494→      po.vy -= 16 * dt;
+  1495→      // substepped so fast potions can't tunnel through blocks
+  1496→      const sp = Math.hypot(po.vx, po.vy, po.vz);
+  1497→      const steps = Math.max(1, Math.ceil((sp * dt) / 0.4));
+  1498→      const sdt = dt / steps;
+  1499→      let shattered = false;
+  1500→      for (let s = 0; s < steps && !shattered; s++) {
+  1501→        po.x += po.vx * sdt;
+  1502→        po.y += po.vy * sdt;
+  1503→        po.z += po.vz * sdt;
+  1504→        const bid = this.world.getBlock(Math.floor(po.x), Math.floor(po.y), Math.floor(po.z));
+  1505→        if (bid !== 0 && !isWaterId(bid)) shattered = true;
+  1506→      }
+  1507→      const pd = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+  1508→      if (pd < 1.1) shattered = true; // direct hit
+  1509→      if (shattered || po.life <= 0) {
+  1510→        this.scene.remove(po.mesh);
+  1511→        this.potions.splice(i, 1);
+  1512→        if (shattered) {
+  1513→          const shatterDist = Math.hypot(po.x - cb.playerX, po.y - cb.playerY, po.z - cb.playerZ);
+  1514→          audio.potionShatter(shatterDist);
+  1515→          cb.teleportParticles(po.x, po.y + 0.2, po.z); // purple magic splash
+  1516→          // splash radius 2.6: damage + poison (MC splash lingering area)
+  1517→          const pDist = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+  1518→          if (pDist < 2.6 && !cb.playerCreative) {
+  1519→            cb.damagePlayer(Math.max(1, Math.round(4 * (1 - pDist / 2.6))), po.x, po.z);
+  1520→            cb.poisonPlayer?.(4.5);
+  1521→          }
+  1522→        }
+  1523→        continue;
+  1524→      }
+  1525→      po.mesh.position.set(po.x, po.y, po.z);
+  1526→      po.mesh.rotation.x += dt * 7;
+  1527→      po.mesh.rotation.z += dt * 4;
+  1528→    }
+  1529→  }
+  1530→
+  1531→  /** witch lob: arc a splash potion toward the player */
+  1532→  private throwPotion(m: Mob, player: AABBEntity & { eyeY(): number }): void {
+  1533→    const ox = m.x, oy = m.y + 1.5, oz = m.z;
+  1534→    const tx = player.x, ty = player.y + 0.9, tz = player.z;
+  1535→    const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+  1536→    const dist = Math.hypot(dx, dy, dz) || 1;
+  1537→    const speed = 10;
+  1538→    const lead = dist / speed;
+  1539→    const vx = dx / dist * speed + (Math.random() - 0.5) * 0.7;
+  1540→    const vz = dz / dist * speed + (Math.random() - 0.5) * 0.7;
+  1541→    const vy = dy / dist * speed + lead * 8 + 1.2;
+  1542→    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.22, 0.17), this.potionMat);
+  1543→    mesh.position.set(ox, oy, oz);
+  1544→    this.scene.add(mesh);
+  1545→    this.potions.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 6, mesh });
+  1546→    audio.potionThrow(dist);
+  1547→  }
+  1548→
+  1549→  private updateBurning(m: Mob, dt: number, sunLevel: number, cb: MobCallbacks): void {
+  1550→    const lx = Math.floor(m.x);
+  1551→    const ly = Math.floor(m.y + 1);
+  1552→    const lz = Math.floor(m.z);
+  1553→    const light = this.world.getLight(lx, ly, lz);
+  1554→    const skyL = light < 0 ? 0 : light >> 4;
+  1555→    const inSunlight = skyL === 15 && sunLevel > 0.82;
+  1556→    if (inSunlight) {
+  1557→      m.burnTimer += dt;
+  1558→      m.burning = true;
+  1559→      if (m.burnTimer > 1) {
+  1560→        m.burnTimer = 0;
+  1561→        this.hurtMob(m, 1, 0, 0.01, cb);
+  1562→      }
+  1563→    } else {
+  1564→      m.burning = false;
+  1565→      m.burnTimer = 0;
+  1566→    }
+  1567→  }
+  1568→
+  1569→  private shootArrow(m: Mob, player: AABBEntity & { eyeY(): number }): void {
+  1570→    const ox = m.x;
+  1571→    const oy = m.y + 1.5;
+  1572→    const oz = m.z;
+  1573→    const tx = player.x;
+  1574→    const ty = player.eyeY() - 0.2;
+  1575→    const tz = player.z;
+  1576→    const dx = tx - ox, dy = ty - oy, dz = tz - oz;
+  1577→    const dist = Math.hypot(dx, dy, dz);
+  1578→    const speed = 18;
+  1579→    const lead = dist / speed;
+  1580→    const vx = dx / dist * speed + (Math.random() - 0.5) * 1.2;
+  1581→    const vy = dy / dist * speed + lead * 9 + (Math.random() - 0.5) * 0.8;
+  1582→    const vz = dz / dist * speed + (Math.random() - 0.5) * 1.2;
+  1583→    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.55), this.arrowMat);
+  1584→    mesh.position.set(ox, oy, oz);
+  1585→    this.scene.add(mesh);
+  1586→    this.arrows.push({ x: ox, y: oy, z: oz, vx, vy, vz, life: 8, stuck: 0, mesh, fromPlayer: false, dmg: 0 });
+  1587→    audio.bowShoot(dist);
+  1588→  }
+  1589→
+  1590→  /** per-mob state tint (hurt red / creeper flash / enderman purple) × world light */
+  1591→  private setTint(m: Mob, r: number, g: number, b: number): void {
+  1592→    m.tintR = r; m.tintG = g; m.tintB = b;
+  1593→    const f = m.lightF;
+  1594→    for (const mm of m.parts.materials) mm.color.setRGB(r * f, g * f, b * f);
+  1595→    m.lastAppliedF = f;
+  1596→  }
+  1597→
+  1598→  /** player-shot arrow (from bow). dx,dy,dz = unit direction. */
+  1599→  shootPlayerArrow(x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number, dmg: number): void {
+  1600→    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.6), this.playerArrowMat);
+  1601→    mesh.position.set(x, y, z);
+  1602→    this.scene.add(mesh);
+  1603→    this.arrows.push({ x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, life: 20, stuck: 0, mesh, fromPlayer: true, dmg });
+  1604→    audio.bowShoot(0);
+  1605→  }
+  1606→}
+  1607→
+  1608→// ─── sheep color variants (MC-ish distribution) ─────────────────────────────
+  1609→const SHEEP_VARIANTS: { name: string; weight: number }[] = [
+  1610→  { name: 'white', weight: 0.82 },
+  1611→  { name: 'light_gray', weight: 0.05 },
+  1612→  { name: 'gray', weight: 0.05 },
+  1613→  { name: 'brown', weight: 0.05 },
+  1614→  { name: 'black', weight: 0.03 },
+  1615→];
+  1616→
+  1617→function pickSheepVariant(): string {
+  1618→  const r = Math.random();
+  1619→  let acc = 0;
+  1620→  for (const v of SHEEP_VARIANTS) {
+  1621→    acc += v.weight;
+  1622→    if (r < acc) return v.name;
+  1623→  }
+  1624→  return 'white';
+  1625→}
+  1626→
+  1627→function sheepWoolId(variant: string): number {
+  1628→  switch (variant) {
+  1629→    case 'light_gray': return BLOCK.WOOL_LIGHT_GRAY;
+  1630→    case 'gray': return BLOCK.WOOL_GRAY;
+  1631→    case 'brown': return BLOCK.WOOL_BROWN;
+  1632→    case 'black': return BLOCK.WOOL_BLACK;
+  1633→    default: return BLOCK.WOOL;
+  1634→  }
+  1635→}
+  1636→
+  1637→/** idle<->walk transitions for hostile mobs far from player */
+  1638→function wanderAI(m: Mob, _dt: number): void {
+  1639→  void _dt;
+  1640→  if (m.state === 'chase' || m.state === 'flee') {
+  1641→    m.state = 'idle';
+  1642→    m.stateTimer = 1 + Math.random() * 2;
+  1643→  }
+  1644→  if (m.state === 'idle' && m.stateTimer <= 0) {
+  1645→    m.state = 'walk';
+  1646→    m.stateTimer = 4 + Math.random() * 5;
+  1647→    const a = Math.random() * Math.PI * 2;
+  1648→    const r = 3 + Math.random() * 6;
+  1649→    m.wanderX = m.x + Math.cos(a) * r;
+  1650→    m.wanderZ = m.z + Math.sin(a) * r;
+  1651→  }
+  1652→}
+  1653→

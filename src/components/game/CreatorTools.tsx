@@ -24,6 +24,8 @@ const MOB_SPAWN_LIST: { type: MobType; label: string; variant?: string }[] = [
   { type: 'villager', label: 'Villager' },
   { type: 'witch', label: 'Witch' },
   { type: 'golem', label: 'Iron Golem' },
+  { type: 'snowgolem', label: 'Snow Golem' },
+  { type: 'snowgolem', label: 'Sheared Snow Golem', variant: 'plain' },
 ];
 
 const TIME_PRESETS: { label: string; t: number }[] = [

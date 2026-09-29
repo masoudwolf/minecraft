@@ -35,6 +35,8 @@ const MOB_ENTRIES: MobEntry[] = [
   { key: 'villager', label: 'Villager' },
   { key: 'witch', label: 'Witch', hostile: true },
   { key: 'golem', label: 'Iron Golem' },
+  { key: 'snowgolem', label: 'Snow Golem (Pumpkin)', variant: 'pumpkin' },
+  { key: 'snowgolem', label: 'Snow Golem (Sheared)', variant: 'plain' },
 ];
 
 // ─── Block catalog (all registered, in id order) ─────────────────────────────
@@ -155,9 +157,9 @@ function AssetViewer() {
         const head = g.userData.head as THREE.Object3D | undefined;
         if (legs) {
           legs.forEach((leg, i) => {
-            const pivot = (leg as unknown as { children?: THREE.Object3D[] }).children?.[0];
-            const mesh = (pivot ?? leg) as THREE.Object3D & { rotation: THREE.Euler };
-            mesh.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
+            // legs[] ARE the hip pivot groups — rotate them (top pivot, MC-style);
+            // rotating the inner mesh would pivot around its middle (old bug)
+            leg.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
           });
         }
         if (arms) {
@@ -232,7 +234,7 @@ function AssetViewer() {
         g.userData.arms = parts.arms;
         // center: legs hang from pivots; body already ~grounded
         g.add(parts.group);
-        handle.targetY = entry.key === 'chicken' ? 0.45 : entry.key === 'golem' || entry.key === 'enderman' ? 1.35 : 0.85;
+        handle.targetY = entry.key === 'chicken' || entry.key === 'snowgolem' ? 0.45 : entry.key === 'golem' || entry.key === 'enderman' ? 1.35 : 0.85;
         handle.dist = entry.key === 'golem' ? 5 : 3.6;
       }
       void skins;
