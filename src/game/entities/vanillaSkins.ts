@@ -41,6 +41,7 @@ const texCache = new Map<string, THREE.Texture>();
 const decodedImages = new Map<string, HTMLImageElement>();
 /** Redraw callbacks (boxCrossTex placeholders) run once preload completes. */
 const onPreloaded: (() => void)[] = [];
+let preloadDone = false;
 export function preloadEntityTextures(files?: string[]): Promise<unknown> {
   const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch', 'snow_golem', 'pumpkin_top', 'pumpkin_side', 'carved_pumpkin'];
   return Promise.all(
@@ -58,6 +59,7 @@ export function preloadEntityTextures(files?: string[]): Promise<unknown> {
         }),
     ),
   ).then(() => {
+    preloadDone = true;
     // engine fire-and-forgets this preload — any boxCrossTex placeholder built
     // before now redraws in place (self-healing, no poisoned caches)
     while (onPreloaded.length) onPreloaded.shift()!();
@@ -202,10 +204,32 @@ export function tintedTex(file: string, color: string, strength = 1): THREE.Text
   const hit = tintCache.get(key);
   if (hit) return hit;
   const img = decodedImages.get(file);
-  if (!img) return vanillaTex(file); // not preloaded yet — untinted fallback
-  const out = pixelTex(tintCanvas(img, color, strength));
-  tintCache.set(key, out);
-  return out;
+  if (img) {
+    const out = pixelTex(tintCanvas(img, color, strength));
+    tintCache.set(key, out);
+    return out;
+  }
+  if (preloadDone) return vanillaTex(file); // file never arrived — untinted fallback
+  // Preload still in flight: build a placeholder canvas texture NOW, cache it,
+  // and repaint the SAME canvas when the image decodes (self-healing — a model
+  // built in the first frames keeps this texture object, so repainting in place
+  // tints it retroactively instead of caching an untinted skin forever).
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 8;
+  const pctx = c.getContext('2d')!;
+  pctx.fillStyle = '#f0f0f0';
+  pctx.fillRect(0, 0, 8, 8);
+  const tex = pixelTex(c);
+  const redraw = (): void => {
+    const im = decodedImages.get(file);
+    if (!im) return;
+    c.width = im.width; c.height = im.height;
+    c.getContext('2d')!.drawImage(tintCanvas(im, color, strength), 0, 0);
+    tex.needsUpdate = true;
+  };
+  onPreloaded.push(redraw);
+  tintCache.set(key, tex);
+  return tex;
 }
 
 // ─── Composite box-cross texture from block textures (snow golem pumpkin) ────

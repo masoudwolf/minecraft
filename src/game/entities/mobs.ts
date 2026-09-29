@@ -795,6 +795,13 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   },
 };
 
+/** Viewer/QA helper: logical hitbox dims (width × height) for a mob type. */
+export function getMobDims(type: string): { w: number; h: number } | null {
+  const base = (type === 'mooshroom_brown' ? 'mooshroom' : type) as MobType;
+  const def = MOB_DEFS[base];
+  return def ? { w: def.width, h: def.height } : null;
+}
+
 // ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
 export interface MobHit { mob: Mob; dist: number }
 

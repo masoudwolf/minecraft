@@ -4,13 +4,20 @@
 // Rebuilt (post-reset). Mobs render with the vanilla-skin pipeline, blocks
 // render with the exact same atlas/face mapping the world mesher uses — so
 // what you see here is what the game renders.
+//
+// Model-inspection toolkit (user request):
+//  • Rotate toggle — freeze the turntable for a fixed view
+//  • Animation selector — Idle / Walk / per-mob specials (bow aim, provoked,
+//    golem charge, chicken wing flap) mirroring the in-game animator poses
+//  • Speed slider — 0× (pose freeze) .. 2× slow-mo/fast
+//  • Grid / Hitbox / Pivots / Skin panel / Light BG / Reset view
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useGameStore, type Screen } from '@/game/state';
 import { audio } from '@/game/audio';
 import { getMobSkins } from '@/game/entities/mobSkins';
-import { preloadEntityTextures } from '@/game/entities/vanillaSkins';
-import { buildMobModel, type MobParts } from '@/game/entities/mobs';
+import { preloadEntityTextures, type MobSkinPart } from '@/game/entities/vanillaSkins';
+import { buildMobModel, getMobDims } from '@/game/entities/mobs';
 import { getAtlas, tileUV } from '@/game/textures/atlas';
 import { BLOCKS, type BlockDef } from '@/game/blocks';
 
@@ -39,6 +46,18 @@ const MOB_ENTRIES: MobEntry[] = [
   { key: 'snowgolem', label: 'Snow Golem (Sheared)', variant: 'plain' },
 ];
 
+// ─── Animation catalog (mirrors the in-game animator poses) ──────────────────
+interface AnimOpt { key: 'idle' | 'walk' | 'attack' | 'flap'; label: string; mobs?: string[] }
+const ANIMS: AnimOpt[] = [
+  { key: 'idle', label: 'Idle' },
+  { key: 'walk', label: 'Walk' },
+  { key: 'attack', label: 'Attack / Chase', mobs: ['skeleton', 'enderman', 'golem', 'spider'] },
+  { key: 'flap', label: 'Wing Flap (air)', mobs: ['chicken'] },
+];
+function animsFor(key: string): AnimOpt[] {
+  return ANIMS.filter((a) => !a.mobs || a.mobs.includes(key));
+}
+
 // ─── Block catalog (all registered, in id order) ─────────────────────────────
 function blockList(): BlockDef[] {
   return Object.values(BLOCKS).sort((a, b) => a.id - b.id);
@@ -49,10 +68,19 @@ interface ViewportHandle {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
+  grid: THREE.GridHelper;
   yaw: number;
   pitch: number;
   dist: number;
   targetY: number;
+}
+
+function defaultCam(tab: 'mobs' | 'blocks', key?: string): { targetY: number; dist: number } {
+  if (tab === 'blocks') return { targetY: 0.5, dist: 3.2 };
+  if (key === 'chicken') return { targetY: 0.45, dist: 3.6 };
+  if (key === 'golem') return { targetY: 1.35, dist: 5 };
+  if (key === 'enderman') return { targetY: 1.35, dist: 3.6 };
+  return { targetY: 0.85, dist: 3.6 };
 }
 
 function AssetViewer() {
@@ -60,20 +88,37 @@ function AssetViewer() {
   const [tab, setTab] = useState<'mobs' | 'blocks'>('mobs');
   const [mobSel, setMobSel] = useState(0);
   const [blockSel, setBlockSel] = useState(0);
-  const [walking, setWalking] = useState(true);
   const [wireUV, setWireUV] = useState(false);
+
+  // new: animation + inspection controls
+  const [anim, setAnim] = useState<AnimOpt['key']>('walk');
+  const [speed, setSpeed] = useState(1);
+  const [spin, setSpin] = useState(true);
+  const [grid, setGrid] = useState(false);
+  const [hitbox, setHitbox] = useState(false);
+  const [pivots, setPivots] = useState(false);
+  const [skinsView, setSkinsView] = useState(false);
+  const [lightBg, setLightBg] = useState(false);
 
   const canvasHost = useRef<HTMLDivElement>(null);
   const vp = useRef<ViewportHandle | null>(null);
   const modelGroup = useRef<THREE.Group | null>(null);
-  const animState = useRef({ t: 0, walking, wireUV });
-  useEffect(() => {
-    animState.current.walking = walking;
-    animState.current.wireUV = wireUV;
-  }, [walking, wireUV]);
 
   const blocks = useMemo(() => blockList(), []);
   const blockDef = blocks[Math.min(blockSel, blocks.length - 1)];
+  const entry = MOB_ENTRIES[mobSel];
+  const mobAnims = useMemo(() => animsFor(entry?.key ?? ''), [entry]);
+  // derive (not clamp): picking a chicken-only anim then switching mob falls
+  // back to Walk without any setState-in-effect
+  const effAnim: AnimOpt['key'] = mobAnims.some((a) => a.key === anim) ? anim : 'walk';
+
+  const animState = useRef({ t: 0, anim: effAnim, speed, spin, wireUV });
+  useEffect(() => {
+    animState.current.anim = effAnim;
+    animState.current.speed = speed;
+    animState.current.spin = spin;
+    animState.current.wireUV = wireUV;
+  }, [effAnim, speed, spin, wireUV]);
 
   // ── scene setup (once) ──
   useEffect(() => {
@@ -101,7 +146,13 @@ function AssetViewer() {
     dir2.position.set(-4, 2, -3);
     scene.add(dir2);
 
-    const handle: ViewportHandle = { scene, camera, renderer, yaw: 0.6, pitch: 0.18, dist: 4.2, targetY: 1 };
+    // ground grid (hidden until toggled — helps judge scale/ground plane)
+    const gridHelper = new THREE.GridHelper(12, 24, 0x6a6a76, 0x3a3a42);
+    gridHelper.position.y = 0.002;
+    gridHelper.visible = false;
+    scene.add(gridHelper);
+
+    const handle: ViewportHandle = { scene, camera, renderer, grid: gridHelper, yaw: 0.6, pitch: 0.18, dist: 4.2, targetY: 1 };
     vp.current = handle;
 
     // orbit controls (manual — no addon dependency)
@@ -147,30 +198,30 @@ function AssetViewer() {
 
     const tick = (): void => {
       raf = requestAnimationFrame(tick);
-      animState.current.t += 0.05;
-      // walk animation on the current mob model
+      const s = animState.current;
+      s.t += 0.05 * s.speed;
+      // mob pose — mirrors the in-game animator per animation state
       const g = modelGroup.current;
       if (g) {
-        const s = animState.current;
         const legs = g.userData.legs as THREE.Object3D[] | undefined;
         const arms = g.userData.arms as THREE.Object3D[] | undefined;
         const head = g.userData.head as THREE.Object3D | undefined;
+        const mobKey = g.userData.mobKey as string | undefined;
+        const walking = s.anim === 'walk';
         if (legs) {
-          const isSpider = g.userData.mobKey === 'spider';
+          const isSpider = mobKey === 'spider';
           legs.forEach((leg, i) => {
             // legs[] ARE the hip pivot groups — rotate them (top pivot, MC-style);
             // rotating the inner mesh would pivot around its middle (old bug).
-            // Spider legs keep their vanilla base y/z pose — the viewer only
-            // adds a subtle scuttle around it (their legs rotate y/z, not x).
             if (isSpider) {
               const ud = (leg as THREE.Object3D & { userData: { baseY?: number; baseZ?: number; phase?: number; side?: number } }).userData;
               const ph = ud.phase ?? 0;
               const sd = ud.side ?? 1;
-              const amt = s.walking ? 0.5 : 0;
+              const amt = walking ? 0.5 : 0;
               leg.rotation.y = (ud.baseY ?? 0) + -Math.cos(s.t * 2.1 + ph) * 0.4 * amt * sd;
               leg.rotation.z = (ud.baseZ ?? 0) + Math.abs(Math.sin(s.t * 1.05 + ph) * 0.4) * amt * sd;
             } else {
-              leg.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
+              leg.rotation.x = walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
             }
           });
         }
@@ -179,20 +230,41 @@ function AssetViewer() {
             const pivot = (arm as unknown as { limbPivot?: THREE.Group }).limbPivot;
             const target = pivot ?? arm;
             const side = i === 0 ? 1 : -1;
-            const wing = (arm.userData as { part?: string }).part === 'wing';
-            if (wing) {
-              target.rotation.z = s.walking ? Math.sin(s.t * 5) * 0.16 * side : 0;
-            } else {
-              target.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i === 0 ? 0 : Math.PI)) * 0.45 : 0;
+            const part = (arm.userData as { part?: string }).part;
+            // only mobs the game actually animates — others keep their build pose
+            if (mobKey === 'chicken' && part === 'wing') {
+              // game: sin(time*26)*0.85 → viewer t runs ≈3× slower
+              target.rotation.z = s.anim === 'flap' ? Math.sin(s.t * 8.7) * 0.85 * side : 0;
+              target.rotation.x = 0;
+            } else if (mobKey === 'zombie') {
+              target.rotation.x = -Math.PI / 2 + Math.sin(s.t * 2.4) * (walking ? 0.12 : 0.02);
+              target.rotation.z = walking ? Math.sin(s.t * 1.2) * 0.06 : 0;
+            } else if (mobKey === 'skeleton') {
+              const bow = (target.userData as { bowArm?: boolean }).bowArm;
+              if (bow) target.rotation.x = s.anim === 'attack' ? -1.35 : Math.sin(s.t * 2.4) * (walking ? 0.2 : 0.03);
+              else target.rotation.x = s.anim === 'attack' ? 0.08 : Math.sin(s.t * 2.4 + Math.PI) * (walking ? 0.35 : 0.04);
+              target.rotation.z = 0;
+            } else if (mobKey === 'golem') {
+              const raised = s.anim === 'attack' ? -1.2 : 0;
+              target.rotation.x = raised + Math.sin(s.t * 2.4 + (i === 0 ? 0 : Math.PI)) * (walking ? 0.3 : 0.04);
+              target.rotation.z = walking ? Math.sin(s.t * 1.2) * 0.05 : 0;
+            } else if (mobKey === 'enderman') {
+              if (s.anim === 'attack') {
+                target.rotation.x = -1.15 + Math.sin(s.t * 2.4) * 0.1;
+                target.rotation.z = Math.sin(s.t * 1.2) * 0.04;
+              } else {
+                target.rotation.x = Math.sin(s.t * 2.4) * (walking ? 0.35 : 0.05);
+                target.rotation.z = 0;
+              }
             }
           });
         }
         if (head) {
-          // gentle idle look-around + mouse-follow flavor: head tracks slightly with yaw
+          // gentle idle look-around, always on (game keeps this too)
           head.rotation.y = Math.sin(s.t * 0.55) * 0.22;
           head.rotation.x = Math.sin(s.t * 0.4) * 0.06;
         }
-        g.rotation.y += 0.0035; // slow turntable
+        if (s.spin) g.rotation.y += 0.0035; // turntable (togglable)
       }
       // camera orbit
       const { yaw, pitch, dist, targetY } = handle;
@@ -218,6 +290,14 @@ function AssetViewer() {
     };
   }, []);
 
+  // ── background / grid toggles (scene-level) ──
+  useEffect(() => {
+    const h = vp.current;
+    if (!h) return;
+    (h.scene.background as THREE.Color).set(lightBg ? 0xcfcfd6 : 0x1c1c24);
+    h.grid.visible = grid;
+  }, [lightBg, grid]);
+
   // ── (re)build the displayed model ──
   useEffect(() => {
     const handle = vp.current;
@@ -229,10 +309,9 @@ function AssetViewer() {
     }
     const g = new THREE.Group();
     if (tab === 'mobs') {
-      const entry = MOB_ENTRIES[mobSel] ?? MOB_ENTRIES[0];
-      const skinKey = entry.variant ? `${entry.key}:${entry.variant}` : entry.key;
-      const skins = getMobSkins(skinKey);
-      const parts = buildMobModel(entry.key, entry.variant);
+      const e = MOB_ENTRIES[mobSel] ?? MOB_ENTRIES[0];
+      const skins = getMobSkins(e.variant ? `${e.key}:${e.variant}` : e.key);
+      const parts = buildMobModel(e.key, e.variant);
       if (parts) {
         parts.group.traverse((o) => {
           const mesh = o as THREE.Mesh;
@@ -244,11 +323,11 @@ function AssetViewer() {
         });
         g.userData.legs = parts.legs;
         g.userData.arms = parts.arms;
-        g.userData.mobKey = entry.key;
-        // center: legs hang from pivots; body already ~grounded
+        g.userData.mobKey = e.key;
         g.add(parts.group);
-        handle.targetY = entry.key === 'chicken' ? 0.45 : entry.key === 'snowgolem' ? 0.85 : entry.key === 'golem' || entry.key === 'enderman' ? 1.35 : 0.85;
-        handle.dist = entry.key === 'golem' ? 5 : 3.6;
+        const cam = defaultCam('mobs', e.key);
+        handle.targetY = cam.targetY;
+        handle.dist = cam.dist;
       }
       void skins;
     } else if (blockDef) {
@@ -257,20 +336,135 @@ function AssetViewer() {
         g.add(mesh);
         g.userData.head = undefined;
       }
-      handle.targetY = 0.5;
-      handle.dist = 3.2;
+      const cam = defaultCam('blocks');
+      handle.targetY = cam.targetY;
+      handle.dist = cam.dist;
     }
     handle.scene.add(g);
     modelGroup.current = g;
     (window as unknown as { __avModel?: THREE.Group }).__avModel = g; // QA hook
   }, [tab, mobSel, blockDef]);
 
-  const entry = MOB_ENTRIES[mobSel];
+  // ── model tooling: wireframe material flag + hitbox/pivot overlays ──
+  // (re-applied on toggle / model change, after the build effect above)
+  useEffect(() => {
+    const g = modelGroup.current;
+    if (!g) return;
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && mesh.material) {
+        (mesh.material as THREE.MeshLambertMaterial).wireframe = wireUV;
+      }
+    });
+    // clear previous overlays
+    const old = (g.userData.overlays ?? []) as THREE.Object3D[];
+    for (const o of old) {
+      o.parent?.remove(o);
+      o.traverse((c) => {
+        const m = c as THREE.Line & THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) (m.material as THREE.Material).dispose();
+      });
+    }
+    g.userData.overlays = [];
+    if (tab !== 'mobs') return;
+
+    const overlays: THREE.Object3D[] = [];
+    if (hitbox) {
+      const dims = getMobDims(g.userData.mobKey as string);
+      if (dims) {
+        const box = new THREE.BoxGeometry(dims.w, dims.h, dims.w);
+        const edges = new THREE.EdgesGeometry(box);
+        box.dispose();
+        const ls = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffb03a, transparent: true, opacity: 0.95 }));
+        ls.position.y = dims.h / 2;
+        ls.renderOrder = 2;
+        ls.name = 'hitbox';
+        g.add(ls);
+        overlays.push(ls);
+      }
+    }
+    if (pivots) {
+      // axis gizmo at every rotation origin: head, leg hips, arm shoulders —
+      // top-pivot correctness is visible at a glance (Y+ = swing axis up)
+      const addGizmo = (parent: THREE.Object3D | undefined, size: number): void => {
+        if (!parent) return;
+        const ax = new THREE.AxesHelper(size);
+        ax.renderOrder = 3;
+        ax.name = 'pivotGizmo';
+        parent.add(ax);
+        overlays.push(ax);
+      };
+      const head = g.userData.head as THREE.Object3D | undefined;
+      addGizmo(head, 0.22);
+      for (const leg of (g.userData.legs ?? []) as THREE.Object3D[]) addGizmo(leg, 0.16);
+      for (const arm of (g.userData.arms ?? []) as unknown as { limbPivot?: THREE.Group }[]) addGizmo(arm?.limbPivot, 0.16);
+    }
+    g.userData.overlays = overlays;
+  }, [tab, mobSel, blockDef, hitbox, pivots, wireUV]);
+
+  // ── skin/texture panel: every texture the current model uses (pure data —
+  // derived from the MobSkins parts, so no effects/setState involved) ──
+  const skinCards = useMemo(() => {
+    if (!skinsView) return [];
+    const cards: { label: string; size: string; src: string }[] = [];
+    const rasterize = (img: CanvasImageSource, w: number, h: number): string => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      return c.toDataURL();
+    };
+    if (tab === 'mobs') {
+      const e = MOB_ENTRIES[mobSel] ?? MOB_ENTRIES[0];
+      const skins = getMobSkins(e.variant ? `${e.key}:${e.variant}` : e.key);
+      const seen = new Map<THREE.Texture, { fields: string[]; part: MobSkinPart }>();
+      const visit = (field: string, part?: MobSkinPart): void => {
+        if (!part) return;
+        const prev = seen.get(part.tex);
+        if (prev) prev.fields.push(field);
+        else seen.set(part.tex, { fields: [field], part });
+      };
+      visit('head', skins.head); visit('body', skins.body); visit('limb', skins.limb);
+      visit('limb2', skins.limb2); visit('snout', skins.snout); visit('udder', skins.udder);
+      visit('horns', skins.horns); visit('extra', skins.extra); visit('extra2', skins.extra2);
+      visit('wing', skins.wing); visit('legsBaked', skins.legsBaked);
+      visit('hat', skins.hat); visit('hat1', skins.hat1); visit('hat2', skins.hat2); visit('hat3', skins.hat3);
+      if (skins.fur) {
+        visit('fur.head', skins.fur.head);
+        visit('fur.body', skins.fur.body);
+        visit('fur.limb', skins.fur.limb);
+      }
+      for (const { fields, part } of seen.values()) {
+        const img = part.tex.image as HTMLImageElement | HTMLCanvasElement | undefined;
+        if (!img) continue;
+        const src = img instanceof HTMLCanvasElement ? rasterize(img, img.width, img.height) : img.src;
+        cards.push({ label: fields.join(', '), size: `${part.texW}×${part.texH}`, src });
+      }
+    } else if (blockDef) {
+      const img = getAtlas().texture.image as HTMLCanvasElement | HTMLImageElement | undefined;
+      if (img) {
+        const src = img instanceof HTMLCanvasElement ? rasterize(img, img.width, img.height) : img.src;
+        cards.push({ label: `${blockDef.name} — block atlas`, size: `${img.width}×${img.height}`, src });
+      }
+    }
+    return cards;
+  }, [skinsView, tab, mobSel, blockDef]);
+
+  const resetView = (): void => {
+    const h = vp.current;
+    if (!h) return;
+    const cam = defaultCam(tab, tab === 'mobs' ? MOB_ENTRIES[mobSel]?.key : undefined);
+    h.yaw = 0.6; h.pitch = 0.18;
+    h.dist = cam.dist; h.targetY = cam.targetY;
+    if (modelGroup.current) modelGroup.current.rotation.y = 0;
+  };
+
+  const dims = tab === 'mobs' ? getMobDims(entry?.key ?? '') : null;
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col bg-[#101014]" style={{ fontFamily: 'var(--font-mc)' }}>
       {/* top bar */}
-      <div className="flex items-center gap-2 border-b-2 border-black/60 bg-[#2a2a31] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b-2 border-black/60 bg-[#2a2a31] px-3 py-2">
         <button
           className="border-2 border-[#5a5a5a] border-b-[#2e2e2e] border-r-[#2e2e2e] bg-[#6d6d6d] px-3 py-1.5 text-xs text-white hover:bg-[#7d7d7d]"
           onClick={() => { audio.click(); setScreen('menu' as Screen); }}
@@ -282,20 +476,31 @@ function AssetViewer() {
           <TabBtn active={tab === 'mobs'} onClick={() => { audio.click(); setTab('mobs'); }}>Mobs</TabBtn>
           <TabBtn active={tab === 'blocks'} onClick={() => { audio.click(); setTab('blocks'); }}>Blocks</TabBtn>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          {tab === 'mobs' && (
-            <>
-              <label className="hidden items-center gap-1 text-[10px] text-[#bbb] sm:flex">
-                <input type="checkbox" checked={walking} onChange={(e) => { audio.click(); setWalking(e.target.checked); }} />
-                Walk
-              </label>
-              <label className="hidden items-center gap-1 text-[10px] text-[#bbb] sm:flex">
-                <input type="checkbox" checked={wireUV} onChange={(e) => { audio.click(); setWireUV(e.target.checked); }} />
-                Wireframe
-              </label>
-            </>
-          )}
-        </div>
+        {tab === 'mobs' && (
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-[10px] text-[#ccc]">
+              <span className="text-[#999]">Anim</span>
+              <select
+                className="border-2 border-[#5a5a5a] border-b-[#2e2e2e] border-r-[#2e2e2e] bg-[#4a4a52] px-1.5 py-1 text-[11px] text-white outline-none"
+                value={effAnim}
+                onChange={(e) => { audio.click(); setAnim(e.target.value as AnimOpt['key']); }}
+              >
+                {mobAnims.map((a) => (
+                  <option key={a.key} value={a.key}>{a.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-[#ccc]">
+              <span className="text-[#999]">Speed</span>
+              <input
+                type="range" min={0} max={2} step={0.05} value={speed}
+                className="h-1 w-20 accent-[#c8a24a]"
+                onChange={(e) => setSpeed(Number(e.target.value))}
+              />
+              <span className="w-8 tabular-nums text-[#999]">{speed.toFixed(2)}×</span>
+            </label>
+          </div>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -327,13 +532,59 @@ function AssetViewer() {
 
         {/* viewport */}
         <div className="relative min-h-0 flex-1" ref={canvasHost}>
-          <div className="pointer-events-none absolute bottom-2 left-2 text-[10px] text-[#888]">
-            drag = orbit · wheel = zoom
+          {/* inspection toolbar (bottom-right) */}
+          <div className="absolute bottom-2 right-2 flex max-w-[85%] flex-wrap-reverse justify-end gap-1">
+            <ToolChip active={spin} label="Rotate" title="Turntable on/off — freeze the model" onClick={() => { audio.click(); setSpin((v) => !v); }} />
+            <ToolChip active={grid} label="Grid" title="Ground grid (scale reference)" onClick={() => { audio.click(); setGrid((v) => !v); }} />
+            <ToolChip active={skinsView} label="Skins" title="List the textures this model uses" onClick={() => { audio.click(); setSkinsView((v) => !v); }} />
+            {tab === 'mobs' && (
+              <>
+                <ToolChip active={hitbox} label="Hitbox" title="Logical collision box (width × height)" onClick={() => { audio.click(); setHitbox((v) => !v); }} />
+                <ToolChip active={pivots} label="Pivots" title="Show rotation origins (head/legs/arms)" onClick={() => { audio.click(); setPivots((v) => !v); }} />
+              </>
+            )}
+            <ToolChip active={wireUV} label="Wireframe" title="Wireframe overlay" onClick={() => { audio.click(); setWireUV((v) => !v); }} />
+            <ToolChip active={lightBg} label="Light BG" title="Light background (spot dark-on-dark issues)" onClick={() => { audio.click(); setLightBg((v) => !v); }} />
+            <ToolChip active={false} label="Reset" title="Reset camera + rotation" onClick={() => { audio.click(); resetView(); }} />
           </div>
-          <div className="pointer-events-none absolute right-2 top-2 border-2 border-black/40 bg-black/45 px-2 py-1 text-[11px] text-white">
-            {tab === 'mobs'
-              ? `${entry?.label ?? ''} — vanilla skin`
-              : `${blockDef?.name ?? ''} (#${blockDef?.id})`}
+
+          {/* skin/texture panel (bottom-left) */}
+          {skinsView && (
+            <div className="absolute bottom-2 left-2 max-h-[60%] w-56 overflow-y-auto border-2 border-black/60 bg-black/70 p-2">
+              <div className="mb-1 text-[10px] uppercase tracking-wide text-[#9a9aa6]">Textures in use</div>
+              {skinCards.length === 0 && <div className="text-[10px] text-[#777]">no textures</div>}
+              <div className="flex flex-col gap-2">
+                {skinCards.map((c, i) => (
+                  <div key={i}>
+                    <img
+                      src={c.src}
+                      alt={c.label}
+                      className="w-full border border-[#444] bg-[#222]"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                    <div className="mt-0.5 text-[9px] leading-tight text-[#aaa]">{c.label}</div>
+                    <div className="text-[9px] leading-tight text-[#666]">{c.size}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute bottom-2 left-2 text-[10px] text-[#888]">
+            {skinsView ? '' : 'drag = orbit · wheel = zoom'}
+          </div>
+          <div className="pointer-events-none absolute right-2 top-2 border-2 border-black/40 bg-black/45 px-2 py-1 text-right text-[11px] text-white">
+            <div>
+              {tab === 'mobs'
+                ? `${entry?.label ?? ''} — vanilla skin`
+                : `${blockDef?.name ?? ''} (#${blockDef?.id})`}
+            </div>
+            {tab === 'mobs' && dims && (
+              <div className="text-[9px] text-[#9a9aa6]">
+                hitbox {dims.w.toFixed(2)}×{dims.h.toFixed(2)} · anim {effAnim}
+                {!spin ? ' · static' : ''}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -348,6 +599,18 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
       onClick={onClick}
     >
       {children}
+    </button>
+  );
+}
+
+function ToolChip({ active, label, title, onClick }: { active: boolean; label: string; title: string; onClick: () => void }) {
+  return (
+    <button
+      title={title}
+      className={`border px-2 py-1 text-[10px] backdrop-blur-sm ${active ? 'border-[#e8c15a] bg-[#8a6d2f]/90 text-[#ffe9b0]' : 'border-[#555] bg-black/55 text-[#ccc] hover:bg-black/75'}`}
+      onClick={onClick}
+    >
+      {label}
     </button>
   );
 }
