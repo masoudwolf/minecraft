@@ -8,14 +8,33 @@ import { vanillaTex, tintedTex, boxCrossTex, type MobSkinPart, type BoxUVLayout 
 
 export interface MobSkins {
   head: MobSkinPart;
-  /** long nose (villager/witch/golem) */
+  /** long nose (villager/witch/golem) OR enderman inner hat layer */
   head2?: MobSkinPart;
   /** pig snout (rendered as a child of the head, like MC) */
   snout?: MobSkinPart;
   body: MobSkinPart;
+  /** spider thorax (6×6×6 neck cube between head and abdomen) */
+  thorax?: MobSkinPart;
   limb: MobSkinPart;
   /** arms when they use a different region than legs (zombie/skeleton/villager/golem) */
   limb2?: MobSkinPart;
+  /** villager/witch folded-arms bridge box (40,38) */
+  armBridge?: MobSkinPart;
+  /** golem LEFT arm/leg use their own mirrored regions */
+  armL?: MobSkinPart;
+  legL?: MobSkinPart;
+  /** golem hip skirt (0,70) */
+  skirt?: MobSkinPart;
+  /** snow golem lower body (0,36) 12×12×12 */
+  lower?: MobSkinPart;
+  /** snow golem stick arms (32,0) 12×2×2 */
+  armStick?: MobSkinPart;
+  /** cow udder (52,0) 4×6×1 — a box on the body part, vanilla-style */
+  udder?: MobSkinPart;
+  /** cow horns (22,0) 1×3×1 */
+  horns?: MobSkinPart;
+  /** witch nose wart (0,0) 1×1×1 */
+  mole?: MobSkinPart;
   /** beak (chicken) */
   extra?: MobSkinPart;
   /** wattle (chicken) */
@@ -94,37 +113,41 @@ function buildPig(): MobSkins {
 }
 
 // ── COW / MOOSHROOM: head(0,0)8x8x6 · body(18,4)12x18x10 · leg(0,16)4x12x4 ───
+// + udder(52,0)4x6x1 (a separate box ON the body part, vanilla CowModel) and
+// horns(22,0)1x3x1 on the head. The body box is VERTICAL in vanilla and
+// rotated 90°X — the builder handles the rotation, we just carry the layout.
 function buildCow(tex: string): MobSkins {
   return {
     head: p(tex, 64, 32, 0, 0, 8, 8, 6),
     body: p(tex, 64, 32, 18, 4, 12, 18, 10),
     limb: p(tex, 64, 32, 0, 16, 4, 12, 4),
+    udder: p(tex, 64, 32, 52, 0, 4, 6, 1),
+    horns: p(tex, 64, 32, 22, 0, 1, 3, 1),
   };
 }
 
 // ── SHEEP: two layers (skin + fleece) like vanilla; color = runtime tint ─────
-// body model: head(0,0)6x6x6 · body(28,8)8x16x6 · leg(0,16)4x12x4
+// VANILLA SheepModel geometry (verified from 1.20 source + texture scan):
+// skin head = 6x6x8 (texOffs(0,0)) — the FRONT 2px is the face plate and it
+// PROTRUDES past the wool; fleece head = 6x6x6 (sheep_fur (0,0)) covering the
+// BACK 6px, shifted 2px back. That protruding face is how vanilla shows the
+// sheep's eyes/muzzle — no transparency tricks. Fleece body (28,8) 8x16x6
+// inflate 1.75/side; fleece legs (0,16) 4x6x4 (upper half only).
+// Vanilla dyes the SKIN layer fully with the sheep's color (strength 1).
 function buildSheep(color = 'white'): MobSkins {
   const dye = SHEEP_COLORS[color] ?? SHEEP_COLORS.white;
   const white = color === 'white';
   const fleeceFile = 'sheep_fur';
   const skinFile = 'sheep_body';
   return {
-    // skin layer: vanilla sheep skin, lightly tinted with the dye so the
-    // sheared look keeps the sheep's color (user requirement — Task 32)
-    head: white ? p(skinFile, 64, 32, 0, 0, 6, 6, 6) : tintP(skinFile, 64, 32, dye, 0.4, 0, 0, 6, 6, 6),
-    body: white ? p(skinFile, 64, 32, 28, 8, 8, 16, 6) : tintP(skinFile, 64, 32, dye, 0.4, 28, 8, 8, 16, 6),
-    limb: white ? p(skinFile, 64, 32, 0, 16, 4, 12, 4) : tintP(skinFile, 64, 32, dye, 0.4, 0, 16, 4, 12, 4),
+    head: white ? p(skinFile, 64, 32, 0, 0, 6, 6, 8) : tintP(skinFile, 64, 32, dye, 1, 0, 0, 6, 6, 8),
+    body: white ? p(skinFile, 64, 32, 28, 8, 8, 16, 6) : tintP(skinFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
+    limb: white ? p(skinFile, 64, 32, 0, 16, 4, 12, 4) : tintP(skinFile, 64, 32, dye, 1, 0, 16, 4, 12, 4),
     fur: {
-      // fleece head rides the skin head; its FRONT face maps to a transparent
-      // area (frontTransparent) so the sheep's real face (eyes) shows through —
-      // vanilla covers the skull but never the face.
       head: white ? p(fleeceFile, 64, 32, 0, 0, 6, 6, 6) : tintP(fleeceFile, 64, 32, dye, 1, 0, 0, 6, 6, 6),
       body: white ? p(fleeceFile, 64, 32, 28, 8, 8, 16, 6) : tintP(fleeceFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
-      // fleece legs cover only the UPPER half of the leg (vanilla SheepModel:
-      // fur leg boxes are 6 tall on a 12-tall leg) — hence h=6
       limb: white ? p(fleeceFile, 64, 32, 0, 16, 4, 6, 4) : tintP(fleeceFile, 64, 32, dye, 1, 0, 16, 4, 6, 4),
-      inflate: 0.12,
+      inflate: 0.03125, // fleece legs inflate 0.5px/side (vanilla)
     },
   };
 }
@@ -174,79 +197,102 @@ function buildCreeper(): MobSkins {
   };
 }
 
-// ── SPIDER: head(0,0)8x8x6 · body(0,14)10x8x10 · leg(28,14)16x2x2 ────────────
-// (head depth 6 + body v14 = the vanilla layout; the old 8-deep head at (0,0)
-// overlapped the body region and smeared back/front texels — texture bug.)
+// ── SPIDER (vanilla SpiderModel 1.20, verified against the source): ──────────
+// head(32,4)8x8x8 (red eyes front) · thorax(0,0)6x6x6 · abdomen(0,12)10x8x12 ·
+// legs(18,0)16x2x2 — ONE box per leg (16 long, 2×2), 8 of them, fanned by
+// yRot ±45°/±22.5° and tilted down by zRot 45°/33° (builder implements).
+// The old regions (head (0,0) 8x8x6, legs (28,14)) sampled wrong texels —
+// that's where "eyes on the legs" and the cut-off body came from.
 function buildSpider(): MobSkins {
   return {
-    head: p('spider', 64, 32, 0, 0, 8, 8, 6),
-    body: p('spider', 64, 32, 0, 14, 10, 8, 10),
-    limb: p('spider', 64, 32, 28, 14, 16, 2, 2),
+    head: p('spider', 64, 32, 32, 4, 8, 8, 8),
+    thorax: p('spider', 64, 32, 0, 0, 6, 6, 6),
+    body: p('spider', 64, 32, 0, 12, 10, 8, 12),
+    limb: p('spider', 64, 32, 18, 0, 16, 2, 2),
   };
 }
 
-// ── ENDERMAN: head(0,0)8x8x8 (eyes on front); body/limbs from solid black area
+// ── ENDERMAN (vanilla EndermanModel 1.20, from source): head(0,0)8x8x8 with an
+// inner "hat" layer(0,16)8x8x8 inflate −0.5 (the mouth shows through the head's
+// transparent bottom-front rows — that IS the vanilla jaw look);
+// body(32,16)8x12x4 · arms/legs(56,0)2x30x2 (30px limbs!)
 function buildEnderman(): MobSkins {
   return {
     head: p('enderman', 64, 32, 0, 0, 8, 8, 8),
-    body: p('enderman', 64, 32, 32, 20, 8, 8, 2),
-    limb: p('enderman', 64, 32, 54, 20, 2, 8, 2),
-    limb2: p('enderman', 64, 32, 54, 20, 2, 8, 2),
+    head2: p('enderman', 64, 32, 0, 16, 8, 8, 8),
+    body: p('enderman', 64, 32, 32, 16, 8, 12, 4),
+    limb: p('enderman', 64, 32, 56, 0, 2, 30, 2),
+    limb2: p('enderman', 64, 32, 56, 0, 2, 30, 2),
   };
 }
 
-// ── VILLAGER (64x64): head(0,0)8x10x8 · nose(24,0)2x4x2 · body(16,20)8x12x6 ·
-// leg(0,22)4x12x4 · arm(44,22)2x12x2 ─────────────────────────────────────────
+// ── VILLAGER (64x64, vanilla VillagerModel from source): head(0,0)8x10x8 ·
+// nose(24,0)2x4x2 · body(16,20)8x12x6 · robe legs(0,22)4x12x4 ·
+// ARMS: ONE folded assembly = two 4x8x4 boxes (44,22) + bridge 8x4x4 (40,38),
+// all in a group rotated x=−0.75 (the classic clasped-hands pose)
 function buildVillager(): MobSkins {
   return {
     head: p('villager', 64, 64, 0, 0, 8, 10, 8),
     head2: p('villager', 64, 64, 24, 0, 2, 4, 2),
     body: p('villager', 64, 64, 16, 20, 8, 12, 6),
     limb: p('villager', 64, 64, 0, 22, 4, 12, 4),
-    limb2: p('villager', 64, 64, 44, 22, 2, 12, 2),
+    limb2: p('villager', 64, 64, 44, 22, 4, 8, 4),
+    armBridge: p('villager', 64, 64, 40, 38, 8, 4, 4),
   };
 }
 
-// ── WITCH (64x128): villager layout + hat pieces from the hat texture areas ──
-// arm region starts at v26 (rows 24-25 of (44,22) are transparent → black tips)
+// ── WITCH (64x128, vanilla WitchModel from source): villager layout exactly
+// (arms = folded 4x8x4 + bridge) + nested hat chain: brim(0,64)10x2x10 →
+// hat2(0,76)7x4x7 → hat3(0,87)4x4x4 → tip(0,95)1x2x1, each tilted a bit more
+// (the classic bent witch hat), + a wart (mole) on the nose
 function buildWitch(): MobSkins {
   return {
     head: p('witch', 64, 128, 0, 0, 8, 10, 8),
     head2: p('witch', 64, 128, 24, 0, 2, 4, 2),
     body: p('witch', 64, 128, 16, 20, 8, 12, 6),
     limb: p('witch', 64, 128, 0, 22, 4, 12, 4),
-    limb2: p('witch', 64, 128, 44, 26, 2, 10, 2),
-    hat: p('witch', 64, 128, 0, 44, 6, 1, 6),
-    hat1: p('witch', 64, 128, 26, 44, 4, 4, 4),
-    hat2: p('witch', 64, 128, 44, 44, 3, 3, 3),
-    hat3: p('witch', 64, 128, 54, 46, 2, 4, 2),
+    limb2: p('witch', 64, 128, 44, 22, 4, 8, 4),
+    armBridge: p('witch', 64, 128, 40, 38, 8, 4, 4),
+    hat: p('witch', 64, 128, 0, 64, 10, 2, 10),
+    hat1: p('witch', 64, 128, 0, 76, 7, 4, 7),
+    hat2: p('witch', 64, 128, 0, 87, 4, 4, 4),
+    hat3: p('witch', 64, 128, 0, 95, 1, 2, 1),
+    mole: p('witch', 64, 128, 0, 0, 1, 1, 1),
   };
 }
 
-// ── IRON GOLEM (128x128): head(0,0)8x10x8 · nose(10,8)2x4x2 · body(0,40)18x12x11
-// arm(60,27)4x28x2 · leg(60,27)6x24x6 — the big arm/leg cross at (60,27) is
-// fully opaque; the old leg(0,70) sampled transparent rows 81+ → black legs.
+// ── IRON GOLEM (128x128, vanilla IronGolemModel from source): head(0,0)8x10x8
+// + nose(24,0)2x4x2 · body(0,40)18x12x11 + hip skirt(0,70)9x5x6 inflate 0.5 ·
+// arms 4x30x6 at (60,21) right / (60,58) left (box offset 13px out) ·
+// legs 6x16x5 at (37,0) right / (60,0) left — NOT 6x24x6; the old (60,27) leg
+// region + sunk-in pivots were why the legs went up into the body.
 function buildGolem(): MobSkins {
   return {
     head: p('iron_golem', 128, 128, 0, 0, 8, 10, 8),
-    head2: p('iron_golem', 128, 128, 10, 8, 2, 4, 2),
+    head2: p('iron_golem', 128, 128, 24, 0, 2, 4, 2),
     body: p('iron_golem', 128, 128, 0, 40, 18, 12, 11),
-    limb: p('iron_golem', 128, 128, 60, 27, 6, 24, 6),
-    limb2: p('iron_golem', 128, 128, 60, 27, 4, 28, 2),
+    skirt: p('iron_golem', 128, 128, 0, 70, 9, 5, 6),
+    limb: p('iron_golem', 128, 128, 37, 0, 6, 16, 5),
+    legL: p('iron_golem', 128, 128, 60, 0, 6, 16, 5),
+    limb2: p('iron_golem', 128, 128, 60, 21, 4, 30, 6),
+    armL: p('iron_golem', 128, 128, 60, 58, 4, 30, 6),
   };
 }
 
-// ── SNOW GOLEM (64x64): head(0,0)8x8x8 (coal face) · body(0,16)10x10x10 ·
-// stick arms = solid brown material (vanilla stick texture region is a bare
-// wood strip that does not form a box cross). 'pumpkin' variant wears a
-// carved-pumpkin head assembled from the vanilla block textures.
+// ── SNOW GOLEM (64x64, vanilla SnowGolemModel from source): head(0,0)8x8x8
+// inflate −0.5 (coal face on the plain variant) · upper body(0,16)10x10x10 ·
+// LOWER body(0,36)12x12x12 (the wide snow base!) · stick arms(32,0)12x2x2 —
+// REAL stick texture region, not a solid color. 'pumpkin' variant head = the
+// carved_pumpkin block (face on ALL 4 sides, like the vanilla block).
 function buildSnowGolem(variant = 'pumpkin'): MobSkins {
   const head: MobSkinPart = variant === 'plain'
     ? p('snow_golem', 64, 64, 0, 0, 8, 8, 8)
-    : { tex: boxCrossTex('pumpkin_top', 'pumpkin_side', 'carved_pumpkin'), lay: { u: 0, v: 0, w: 8, h: 8, d: 8 }, texW: 64, texH: 32 };
+    : { tex: boxCrossTex('pumpkin_top', 'carved_pumpkin', 'carved_pumpkin'), lay: { u: 0, v: 0, w: 8, h: 8, d: 8 }, texW: 64, texH: 32 };
   return {
     head,
     body: p('snow_golem', 64, 64, 0, 16, 10, 10, 10),
+    lower: p('snow_golem', 64, 64, 0, 36, 12, 12, 12),
+    armStick: p('snow_golem', 64, 64, 32, 0, 12, 2, 2),
     limb: p('snow_golem', 64, 64, 0, 16, 10, 10, 10), // unused (no legs)
   };
 }

@@ -39,6 +39,8 @@ const texCache = new Map<string, THREE.Texture>();
  * synchronously (no async texture swaps, which are unreliable on the GPU).
  */
 const decodedImages = new Map<string, HTMLImageElement>();
+/** Redraw callbacks (boxCrossTex placeholders) run once preload completes. */
+const onPreloaded: (() => void)[] = [];
 export function preloadEntityTextures(files?: string[]): Promise<unknown> {
   const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch', 'snow_golem', 'pumpkin_top', 'pumpkin_side', 'carved_pumpkin'];
   return Promise.all(
@@ -55,7 +57,11 @@ export function preloadEntityTextures(files?: string[]): Promise<unknown> {
           img.src = `/textures/entity/${f}.png`;
         }),
     ),
-  );
+  ).then(() => {
+    // engine fire-and-forgets this preload — any boxCrossTex placeholder built
+    // before now redraws in place (self-healing, no poisoned caches)
+    while (onPreloaded.length) onPreloaded.shift()!();
+  });
 }
 
 /** Load (cached) a vanilla entity texture with pixel-perfect settings. */
@@ -205,7 +211,8 @@ export function tintedTex(file: string, color: string, strength = 1): THREE.Text
 // ─── Composite box-cross texture from block textures (snow golem pumpkin) ────
 // Assembles a standard 8×8×8 box-UV cross onto one canvas: top/bottom from
 // `topFile`, side faces from `sideFile`, front face from `frontFile` (the
-// carved pumpkin face). Falls back to a plain side texture until preloaded.
+// carved pumpkin face). If block textures are not decoded yet, returns a
+// placeholder texture that self-redraws when the preload completes.
 
 const crossCache = new Map<string, THREE.Texture>();
 
@@ -216,19 +223,43 @@ export function boxCrossTex(topFile: string, sideFile: string, frontFile: string
   const top = decodedImages.get(topFile);
   const side = decodedImages.get(sideFile);
   const front = decodedImages.get(frontFile);
-  if (!top || !side || !front) return vanillaTex(sideFile); // preload not done yet
+  // Canvas + texture are created IMMEDIATELY and cached, but if the block
+  // textures are not decoded yet the composite draws later: we register a
+  // redraw on preload completion (the engine fire-and-forgets the preload, so
+  // a model built in the first frames would otherwise keep a stale fallback).
   const c = document.createElement('canvas');
   c.width = 64; c.height = 32;
   const ctx = c.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
-  // box-UV cross for an 8×8×8 box at texOffs (0,0):
-  ctx.drawImage(top, 8, 0);   // +Y top face (8,0) 8×8
-  ctx.drawImage(top, 16, 0);  // −Y bottom face (16,0) 8×8
-  ctx.drawImage(side, 0, 8);  // −X east face (0,8) 8×8
-  ctx.drawImage(front, 8, 8); // +Z front face (8,8) — the carved face
-  ctx.drawImage(side, 16, 8); // +X west face (16,8) 8×8
-  ctx.drawImage(side, 24, 8); // −Z back face (24,8) 8×8
+  const draw = () => {
+    const t = decodedImages.get(topFile);
+    const s = decodedImages.get(sideFile);
+    const f = decodedImages.get(frontFile);
+    ctx.clearRect(0, 0, 64, 32);
+    if (!t || !s || !f) return false;
+    // box-UV cross for an 8×8×8 box at texOffs (0,0). Block textures are 16×16,
+    // each 8×8 face slot samples the FULL block texture downscaled 2:1 (9-arg
+    // drawImage — the old 3-arg call drew 16×16 chunks that overflowed and
+    // smeared across neighboring face slots).
+    ctx.drawImage(t, 0, 0, 16, 16, 8, 0, 8, 8);    // +Y top face (8,0) 8×8
+    ctx.drawImage(t, 0, 0, 16, 16, 16, 0, 8, 8);   // −Y bottom face (16,0) 8×8
+    ctx.drawImage(s, 0, 0, 16, 16, 0, 8, 8, 8);    // −X east face (0,8) 8×8
+    ctx.drawImage(f, 0, 0, 16, 16, 8, 8, 8, 8);    // +Z front face (8,8) — the carved face
+    ctx.drawImage(s, 0, 0, 16, 16, 16, 8, 8, 8);   // +X west face (16,8) 8×8
+    ctx.drawImage(s, 0, 0, 16, 16, 24, 8, 8, 8);   // −Z back face (24,8) 8×8
+    return true;
+  };
   const out = pixelTex(c);
-  crossCache.set(key, out);
+  if (draw()) {
+    crossCache.set(key, out);
+  } else {
+    // placeholder frame (plain side color) until the real composite lands
+    ctx.fillStyle = '#8a8a8a';
+    ctx.fillRect(0, 0, 64, 32);
+    onPreloaded.push(() => {
+      if (draw()) out.needsUpdate = true;
+    });
+    crossCache.set(key, out); // same texture object redraws — safe to cache
+  }
   return out;
 }

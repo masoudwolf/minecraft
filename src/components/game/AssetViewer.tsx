@@ -156,10 +156,22 @@ function AssetViewer() {
         const arms = g.userData.arms as THREE.Object3D[] | undefined;
         const head = g.userData.head as THREE.Object3D | undefined;
         if (legs) {
+          const isSpider = g.userData.mobKey === 'spider';
           legs.forEach((leg, i) => {
             // legs[] ARE the hip pivot groups — rotate them (top pivot, MC-style);
-            // rotating the inner mesh would pivot around its middle (old bug)
-            leg.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
+            // rotating the inner mesh would pivot around its middle (old bug).
+            // Spider legs keep their vanilla base y/z pose — the viewer only
+            // adds a subtle scuttle around it (their legs rotate y/z, not x).
+            if (isSpider) {
+              const ud = (leg as THREE.Object3D & { userData: { baseY?: number; baseZ?: number; phase?: number; side?: number } }).userData;
+              const ph = ud.phase ?? 0;
+              const sd = ud.side ?? 1;
+              const amt = s.walking ? 0.5 : 0;
+              leg.rotation.y = (ud.baseY ?? 0) + -Math.cos(s.t * 2.1 + ph) * 0.4 * amt * sd;
+              leg.rotation.z = (ud.baseZ ?? 0) + Math.abs(Math.sin(s.t * 1.05 + ph) * 0.4) * amt * sd;
+            } else {
+              leg.rotation.x = s.walking ? Math.sin(s.t * 2.1 + (i % 2 === 0 ? 0 : Math.PI) + (i >= 2 ? Math.PI : 0)) * 0.7 : 0;
+            }
           });
         }
         if (arms) {
@@ -232,9 +244,10 @@ function AssetViewer() {
         });
         g.userData.legs = parts.legs;
         g.userData.arms = parts.arms;
+        g.userData.mobKey = entry.key;
         // center: legs hang from pivots; body already ~grounded
         g.add(parts.group);
-        handle.targetY = entry.key === 'chicken' || entry.key === 'snowgolem' ? 0.45 : entry.key === 'golem' || entry.key === 'enderman' ? 1.35 : 0.85;
+        handle.targetY = entry.key === 'chicken' ? 0.45 : entry.key === 'snowgolem' ? 0.85 : entry.key === 'golem' || entry.key === 'enderman' ? 1.35 : 0.85;
         handle.dist = entry.key === 'golem' ? 5 : 3.6;
       }
       void skins;

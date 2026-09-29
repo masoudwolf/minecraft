@@ -1,0 +1,582 @@
+     1→   100→/** witch splash potion projectile */
+     2→   101→interface Potion {
+     3→   102→  x: number; y: number; z: number;
+     4→   103→  vx: number; vy: number; vz: number;
+     5→   104→  life: number;
+     6→   105→  mesh: THREE.Mesh;
+     7→   106→}
+     8→   107→
+     9→   108→// ─── Model builders (vanilla textures + MC box-UV mapping) ───────────────────
+    10→   109→/** Build a box mesh textured from a vanilla skin part via standard MC box UVs.
+    11→   110→ *  Cutout (alphaTest) so vanilla transparent texels (ribcage gaps, fleece face)
+    12→   111→ *  render as holes instead of black; DoubleSide so thin parts show both sides. */
+    13→   112→function boxPart(p: MobSkinPart, w: number, h: number, d: number, tag: string, opts?: BoxUVOptions): THREE.Mesh {
+    14→   113→  const geo = new THREE.BoxGeometry(w, h, d);
+    15→   114→  boxUV(geo, p.lay, p.texW, p.texH, opts);
+    16→   115→  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: p.tex, alphaTest: 0.35, side: THREE.DoubleSide }));
+    17→   116→  mesh.userData.part = tag;
+    18→   117→  return mesh;
+    19→   118→}
+    20→   119→
+    21→   120→/** Collect a mesh's material(s) into the parts list (per-instance tint/light). */
+    22→   121→function collectMats(list: THREE.MeshLambertMaterial[], mesh: THREE.Mesh): void {
+    23→   122→  const m = mesh.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[];
+    24→   123→  if (Array.isArray(m)) list.push(...m);
+    25→   124→  else list.push(m);
+    26→   125→}
+    27→   126→
+    28→   127→/**
+    29→   128→ * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
+    30→   129→ * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
+    31→   130→ * animating pivot.rotation.x swings the leg from the top — like MC. `furPart`
+    32→   131→ * optionally adds an inflated fleece box (sheep) that rides the swing; like
+    33→   132→ * vanilla, the fleece leg wraps only the UPPER HALF of the leg.
+    34→   133→ */
+    35→   134→function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }): THREE.Group {
+    36→   135→  const pivot = new THREE.Group();
+    37→   136→  pivot.position.set(hipX, hipY, hipZ);
+    38→   137→  pivot.userData.side = side;
+    39→   138→  const leg = boxPart(p, w, h, d, 'limb');
+    40→   139→  leg.position.y = -h / 2; // hang from the hip
+    41→   140→  pivot.add(leg);
+    42→   141→  if (furPart) {
+    43→   142→    const f = furPart.inflate;
+    44→   143→    const furH = h * 0.5 + f * 2;
+    45→   144→    const fur = boxPart(furPart.part, w + f * 2, furH, d + f * 2, 'fur');
+    46→   145→    leg.add(fur);
+    47→   146→    fur.position.y = h / 2 - furH / 2 + f * 0.5; // top-aligned wrap
+    48→   147→  }
+    49→   148→  return pivot;
+    50→   149→}
+    51→   150→
+    52→   151→const solidTexCache = new Map<string, THREE.Texture>();
+    53→   152→/** Tiny solid-color texture — lets plain-colored parts (bow, stick arms) ride
+    54→   153→ *  the shared map+white-color material pipeline (world-light tinting safe). */
+    55→   154→function solidTex(hex: string): THREE.Texture {
+    56→   155→  const hit = solidTexCache.get(hex);
+    57→   156→  if (hit) return hit;
+    58→   157→  const c = document.createElement('canvas');
+    59→   158→  c.width = 2; c.height = 2;
+    60→   159→  const ctx = c.getContext('2d')!;
+    61→   160→  ctx.fillStyle = hex;
+    62→   161→  ctx.fillRect(0, 0, 2, 2);
+    63→   162→  const t = new THREE.CanvasTexture(c);
+    64→   163→  t.magFilter = THREE.NearestFilter;
+    65→   164→  t.minFilter = THREE.NearestFilter;
+    66→   165→  t.generateMipmaps = false;
+    67→   166→  t.colorSpace = THREE.SRGBColorSpace;
+    68→   167→  solidTexCache.set(hex, t);
+    69→   168→  return t;
+    70→   169→}
+    71→   170→
+    72→   171→function cutoutMat(hex: string): THREE.MeshLambertMaterial {
+    73→   172→  return new THREE.MeshLambertMaterial({ map: solidTex(hex), alphaTest: 0.35, side: THREE.DoubleSide });
+    74→   173→}
+    75→   174→
+    76→   175→/** Simple boxy Minecraft-style bow: curved limbs + string. Shoots toward the
+    77→   176→ *  belly side (-X of the group); attach with rotation.y = π/2 to shoot +Z. */
+    78→   177→function buildBow(): THREE.Group {
+    79→   178→  const g = new THREE.Group();
+    80→   179→  const wood = cutoutMat('#6b4d2a');
+    81→   180→  const woodLight = cutoutMat('#8a683c');
+    82→   181→  const str = cutoutMat('#e8e8e8');
+    83→   182→  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.06), wood);
+    84→   183→  g.add(grip);
+    85→   184→  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.05), woodLight);
+    86→   185→  upper.position.set(0.05, 0.2, 0);
+    87→   186→  upper.rotation.z = 0.5;
+    88→   187→  g.add(upper);
+    89→   188→  const lower = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.05), woodLight);
+    90→   189→  lower.position.set(0.05, -0.2, 0);
+    91→   190→  lower.rotation.z = -0.5;
+    92→   191→  g.add(lower);
+    93→   192→  const string = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.5, 0.015), str);
+    94→   193→  string.position.set(0.1, 0, 0);
+    95→   194→  g.add(string);
+    96→   195→  return g;
+    97→   196→}
+    98→   197→
+    99→   198→function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
+   100→   199→  const geo = new THREE.CircleGeometry(radius, 12);
+   101→   200→  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+   102→   201→  const mesh = new THREE.Mesh(geo, mat);
+   103→   202→  mesh.rotation.x = -Math.PI / 2;
+   104→   203→  mesh.renderOrder = 1;
+   105→   204→  scene.add(mesh);
+   106→   205→  return mesh;
+   107→   206→}
+   108→   207→
+   109→   208→function quadruped(skins: MobSkins, opts: {
+   110→   209→  bodyW: number; bodyH: number; bodyD: number; bodyY: number;
+   111→   210→  legW: number; legH: number;
+   112→   211→  headS: number; headY: number; headZ: number;
+   113→   212→  shadowR: number;
+   114→   213→  fur?: { head: MobSkinPart; body: MobSkinPart; limb: MobSkinPart; inflate: number };
+   115→   214→}): MobParts {
+   116→   215→  const group = new THREE.Group();
+   117→   216→  const mats: THREE.MeshLambertMaterial[] = [];
+   118→   217→  const body = boxPart(skins.body, opts.bodyW, opts.bodyH, opts.bodyD, 'body');
+   119→   218→  body.position.y = opts.bodyY;
+   120→   219→  group.add(body);
+   121→   220→  if (opts.fur) {
+   122→   221→    // fleece layer as a CHILD of the body — rides along, inflates by ~MC 1.75u
+   123→   222→    const f = opts.fur.inflate;
+   124→   223→    const furBody = boxPart(opts.fur.body, opts.bodyW + f * 2, opts.bodyH + f * 2, opts.bodyD + f * 2, 'fur');
+   125→   224→    body.add(furBody);
+   126→   225→    furBody.position.set(0, 0, 0);
+   127→   226→  }
+   128→   227→  const head = boxPart(skins.head, opts.headS, opts.headS, opts.headS, 'head');
+   129→   228→  head.position.set(0, opts.headY, opts.headZ);
+   130→   229→  group.add(head);
+   131→   230→  if (opts.fur) {
+   132→   231→    const f = opts.fur.inflate * 0.6;
+   133→   232→    const furHead = boxPart(opts.fur.head, opts.headS + f * 2, opts.headS + f * 2, opts.headS + f * 2, 'fur',
+   134→   233→      // fleece FRONT maps to a transparent texel rect → the sheep's real face
+   135→   234→      // (eyes/muzzle) shows through the wool, like vanilla
+   136→   235→      { frontTransparentRect: [26, 1, 6, 6] });
+   137→   236→    head.add(furHead);
+   138→   237→    furHead.position.set(0, 0, 0);
+   139→   238→  }
+   140→   239→  const legs: THREE.Mesh[] = [];
+   141→   240→  const lx = opts.bodyW / 2 - opts.legW / 2;
+   142→   241→  const lz = opts.bodyD / 2 - opts.legW / 2;
+   143→   242→  // MC-style hip: the pivot sits INSIDE the body (leg top hidden), so the leg
+   144→   243→  // visibly swings from its top — no gap opens at the hip while walking.
+   145→   244→  const hipInset = opts.bodyH * 0.3;
+   146→   245→  const hipY = opts.bodyY - opts.bodyH / 2 + hipInset;
+   147→   246→  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   148→   247→    const pivot = legPivot(skins.limb, opts.legW, opts.legH + hipInset, opts.legW, sx * lx, hipY, sz * lz, sx, opts.fur ? { part: opts.fur.limb, inflate: opts.fur.inflate * 0.5 } : undefined);
+   149→   248→    group.add(pivot);
+   150→   249→    legs.push(pivot as unknown as THREE.Mesh);
+   151→   250→  }
+   152→   251→  for (const mesh of [body, head]) collectMats(mats, mesh);
+   153→   252→  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   154→   253→  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   155→   254→}
+   156→   255→
+   157→   256→function humanoid(skins: MobSkins, thin = false): MobParts {
+   158→   257→  const lw = thin ? 0.16 : 0.25;
+   159→   258→  const aw = thin ? 0.14 : 0.22;
+   160→   259→  const group = new THREE.Group();
+   161→   260→  const mats: THREE.MeshLambertMaterial[] = [];
+   162→   261→  const body = boxPart(skins.body, 0.5, 0.72, 0.26, 'body');
+   163→   262→  body.position.y = 1.1;
+   164→   263→  group.add(body);
+   165→   264→  const head = boxPart(skins.head, 0.5, 0.5, 0.5, 'head');
+   166→   265→  head.position.y = 1.72;
+   167→   266→  group.add(head);
+   168→   267→  const legs: THREE.Mesh[] = [];
+   169→   268→  for (const sx of [-1, 1]) {
+   170→   269→    const pivot = legPivot(skins.limb, lw, 0.74, lw, sx * 0.125, 0.74, 0, sx);
+   171→   270→    group.add(pivot);
+   172→   271→    legs.push(pivot as unknown as THREE.Mesh);
+   173→   272→  }
+   174→   273→  const arms: THREE.Mesh[] = [];
+   175→   274→  const armPart = skins.limb2 ?? skins.limb;
+   176→   275→  for (const sx of [-1, 1]) {
+   177→   276→    const pivot = new THREE.Group();
+   178→   277→    pivot.position.set(sx * (0.25 + aw / 2), 1.42, 0);
+   179→   278→    const arm = boxPart(armPart, aw, 0.7, aw, 'limb');
+   180→   279→    arm.position.y = -0.32;
+   181→   280→    pivot.add(arm);
+   182→   281→    group.add(pivot);
+   183→   282→    arms.push(arm);
+   184→   283→    (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
+   185→   284→  }
+   186→   285→  for (const mesh of [body, head]) collectMats(mats, mesh);
+   187→   286→  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   188→   287→  for (const arm of arms) collectMats(mats, arm);
+   189→   288→  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   190→   289→}
+   191→   290→
+   192→   291→// ─── Mob definitions ─────────────────────────────────────────────────────────
+   193→   292→/** Standalone model builder (Asset Viewer / QA): no world needed. */
+   194→   293→export function buildMobModel(type: string, variant?: string): MobParts | null {
+   195→   294→  const base = (type === 'mooshroom_brown' ? 'mooshroom' : type) as MobType;
+   196→   295→  const def = MOB_DEFS[base];
+   197→   296→  if (!def) return null;
+   198→   297→  const skins = getMobSkins(variant ? `${type}:${variant}` : type);
+   199→   298→  const parts = def.builder(skins);
+   200→   299→  return parts;
+   201→   300→}
+   202→   301→
+   203→   302→const MOB_DEFS: Record<MobType, MobDef> = {
+   204→   303→  pig: {
+   205→   304→    hostile: false, width: 0.9, height: 0.9, health: 10, speed: 1.1, damage: 0,
+   206→   305→    drops: [{ id: ITEM.PORKCHOP, min: 1, max: 2 }], sound: 'oink',
+   207→   306→    builder: (s) => {
+   208→   307→      const parts = quadruped(s, { bodyW: 0.62, bodyH: 0.5, bodyD: 1.0, bodyY: 0.55, legW: 0.24, legH: 0.32, headS: 0.5, headY: 0.62, headZ: 0.62, shadowR: 0.45 });
+   209→   308→      // vanilla pig snout: a small 4×3×1 box protruding from the face, a CHILD
+   210→   309→      // of the head so it moves with head animations
+   211→   310→      if (s.snout) {
+   212→   311→        const snout = boxPart(s.snout, 0.25, 0.19, 0.06, 'snout');
+   213→   312→        snout.position.set(0, -0.03, 0.28);
+   214→   313→        parts.head.add(snout);
+   215→   314→        collectMats(parts.materials, snout);
+   216→   315→      }
+   217→   316→      return parts;
+   218→   317→    },
+   219→   318→  },
+   220→   319→  cow: {
+   221→   320→    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+   222→   321→    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'moo',
+   223→   322→    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+   224→   323→  },
+   225→   324→  sheep: {
+   226→   325→    hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
+   227→   326→    drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }, { id: BLOCK.WOOL, min: 1, max: 2 }], sound: 'baa',
+   228→   327→    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48, fur: s.fur }),
+   229→   328→  },
+   230→   329→  chicken: {
+   231→   330→    hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
+   232→   331→    drops: [{ id: ITEM.CHICKEN_RAW, min: 1, max: 1 }, { id: ITEM.FEATHER, min: 0, max: 2 }], sound: 'cluck',
+   233→   332→    // proper BIPEDAL bird: 2 legs (not the quadruped's 4!), 3D beak + wattle,
+   234→   333→    // side wings that flap while airborne (MC chicken)
+   235→   334→    builder: (s) => {
+   236→   335→      const group = new THREE.Group();
+   237→   336→      const mats: THREE.MeshLambertMaterial[] = [];
+   238→   337→      const body = boxPart(s.body, 0.38, 0.38, 0.5, 'body');
+   239→   338→      body.position.y = 0.5;
+   240→   339→      group.add(body);
+   241→   340→      const head = boxPart(s.head, 0.26, 0.26, 0.26, 'head');
+   242→   341→      head.position.set(0, 0.78, 0.3);
+   243→   342→      group.add(head);
+   244→   343→      // 3D beak + red wattle: CHILDREN OF THE HEAD (they follow head bob/turn,
+   245→   344→      // vanilla-style) — beak protrudes from the face, wattle hangs below it
+   246→   345→      const beak = boxPart(s.extra!, 0.12, 0.07, 0.09, 'beak');
+   247→   346→      beak.position.set(0, 0.01, 0.155);
+   248→   347→      head.add(beak);
+   249→   348→      const wattle = boxPart(s.extra2!, 0.08, 0.1, 0.05, 'wattle');
+   250→   349→      wattle.position.set(0, -0.075, 0.145);
+   251→   350→      head.add(wattle);
+   252→   351→      // TWO legs with hip pivots slightly INSIDE the body (top-hidden swing)
+   253→   352→      const legs: THREE.Mesh[] = [];
+   254→   353→      for (const sx of [-1, 1]) {
+   255→   354→        const pivot = legPivot(s.legsBaked ?? s.limb, 0.06, 0.41, 0.06, sx * 0.06, 0.41, 0.07, sx);
+   256→   355→        group.add(pivot);
+   257→   356→        legs.push(pivot as unknown as THREE.Mesh);
+   258→   357→      }
+   259→   358→      // wings folded at the sides — exposed via parts.arms so the animator
+   260→   359→      // can flap them while the chicken is airborne
+   261→   360→      const arms: THREE.Mesh[] = [];
+   262→   361→      for (const sx of [-1, 1]) {
+   263→   362→        const pivot = new THREE.Group();
+   264→   363→        pivot.position.set(sx * (0.19 + 0.03), 0.62, 0);
+   265→   364→        pivot.userData.side = sx;
+   266→   365→        const wing = boxPart(s.wing ?? s.body, 0.06, 0.28, 0.36, 'wing');
+   267→   366→        wing.position.y = -0.14;
+   268→   367→        pivot.add(wing);
+   269→   368→        group.add(pivot);
+   270→   369→        arms.push(wing);
+   271→   370→        (wing as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
+   272→   371→      }
+   273→   372→      for (const mesh of [body, head, beak, wattle]) collectMats(mats, mesh);
+   274→   373→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   275→   374→      for (const wing of arms) collectMats(mats, wing);
+   276→   375→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   277→   376→    },
+   278→   377→  },
+   279→   378→  zombie: {
+   280→   379→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.9, damage: 3,
+   281→   380→    drops: [{ id: ITEM.ROTTEN_FLESH, min: 1, max: 2 }], sound: 'groan',
+   282→   381→    builder: (s) => humanoid(s),
+   283→   382→  },
+   284→   383→  creeper: {
+   285→   384→    hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
+   286→   385→    drops: [], sound: 'hiss',
+   287→   386→    builder: (s) => {
+   288→   387→      const group = new THREE.Group();
+   289→   388→      const mats: THREE.MeshLambertMaterial[] = [];
+   290→   389→      const body = boxPart(s.body, 0.5, 0.78, 0.32, 'body');
+   291→   390→      body.position.y = 0.76;
+   292→   391→      group.add(body);
+   293→   392→      const head = boxPart(s.head, 0.52, 0.52, 0.52, 'head');
+   294→   393→      head.position.y = 1.42;
+   295→   394→      group.add(head);
+   296→   395→      const legs: THREE.Mesh[] = [];
+   297→   396→      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+   298→   397→        const pivot = legPivot(s.limb, 0.24, 0.38, 0.24, sx * 0.14, 0.38, sz * 0.18, sx);
+   299→   398→        group.add(pivot);
+   300→   399→        legs.push(pivot as unknown as THREE.Mesh);
+   301→   400→      }
+   302→   401→      for (const mesh of [body, head]) collectMats(mats, mesh);
+   303→   402→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   304→   403→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   305→   404→    },
+   306→   405→  },
+   307→   406→  skeleton: {
+   308→   407→    hostile: true, width: 0.6, height: 1.95, health: 20, speed: 1.7, damage: 0,
+   309→   408→    drops: [
+   310→   409→      { id: ITEM.ARROW, min: 0, max: 2 },
+   311→   410→      { id: ITEM.BONE, min: 0, max: 2 },
+   312→   411→    ], sound: 'rattle',
+   313→   412→    builder: (s) => {
+   314→   413→      const parts = humanoid(s, true);
+   315→   414→      // vanilla skeleton carries a BOW in the right hand; the animator raises
+   316→   415→      // that arm when aiming (state === 'chase')
+   317→   416→      const bow = buildBow();
+   318→   417→      bow.position.set(0, -0.5, 0.05);
+   319→   418→      bow.rotation.y = Math.PI / 2;
+   320→   419→      const rightArm = parts.arms[1];
+   321→   420→      rightArm.add(bow);
+   322→   421→      for (const child of bow.children) collectMats(parts.materials, child as THREE.Mesh);
+   323→   422→      const pv = (rightArm as unknown as { limbPivot?: THREE.Group }).limbPivot;
+   324→   423→      if (pv) pv.userData.bowArm = true;
+   325→   424→      return parts;
+   326→   425→    },
+   327→   426→  },
+   328→   427→  spider: {
+   329→   428→    hostile: true, width: 1.25, height: 0.9, health: 16, speed: 2.15, damage: 2,
+   330→   429→    drops: [{ id: ITEM.STRING, min: 1, max: 2 }, { id: ITEM.SPIDER_EYE, min: 0, max: 1 }], sound: 'spider',
+   331→   430→    neutralInDay: true, climbs: true,
+   332→   431→    builder: (s) => {
+   333→   432→      const group = new THREE.Group();
+   334→   433→      const mats: THREE.MeshLambertMaterial[] = [];
+   335→   434→      // abdomen (back) + head (front) — flat wide body, vanilla proportions
+   336→   435→      const abdomen = boxPart(s.body, 0.8, 0.45, 0.8, 'body');
+   337→   436→      abdomen.position.set(0, 0.55, -0.34);
+   338→   437→      group.add(abdomen);
+   339→   438→      const head = boxPart(s.head, 0.52, 0.44, 0.4, 'head');
+   340→   439→      head.position.set(0, 0.55, 0.45);
+   341→   440→      group.add(head);
+   342→   441→      // 8 legs (4 per side): two-segment, arched OUT and DOWN to the ground
+   343→   442→      // like vanilla — pivots fan from forward to backward, walk ripple is a
+   344→   443→      // subtle per-leg phase around each pivot's base yaw.
+   345→   444→      const legs: THREE.Mesh[] = [];
+   346→   445→      const yawTable = [-0.85, -0.4, 0.4, 0.85]; // front→back, right side
+   347→   446→      for (const side of [-1, 1]) {
+   348→   447→        for (let i = 0; i < 4; i++) {
+   349→   448→          const pivot = new THREE.Group();
+   350→   449→          pivot.position.set(side * 0.3, 0.56, 0.26 - i * 0.22);
+   351→   450→          const baseYaw = side === 1 ? yawTable[i] : -Math.PI - yawTable[i];
+   352→   451→          pivot.rotation.y = baseYaw;
+   353→   452→          pivot.userData.baseYaw = baseYaw;
+   354→   453→          pivot.userData.idx = i;
+   355→   454→          // upper segment: out + steeply down (local +X = outward both sides)
+   356→   455→          const upper = boxPart(s.limb, 0.5, 0.09, 0.09, 'limb');
+   357→   456→          upper.position.set(0.2, -0.1, 0);
+   358→   457→          upper.rotation.z = -0.95;
+   359→   458→          pivot.add(upper);
+   360→   459→          // lower segment: continues to the ground
+   361→   460→          const lower = boxPart(s.limb, 0.42, 0.08, 0.08, 'limb');
+   362→   461→          lower.position.set(0.42, -0.33, 0);
+   363→   462→          lower.rotation.z = -0.3;
+   364→   463→          pivot.add(lower);
+   365→   464→          group.add(pivot);
+   366→   465→          legs.push(pivot as unknown as THREE.Mesh);
+   367→   466→        }
+   368→   467→      }
+   369→   468→      for (const mesh of [abdomen, head]) collectMats(mats, mesh);
+   370→   469→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   371→   470→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   372→   471→    },
+   373→   472→  },
+   374→   473→  enderman: {
+   375→   474→    hostile: true, width: 0.55, height: 2.75, health: 40, speed: 2.9, damage: 4,
+   376→   475→    drops: [{ id: ITEM.ENDER_PEARL, min: 1, max: 1 }], sound: 'enderman',
+   377→   476→    teleports: true, neutralInDay: true,
+   378→   477→    builder: (s) => {
+   379→   478→      const group = new THREE.Group();
+   380→   479→      const mats: THREE.MeshLambertMaterial[] = [];
+   381→   480→      const body = boxPart(s.body, 0.42, 0.8, 0.26, 'body');
+   382→   481→      body.position.y = 1.75;
+   383→   482→      group.add(body);
+   384→   483→      const head = boxPart(s.head, 0.46, 0.42, 0.46, 'head');
+   385→   484→      head.position.y = 2.44;
+   386→   485→      group.add(head);
+   387→   486→      const legs: THREE.Mesh[] = [];
+   388→   487→      for (const sx of [-1, 1]) {
+   389→   488→        const pivot = legPivot(s.limb, 0.13, 1.55, 0.13, sx * 0.11, 1.55, 0, sx);
+   390→   489→        group.add(pivot);
+   391→   490→        legs.push(pivot as unknown as THREE.Mesh);
+   392→   491→      }
+   393→   492→      const arms: THREE.Mesh[] = [];
+   394→   493→      const armPart = s.limb2 ?? s.limb;
+   395→   494→      for (const sx of [-1, 1]) {
+   396→   495→        const pivot = new THREE.Group();
+   397→   496→        pivot.position.set(sx * 0.29, 2.05, 0);
+   398→   497→        const arm = boxPart(armPart, 0.12, 1.5, 0.12, 'limb');
+   399→   498→        arm.position.y = -0.75;
+   400→   499→        pivot.add(arm);
+   401→   500→        group.add(pivot);
+   402→   501→        arms.push(arm);
+   403→   502→        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
+   404→   503→      }
+   405→   504→      for (const mesh of [body, head]) collectMats(mats, mesh);
+   406→   505→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   407→   506→      for (const arm of arms) collectMats(mats, arm);
+   408→   507→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   409→   508→    },
+   410→   509→  },
+   411→   510→  villager: {
+   412→   511→    hostile: false, width: 0.6, height: 1.95, health: 20, speed: 0.85, damage: 0,
+   413→   512→    drops: [], sound: 'villager',
+   414→   513→    builder: (s) => {
+   415→   514→      const group = new THREE.Group();
+   416→   515→      const mats: THREE.MeshLambertMaterial[] = [];
+   417→   516→      // robe torso (upper robe, vanilla body region)
+   418→   517→      const body = boxPart(s.body, 0.56, 0.72, 0.32, 'body');
+   419→   518→      body.position.y = 1.08;
+   420→   519→      group.add(body);
+   421→   520→      // head + long nose (vanilla villager face: unibrow + green eyes + nose);
+   422→   521→      // the nose is a CHILD of the head so it follows head bob/turn
+   423→   522→      const head = boxPart(s.head, 0.5, 0.5, 0.5, 'head');
+   424→   523→      head.position.y = 1.69;
+   425→   524→      group.add(head);
+   426→   525→      const nose = boxPart(s.head2!, 0.13, 0.26, 0.11, 'nose');
+   427→   526→      nose.position.set(0, -0.05, 0.3);
+   428→   527→      head.add(nose);
+   429→   528→      // crossed arms: single horizontal box on the chest (vanilla fold)
+   430→   529→      const armsBox = boxPart(s.limb2 ?? s.limb, 0.58, 0.16, 0.16, 'arm');
+   431→   530→      armsBox.position.set(0, 1.26, 0.24);
+   432→   531→      group.add(armsBox);
+   433→   532→      // FULL-LENGTH robe legs: vanilla villager legs are robe-textured
+   434→   533→      // (region (0,22)) — the robe runs unbroken from shoulders to feet
+   435→   534→      const legs: THREE.Mesh[] = [];
+   436→   535→      for (const sx of [-1, 1]) {
+   437→   536→        const pivot = legPivot(s.limb, 0.25, 0.82, 0.25, sx * 0.14, 0.82, 0, sx);
+   438→   537→        group.add(pivot);
+   439→   538→        legs.push(pivot as unknown as THREE.Mesh);
+   440→   539→      }
+   441→   540→      for (const mesh of [body, head, nose, armsBox]) collectMats(mats, mesh);
+   442→   541→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   443→   542→      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+   444→   543→    },
+   445→   544→  },
+   446→   545→  witch: {
+   447→   546→    hostile: true, width: 0.6, height: 1.95, health: 26, speed: 1.5, damage: 0,
+   448→   547→    drops: [
+   449→   548→      { id: ITEM.STICK, min: 0, max: 2 },
+   450→   549→      { id: ITEM.SPIDER_EYE, min: 0, max: 1 },
+   451→   550→    ], sound: 'witch',
+   452→   551→    // ranged caster: keeps distance and lobs splash potions (poison on hit)
+   453→   552→    builder: (s) => {
+   454→   553→      const parts = humanoid(s);
+   455→   554→      const extra: THREE.MeshLambertMaterial[] = [];
+   456→   555→      const group = parts.group;
+   457→   556→      // long hooked nose + pointy hat: CHILDREN OF THE HEAD so they ride the
+   458→   557→      // head bob/turn (vanilla behavior — the nose used to stay put)
+   459→   558→      const head = parts.head;
+   460→   559→      const nose = boxPart(s.head2!, 0.12, 0.3, 0.12, 'nose');
+   461→   560→      nose.position.set(0, -0.1, 0.3);
+   462→   561→      head.add(nose);
+   463→   562→      // pointy hat: brim + tapering cone boxes, slightly tilted (MC witch)
+   464→   563→      const brim = boxPart(s.hat!, 0.6, 0.06, 0.6, 'hat');
+   465→   564→      brim.position.set(0, 0.28, 0);
+   466→   565→      head.add(brim);
+   467→   566→      const cone1 = boxPart(s.hat1!, 0.44, 0.2, 0.44, 'hat');
+   468→   567→      cone1.position.set(0, 0.4, -0.02);
+   469→   568→      head.add(cone1);
+   470→   569→      const cone2 = boxPart(s.hat2!, 0.28, 0.18, 0.28, 'hat');
+   471→   570→      cone2.position.set(0, 0.58, -0.06);
+   472→   571→      head.add(cone2);
+   473→   572→      const tip = boxPart(s.hat3!, 0.13, 0.16, 0.13, 'hat');
+   474→   573→      tip.position.set(0.02, 0.74, -0.1);
+   475→   574→      tip.rotation.z = -0.25;
+   476→   575→      head.add(tip);
+   477→   576→      collectMats(extra, nose);
+   478→   577→      for (const hat of [brim, cone1, cone2, tip]) collectMats(extra, hat);
+   479→   578→      return { group, head: parts.head, legs: parts.legs, arms: parts.arms, materials: [...parts.materials, ...extra], shadow: parts.shadow };
+   480→   579→    },
+   481→   580→  },
+   482→   581→  mooshroom: {
+   483→   582→    hostile: false, width: 0.9, height: 1.4, health: 10, speed: 1.0, damage: 0,
+   484→   583→    drops: [{ id: ITEM.BEEF, min: 1, max: 2 }, { id: ITEM.LEATHER, min: 0, max: 2 }], sound: 'mooshroom',
+   485→   584→    builder: (s) => quadruped(s, { bodyW: 0.75, bodyH: 0.62, bodyD: 1.15, bodyY: 0.85, legW: 0.24, legH: 0.55, headS: 0.5, headY: 1.05, headZ: 0.72, shadowR: 0.5 }),
+   486→   585→  },
+   487→   586→  golem: {
+   488→   587→    // village defender: passive to players, hunts hostile mobs (MC iron golem)
+   489→   588→    hostile: false, width: 1.3, height: 2.7, health: 100, speed: 1.35, damage: 0,
+   490→   589→    drops: [{ id: ITEM.IRON_INGOT, min: 3, max: 5 }], sound: 'golem',
+   491→   590→    builder: (s) => {
+   492→   591→      const group = new THREE.Group();
+   493→   592→      const mats: THREE.MeshLambertMaterial[] = [];
+   494→   593→      // massive torso (vanilla 18×12×11) + hip block
+   495→   594→      const body = boxPart(s.body, 1.0, 0.92, 0.55, 'body');
+   496→   595→      body.position.y = 1.58;
+   497→   596→      group.add(body);
+   498→   597→      const hips = boxPart(s.body, 0.82, 0.3, 0.5, 'body');
+   499→   598→      hips.position.y = 1.02;
+   500→   599→      group.add(hips);
+   501→   600→      // head with long nose — nose is a CHILD of the head (rides head bob)
+   502→   601→      const head = boxPart(s.head, 0.62, 0.56, 0.62, 'head');
+   503→   602→      head.position.y = 2.36;
+   504→   603→      group.add(head);
+   505→   604→      const nose = boxPart(s.head2!, 0.18, 0.34, 0.16, 'nose');
+   506→   605→      nose.position.set(0, -0.1, 0.37);
+   507→   606→      head.add(nose);
+   508→   607→      // LONG thin hanging arms (vanilla 4×28×2): shoulders high, hands near feet
+   509→   608→      const arms: THREE.Mesh[] = [];
+   510→   609→      const armPart = s.limb2 ?? s.limb;
+   511→   610→      for (const sx of [-1, 1]) {
+   512→   611→        const pivot = new THREE.Group();
+   513→   612→        pivot.position.set(sx * 0.62, 2.0, 0);
+   514→   613→        const arm = boxPart(armPart, 0.25, 1.6, 0.14, 'limb');
+   515→   614→        arm.position.y = -0.8;
+   516→   615→        pivot.add(arm);
+   517→   616→        group.add(pivot);
+   518→   617→        arms.push(arm);
+   519→   618→        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
+   520→   619→      }
+   521→   620→      // long sturdy legs (vanilla 6×24×6), hip pivots inside the body
+   522→   621→      const legs: THREE.Mesh[] = [];
+   523→   622→      for (const sx of [-1, 1]) {
+   524→   623→        const pivot = legPivot(s.limb, 0.375, 1.62, 0.375, sx * 0.22, 1.62, 0, sx);
+   525→   624→        group.add(pivot);
+   526→   625→        legs.push(pivot as unknown as THREE.Mesh);
+   527→   626→      }
+   528→   627→      for (const mesh of [body, hips, head, nose]) collectMats(mats, mesh);
+   529→   628→      for (const arm of arms) collectMats(mats, arm);
+   530→   629→      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+   531→   630→      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   532→   631→    },
+   533→   632→  },
+   534→   633→  snowgolem: {
+   535→   634→    // buildable snow golem (MC): snow cube body + smaller head, two stick arms,
+   536→   635→    // NO legs. variant 'pumpkin' (default) wears the carved pumpkin; 'plain'
+   537→   636→    // is the sheared look with the coal face showing.
+   538→   637→    hostile: false, width: 0.7, height: 1.4, health: 4, speed: 0.8, damage: 0,
+   539→   638→    drops: [{ id: ITEM.SNOWBALL, min: 0, max: 15 }], sound: 'golem',
+   540→   639→    builder: (s) => {
+   541→   640→      const group = new THREE.Group();
+   542→   641→      const mats: THREE.MeshLambertMaterial[] = [];
+   543→   642→      const body = boxPart(s.body, 0.62, 0.62, 0.62, 'body');
+   544→   643→      body.position.y = 0.34;
+   545→   644→      group.add(body);
+   546→   645→      const head = boxPart(s.head, 0.5, 0.5, 0.5, 'head');
+   547→   646→      head.position.y = 0.93;
+   548→   647→      group.add(head);
+   549→   648→      // two brown stick arms angled up-outward (vanilla pose)
+   550→   649→      const arms: THREE.Mesh[] = [];
+   551→   650→      const stick = cutoutMat('#6b4d2a');
+   552→   651→      for (const sx of [-1, 1]) {
+   553→   652→        const pivot = new THREE.Group();
+   554→   653→        pivot.position.set(sx * 0.34, 0.5, 0);
+   555→   654→        pivot.userData.side = sx;
+   556→   655→        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.75, 0.1), stick);
+   557→   656→        arm.position.set(sx * 0.1, 0.3, 0);
+   558→   657→        arm.rotation.z = sx * 0.6;
+   559→   658→        pivot.add(arm);
+   560→   659→        group.add(pivot);
+   561→   660→        arms.push(arm);
+   562→   661→        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
+   563→   662→      }
+   564→   663→      for (const mesh of [body, head]) collectMats(mats, mesh);
+   565→   664→      for (const arm of arms) collectMats(mats, arm);
+   566→   665→      return { group, head, legs: [], arms, materials: mats, shadow: null as unknown as THREE.Mesh };
+   567→   666→    },
+   568→   667→  },
+   569→   668→};
+   570→   669→
+   571→   670→// ─── Ray vs AABB (slab method) ───────────────────────────────────────────────
+   572→   671→export interface MobHit { mob: Mob; dist: number }
+   573→   672→
+   574→   673→function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, e: AABBEntity, maxDist: number): number | null {
+   575→   674→  const half = e.width / 2;
+   576→   675→  const minX = e.x - half, maxX = e.x + half;
+   577→   676→  const minY = e.y, maxY = e.y + e.height;
+   578→   677→  const minZ = e.z - half, maxZ = e.z + half;
+   579→   678→  let tmin = 0;
+   580→   679→  let tmax = maxDist;
+   581→
+   582→[showing lines 100-679 of 1790; use offset=680 with limit to continue reading]
