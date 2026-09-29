@@ -62,13 +62,13 @@ function tintP(file: string, texW: number, texH: number, color: string, strength
 
 const skinCache = new Map<string, MobSkins>();
 
-// ─── Sheep dye palette (vanilla wool colors) ─────────────────────────────────
+// ─── Sheep dye palette (vanilla DyeColor texture-diffuse colors, 1.19.4+) ───
 export const SHEEP_COLORS: Record<string, string> = {
-  white: '#E9ECEC',
-  light_gray: '#8E8E86',
-  gray: '#3E4447',
-  brown: '#724728',
-  black: '#141519',
+  white: '#F9F9F9',
+  light_gray: '#A0A7A7',
+  gray: '#595A62',
+  brown: '#75502E',
+  black: '#19191B',
 };
 
 export function getMobSkins(type: string): MobSkins {
@@ -126,23 +126,26 @@ function buildCow(tex: string): MobSkins {
   };
 }
 
-// ── SHEEP: two layers (skin + fleece) like vanilla; color = runtime tint ─────
+// ── SHEEP: two layers (skin + fleece) like vanilla; dye = FLEECE ONLY ───────
 // VANILLA SheepModel geometry (verified from 1.20 source + texture scan):
 // skin head = 6x6x8 (texOffs(0,0)) — the FRONT 2px is the face plate and it
 // PROTRUDES past the wool; fleece head = 6x6x6 (sheep_fur (0,0)) covering the
 // BACK 6px, shifted 2px back. That protruding face is how vanilla shows the
 // sheep's eyes/muzzle — no transparency tricks. Fleece body (28,8) 8x16x6
 // inflate 1.75/side; fleece legs (0,16) 4x6x4 (upper half only).
-// Vanilla dyes the SKIN layer fully with the sheep's color (strength 1).
+// DYEING (vanilla SheepFurLayer): ONLY the fleece layer is tinted with the
+// sheep's color — the skin (face, legs, sheared body) ALWAYS renders the
+// plain vanilla sheep.png for every color. Tinting the skin made dyed sheep
+// (esp. black) uniformly near-black with wrong face/legs — user-reported.
 function buildSheep(color = 'white'): MobSkins {
   const dye = SHEEP_COLORS[color] ?? SHEEP_COLORS.white;
   const white = color === 'white';
   const fleeceFile = 'sheep_fur';
   const skinFile = 'sheep_body';
   return {
-    head: white ? p(skinFile, 64, 32, 0, 0, 6, 6, 8) : tintP(skinFile, 64, 32, dye, 1, 0, 0, 6, 6, 8),
-    body: white ? p(skinFile, 64, 32, 28, 8, 8, 16, 6) : tintP(skinFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
-    limb: white ? p(skinFile, 64, 32, 0, 16, 4, 12, 4) : tintP(skinFile, 64, 32, dye, 1, 0, 16, 4, 12, 4),
+    head: p(skinFile, 64, 32, 0, 0, 6, 6, 8),
+    body: p(skinFile, 64, 32, 28, 8, 8, 16, 6),
+    limb: p(skinFile, 64, 32, 0, 16, 4, 12, 4),
     fur: {
       head: white ? p(fleeceFile, 64, 32, 0, 0, 6, 6, 6) : tintP(fleeceFile, 64, 32, dye, 1, 0, 0, 6, 6, 6),
       body: white ? p(fleeceFile, 64, 32, 28, 8, 8, 16, 6) : tintP(fleeceFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
@@ -282,12 +285,14 @@ function buildGolem(): MobSkins {
 // ── SNOW GOLEM (64x64, vanilla SnowGolemModel from source): head(0,0)8x8x8
 // inflate −0.5 (coal face on the plain variant) · upper body(0,16)10x10x10 ·
 // LOWER body(0,36)12x12x12 (the wide snow base!) · stick arms(32,0)12x2x2 —
-// REAL stick texture region, not a solid color. 'pumpkin' variant head = the
-// carved_pumpkin block (face on ALL 4 sides, like the vanilla block).
+// REAL stick texture region, not a solid color. 'pumpkin' variant head: the
+// carved FACE only on the FRONT (+Z) — every other face is the plain pumpkin
+// side/top (like the placed carved-pumpkin block; face-on-all-sides was the
+// user-reported bug).
 function buildSnowGolem(variant = 'pumpkin'): MobSkins {
   const head: MobSkinPart = variant === 'plain'
     ? p('snow_golem', 64, 64, 0, 0, 8, 8, 8)
-    : { tex: boxCrossTex('pumpkin_top', 'carved_pumpkin', 'carved_pumpkin'), lay: { u: 0, v: 0, w: 8, h: 8, d: 8 }, texW: 64, texH: 32 };
+    : { tex: boxCrossTex('pumpkin_top', 'pumpkin_side', 'carved_pumpkin'), lay: { u: 0, v: 0, w: 8, h: 8, d: 8 }, texW: 64, texH: 32 };
   return {
     head,
     body: p('snow_golem', 64, 64, 0, 16, 10, 10, 10),

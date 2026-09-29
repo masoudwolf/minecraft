@@ -230,11 +230,15 @@ function quadruped(skins: MobSkins, opts: {
   body.position.set(0, opts.bodyY, opts.bodyZ);
   group.add(body);
   if (opts.fur) {
-    // fleece body: vanilla SheepFurModel inflate 1.75/side (+3.5px every axis);
-    // same vertical+rotated construction so the UVs ride along
+    // fleece body: vanilla SheepFurModel inflate 1.75/side (+3.5px every axis).
+    // NO extra rotation on the child — the parent `body` mesh is ALREADY
+    // rotated π/2 about X, and the fleece is the SAME box (same pivot, same
+    // center) only inflated. Adding another π/2 here made the total rotation π,
+    // which pointed the fleece's 19.5px-long axis VERTICALLY (wool sticking up
+    // off the body — user-reported bug). Child at (0,0,0) rides the parent's
+    // rotation and centers exactly on the skin body, vanilla-style.
     const fl = opts.fur.body.lay;
     const furBody = boxPart(opts.fur.body, (fl.w + 3.5) * px, (fl.h + 3.5) * px, (fl.d + 3.5) * px, 'fur');
-    furBody.rotation.x = Math.PI / 2;
     body.add(furBody);
     collectMats(mats, furBody);
   }
@@ -578,7 +582,10 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       head.position.y = 1.8125;
       group.add(head);
       const nose = boxPart(s.head2!, 0.125, 0.25, 0.125, 'nose');
-      nose.position.set(0, -0.375, 0.3125);
+      // vanilla VillagerModel nose: pivot (0,-2,0), box y -1..+3 → nose center
+      // sits 4px BELOW the head center (head is 10px tall) — 1px past the chin.
+      // (-0.375 = 6px was 2px too low → nose hung 3px below the face.)
+      nose.position.set(0, -0.25, 0.3125);
       head.add(nose);
       const armsG = new THREE.Group();
       armsG.position.set(0, 1.3125, 0.0625);
@@ -625,11 +632,17 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       head.position.y = 1.8125;
       group.add(head);
       const nose = boxPart(s.head2!, 0.125, 0.25, 0.125, 'nose');
-      nose.position.set(0, -0.375, 0.3125);
+      // same vanilla nose pivot as the villager: center 4px below head center
+      nose.position.set(0, -0.25, 0.3125);
       head.add(nose);
       if (s.mole) {
+        // vanilla WitchModel mole: child of the NOSE, pivot (0,-2,0) from the
+        // nose pivot, box (0,3,-6.75) 1³ inflate −0.25 → sits on the LOWER-FRONT
+        // of the nose: 0.5px ABOVE the nose center, poking 0.6px past the nose
+        // front. (-2.5px put it 2px below the nose tip = the "thing hanging off
+        // the witch's nose" bug.)
         const mole = boxPart(s.mole, 0.75 * px, 0.75 * px, 0.75 * px, 'mole');
-        mole.position.set(0.5 * px, -2.5 * px, 1.25 * px);
+        mole.position.set(0.5 * px, 0.5 * px, 1.25 * px);
         nose.add(mole);
         collectMats(mats, mole);
       }
