@@ -761,3 +761,17 @@ QA (agent-browser, world "Mob Rig QA" creative):
 Stage Summary:
 - Creator has a one-keystroke (F4) test console: time, weather, mode, spawns, cleanup.
 - NEXT: rebuild enchanting (Phase 11) + fishing (Phase 12); creative inventory completeness audit; Minecraft-style inventory redesign; E-screen 3D character w/ mouse-follow; Task 32 shear color (foundation: sheep two-layer skin model done); Task 33 snow golem.
+---
+Task ID: 20 (Bugfix — Creative Inventory Missing ALL Non-Block Items)
+Agent: main (user question: "creative inventory تمام ایتم های جدید که اضافه شده هستش یا خیر؟" — audit result: NO, none were.)
+
+Work Log:
+- AUDIT (new permanent tool qa/tools/creativeAudit.ts, run with `bun run qa/tools/creativeAudit.ts`): cross-checks BLOCK registry + ITEM registry against creativePalette(). Found: 60/60 blocks present, **0/68 items present** — every non-block item (foods, materials, tools, armor, bow, boat, …) was missing from the creative palette.
+- ROOT CAUSE (creativeItems.ts itemPalette()): `Object.keys(ITEMS)` yields numeric STRING keys ('256'), but the code re-indexed `ITEMS[idStr]` (yielding the ItemDef OBJECT cast to number) instead of parsing it — `getItemDef(object)` returned undefined → every item was `continue`d → empty item palette. Blocks were unaffected (blockPalette iterates the BLOCK enum by value).
+- FIX: `const id = Number(idStr)` + finite guard. Post-fix audit: palette 129 = 60 blocks + 69 items, missingBlocks=[] missingItems=[] — every registered block AND item (incl. all phase-9/10 additions: hoe tiers, seeds, wheat, bread, boat, bonemeal) is now in the creative inventory.
+- Visual QA: opened creative inventory in-game (E) — blocks grid ✓, scrolled palette shows all item icons (food/materials/armor sets/all 5 tool tiers incl. hoes/bow/arrow/boat) ✓. Bonus: fixing the cast removed 1 pre-existing tsc error (22 → 21).
+
+Stage Summary:
+- Creative inventory completeness RESTORED and now provably complete via the audit tool (re-runnable any time new blocks/items are added).
+- tsc error count 21 (was 22 pre-existing baseline). lint CLEAN. Committed.
+- REMAINING QUEUE: enchanting (Phase 11) + fishing (Phase 12) rebuild; Minecraft-style inventory/crafting redesign + E-screen 3D character w/ mouse-follow; Task 32 shear color persistence (sheep two-layer skin model already in place); Task 33 snow golem buildable.

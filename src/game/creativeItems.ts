@@ -20,7 +20,8 @@ function blockPalette(): number[] {
 function itemPalette(): number[] {
   const ids: number[] = [];
   for (const idStr of Object.keys(ITEMS)) {
-    const id = (ITEMS as Record<string, number>)[idStr];
+    const id = Number(idStr); // keys are numeric ids — parse, don't re-index (re-indexing yields the ItemDef object, which failed getItemDef and emptied the palette)
+    if (!Number.isFinite(id)) continue;
     if (!getItemDef(id)) continue;
     ids.push(id);
   }
