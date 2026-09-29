@@ -596,6 +596,7 @@ export class Game {
     }
     if (st.screen !== 'playing') return;
     this.keys.add(e.code);
+    if (e.code === 'F4') { e.preventDefault(); useGameStore.getState().setCreatorOpen(!st.creatorOpen); return; }
     if (e.code === 'KeyE') { e.preventDefault(); this.openInventory(false); return; }
     if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5), 10);

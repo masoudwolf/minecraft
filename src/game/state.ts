@@ -90,6 +90,8 @@ interface GameStore {
   hasSave: boolean;
   debug: DebugInfo;
   debugVisible: boolean;
+  /** creator tools panel (F4) */
+  creatorOpen: boolean;
   settings: Settings;
   hud: HUDState;
   toast: string | null;
@@ -108,6 +110,7 @@ interface GameStore {
   setHasSave: (v: boolean) => void;
   setDebug: (d: Partial<DebugInfo>) => void;
   toggleDebug: () => void;
+  setCreatorOpen: (open: boolean) => void;
   updateSettings: (s: Partial<Settings>) => void;
   setHud: (h: Partial<HUDState>) => void;
   setToast: (t: string | null) => void;
@@ -143,6 +146,7 @@ export const useGameStore = create<GameStore>((set) => ({
   hasSave: false,
   debug: { fps: 0, x: 0, y: 0, z: 0, chunkX: 0, chunkZ: 0, biome: 'plains', facing: 'north', targetBlock: '—', chunks: 0, mobs: 0, time: '06:00', tris: 0 },
   debugVisible: false,
+  creatorOpen: false,
   settings: loadSettings(),
   hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false, armor: 0, bowCharge: 0 },
   toast: null,
@@ -157,6 +161,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setHasSave: (v) => set({ hasSave: v }),
   setDebug: (d) => set((st) => ({ debug: { ...st.debug, ...d } })),
   toggleDebug: () => set((st) => ({ debugVisible: !st.debugVisible })),
+  setCreatorOpen: (open: boolean) => set((st) => ({ creatorOpen: open })),
   updateSettings: (s) => set((st) => {
     const settings = { ...st.settings, ...s };
     try { localStorage.setItem('voxelcraft.settings', JSON.stringify(settings)); } catch { /* ignore */ }

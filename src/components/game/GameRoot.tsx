@@ -12,6 +12,7 @@ import { DebugOverlay } from './DebugOverlay';
 import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen, TradePanel } from './Overlays';
 import { InventoryScreen } from './InventoryScreen';
 import AssetViewer from './AssetViewer';
+import { CreatorTools } from './CreatorTools';
 
 export default function GameRoot() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,6 +46,7 @@ export default function GameRoot() {
         </>
       )}
       {screen === 'playing' && invOpen && <InventoryScreen />}
+      {screen === 'playing' && <CreatorTools />}
       {screen === 'playing' && tradeOpen && !invOpen && <TradePanel />}
       {screen === 'menu' && <MainMenu />}
       {screen === 'worlds' && <WorldSelectScreen />}
