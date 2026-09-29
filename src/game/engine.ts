@@ -1,7 +1,7 @@
 // ─── Game engine: orchestrates renderer, world, player, UI bridge ────────────
 import * as THREE from 'three';
 import { World } from './world/world';
-import { Player, type HotbarSlot } from './player';
+import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
 import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
@@ -2363,6 +2363,15 @@ export class Game {
     if (store.hud.armor !== armorPts || force) {
       store.setHud({ armor: armorPts });
     }
+    // air/bubbles bar (only while the air isn't full, like MC shows bubbles only underwater)
+    const airBubbles = Math.min(10, Math.ceil(this.player.air / 1.5));
+    if (this.player.air < PLAYER_AIR_MAX - 0.01) {
+      if (store.hud.air !== airBubbles || force) {
+        store.setHud({ air: airBubbles });
+      }
+    } else if (store.hud.air !== 10) {
+      store.setHud({ air: 10 });
+    }
   }
 
   private xpToNext(level: number): number {
@@ -2529,6 +2538,12 @@ export class Game {
       this.cactusTimer = 0.6;
       p.damage(1);
       audio.hurt();
+    }
+
+    // drowning: air drains while the head is submerged (vanilla 15s → 2 dmg/s)
+    if (!p.dead) {
+      const headIn = isWaterId(this.world.getBlock(Math.floor(p.x), Math.floor(p.eyeY()), Math.floor(p.z)));
+      p.updateAir(step, headIn);
     }
 
     // death

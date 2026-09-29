@@ -137,11 +137,21 @@ export function HUD() {
                 })}
               </div>
             </div>
-            <div className="flex flex-row-reverse gap-[1px]">
-              {Array.from({ length: 10 }, (_, i) => {
-                const hg = hud.hunger - i * 2;
-                return <Drumstick key={i} state={hg >= 2 ? 'full' : hg === 1 ? 'half' : 'empty'} />;
-              })}
+            <div className="flex flex-col items-end gap-[1px]">
+              {/* air bubbles (only while air is spent, MC style — sits above hunger) */}
+              {hud.air < 10 && (
+                <div className="mb-[1px] flex flex-row-reverse gap-[1px]">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <Bubble key={i} popped={hud.air <= i} />
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-row-reverse gap-[1px]">
+                {Array.from({ length: 10 }, (_, i) => {
+                  const hg = hud.hunger - i * 2;
+                  return <Drumstick key={i} state={hg >= 2 ? 'full' : hg === 1 ? 'half' : 'empty'} />;
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -289,6 +299,37 @@ function ArmorIcon({ state }: { state: 'full' | 'half' | 'empty' }) {
       <rect x={4} y={2} width={7} height={2} fill={state === 'empty' ? '#333333' : '#f4f4f4'} />
       <rect x={4} y={12} width={7} height={1} fill={fillDark} />
       <rect x={7} y={4} width={1} height={9} fill={fillDark} />
+    </svg>
+  );
+}
+
+/** pixel air bubble for the underwater air bar (MC style) */
+function Bubble({ popped }: { popped: boolean }) {
+  if (popped) {
+    // popped bubble: sparse outline fragments
+    return (
+      <svg width={13} height={13} viewBox="0 0 9 9" className="drop-shadow-[1px_1px_0_rgba(0,0,0,0.7)]">
+        <rect x={1} y={1} width={1} height={1} fill="rgba(210,240,255,0.35)" />
+        <rect x={7} y={1} width={1} height={1} fill="rgba(210,240,255,0.35)" />
+        <rect x={1} y={7} width={1} height={1} fill="rgba(210,240,255,0.35)" />
+        <rect x={7} y={7} width={1} height={1} fill="rgba(210,240,255,0.35)" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={13} height={13} viewBox="0 0 9 9" className="drop-shadow-[1px_1px_0_rgba(0,0,0,0.7)]">
+      {/* bubble ring (blue-white, MC bubble palette) */}
+      <rect x={2} y={0} width={5} height={1} fill="#cfeeff" />
+      <rect x={1} y={1} width={2} height={2} fill="#cfeeff" />
+      <rect x={6} y={1} width={2} height={2} fill="#8fc9ec" />
+      <rect x={0} y={3} width={1} height={3} fill="#a9daf2" />
+      <rect x={8} y={3} width={1} height={3} fill="#6fb3dd" />
+      <rect x={1} y={6} width={2} height={2} fill="#6fb3dd" />
+      <rect x={6} y={6} width={2} height={2} fill="#5b9ec9" />
+      <rect x={2} y={8} width={5} height={1} fill="#5b9ec9" />
+      {/* hollow center + highlight */}
+      <rect x={3} y={2} width={3} height={3} fill="rgba(255,255,255,0.22)" />
+      <rect x={2} y={2} width={2} height={2} fill="#ffffff" opacity={0.85} />
     </svg>
   );
 }

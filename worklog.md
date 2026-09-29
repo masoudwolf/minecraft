@@ -850,3 +850,32 @@ Stage Summary:
 - All three user-reported issues FIXED and browser-verified: ① mobs swim/bob/paddle in water (no more surface-skimming); ② night-brightness leak root-caused to uncollected fleece-leg materials — deep collection + spawn-time safety net make the world-light tint complete for every mob (255/255 materials dark at midnight); ③ sheep head wool (forehead, muzzle frame, protruding rim) now takes the variant dye via region-limited texel tinting while eyes/skin/muzzle stay vanilla.
 - Protective commit follows this entry; ./backup.sh will push when the PAT gains Contents:Read+Write (still pending user action).
 - NEXT QUEUE: E-screen 3D character w/ mouse-follow head; Minecraft-style inventory/crafting redesign; Task 32 shear color persistence (foundation done); enchanting+fishing rebuild; next phase.
+---
+Task ID: 35
+Agent: main (Z.ai Code)
+Task: User report (Persian): "token access should be OK now — re-check" + "play the game yourself multiple times — survival AND creative, debug gameplay visually/logically/code-wise, everything that needs checking."
+
+Work Log:
+- GITHUB BACKUP FIXED & VERIFIED: remote push was failing before (empty repo!) — the new PAT works: pushed FULL main history to github.com/masoudwolf/minecraft (refs/heads/main confirmed), created + pushed milestone tag v0.34-gameplay-qa. Every unit of work is now also safe off-sandbox.
+- GAMEPLAY QA — SURVIVAL (new world "QA Survival Run", seed 7777, played via agent-browser):
+  • Full craft chain verified end-to-end: punch tree → logs → planks (2x2) → sticks → crafting table (placed in world) → 3x3 wooden pickaxe + wooden sword → dug to stone → cobblestone. Recipes, invClick semantics (left=stack, right=one, output take, cursor-swap), table open via right-click all correct.
+  • Mining + drops: dirt/stone/grass drop + magnet pickup + tool durability (sword 59→58 after mob hits; pickaxe wear) ✓. Leaves drop saplings; XP orbs from ores; XP bar + level render.
+  • Combat: sword 4 dmg on zombie, zombie death + flesh drop, monster-hunter path; sunlight burning verified empirically (teleported zombie to open sky: skyL=15, burning=true, 1 dmg/s ticks 20→17→14) — a zombie standing in a shaded dig-shaft does NOT burn (correct light logic).
+  • Death loop: died 3× during QA (night zombies ×2, drowning ×1, enderman ×1 across sessions) — "You Died!" screen + respawn + item spill all work. Deaths were legitimate (standing still crafting at night / swimming into a cave ambush / staring at an enderman).
+  • Hunger: passive drain + regen (hp 13→20 overnight save) ✓. Achievements unlock (world shows 3/12).
+  • Verified Task 34 fixes live in-game: pigs/cows bob + paddle at the lake surface; night entity dimming correct.
+- GAMEPLAY QA — CREATIVE: creative palette UI complete (grab stack / X-delete slot), creativePick(id) API, instant-break, flight glide, mode indicator, CreatorTools F4 panel (time presets + slider, weather, mode, heal, to-spawn, 17 mob spawn buttons) — panel state syncs when mode changes engine-side.
+- BUGS FOUND & FIXED (this round):
+  1. PLAYER WATER SINK was uncapped (-6..-8 b/s — plummeted onto the lakebed, felt like concrete). Fix: cap vy at -1.8 in water (vanilla ~-1.5). Verified: 4-block descent now takes seconds, floats gently.
+  2. NO SHORE EXIT: player got STUCK wading at the lakebed pushing into a 1-block shore (had to manually Space). Fix: shore climb — blocked while in water + pushing → full JUMP_VELOCITY from the lakebed / 3.4 breach while swimming. Verified: hopped vy=8.0, rose 2 blocks, walked out onto land.
+  3. NO DROWNING SYSTEM (vanilla gap — you could idle underwater forever). NEW: 15s air → 2 dmg/s drowning (player.updateAir, head-block water check in physicsStep, creative/dead immune, 4× refill). HUD: MC-style pixel BUBBLE BAR above hunger (Bubble SVG component, shows only while air < max, popped-bubble fragments). VERIFIED: air 15→0 in 15s head-underwater, damage ticks, death, bubbles UI rendered.
+  4. Weather balance: rain cycles were ~40% of playtime (140-400s clear vs 70-200s wet). Now clear 260-560s, rain 60-170s → rain is a minority; starts clear on new worlds (verified init was already correct).
+- NOT A BUG (investigated & cleared): "target=null while placing" (aim was over open air — pitch sign: negative = down), item "vanishing" during crafting (cursor-held stack + takeCraftOutput silent-return when cursor occupied — correct MC semantics), zombie not burning (standing in shaded shaft), PUT /api/worlds failed once (client aborted mid-save during Fast Refresh; self-heals), player "frozen" (was dead — death interrupts input).
+- QA-session learnings (tooling): agent-browser pointer lock is flaky in headless (mining/right-click guarded by lock) — drove engine flags directly for QA; agent-browser mouse coords miss DOM slots under pointer lock — used invClick API (real-user mouse unaffected).
+- dev.log clean at end (1 transient PUT fail only), bun run lint CLEAN, compile clean. Browser closed after QA.
+
+Stage Summary:
+- Played survival AND creative across multiple sessions; the core loop (harvest → craft → build → fight → die → respawn) is verified working end-to-end with vanilla-faithful behaviors (sunburn, drowning, shore-exit, sink physics).
+- 3 player-water fixes + drowning feature + weather rebalance landed; all browser-verified.
+- GitHub backup NOW WORKS (user's new PAT): full history + tag pushed. ./backup.sh will push every run from now on.
+- NEXT QUEUE: E-screen 3D character w/ mouse-follow head; Minecraft-style inventory/crafting redesign; shear color persistence (Task 32); enchanting table + fishing rebuild; hostile spawn-density tuning near world spawn (10 hostiles cleared at dawn once); FPS is 4-8 in headless QA — check perf targets on real hardware.

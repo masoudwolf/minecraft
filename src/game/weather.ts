@@ -143,15 +143,15 @@ export class WeatherSystem {
     this.stateTimer -= dt;
     if (this.stateTimer <= 0) {
       if (this.state === 'clear') {
-        // 70% rain, 30% straight to thunder
-        this.state = this.rnd() < 0.7 ? 'rain' : 'thunder';
+        // 66% rain, 34% straight to thunder (rain stays the minority of playtime)
+        this.state = this.rnd() < 0.66 ? 'rain' : 'thunder';
       } else {
         this.state = 'clear';
       }
-      // durations (seconds)
+      // durations (seconds) — long clear stretches, shorter wet ones (vanilla-ish)
       this.stateTimer =
-        this.state === 'clear' ? 140 + this.rnd() * 260 :
-        this.state === 'rain' ? 70 + this.rnd() * 130 :
+        this.state === 'clear' ? 260 + this.rnd() * 320 :
+        this.state === 'rain' ? 60 + this.rnd() * 110 :
         45 + this.rnd() * 60;
       if (this.state === 'thunder') {
         this.thunderTimer = 1.5 + this.rnd() * 3;

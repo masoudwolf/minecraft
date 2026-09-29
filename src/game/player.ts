@@ -6,6 +6,9 @@ import { getArmorDef } from './items';
 import { audio } from './audio';
 import type { GameMode } from './state';
 
+/** seconds of air the player can hold underwater before drowning (vanilla: 15s) */
+export const PLAYER_AIR_MAX = 15;
+
 export interface HotbarSlot {
   blockId: number; // 0 = empty
   count: number;
@@ -41,6 +44,12 @@ export class Player {
   /** poison timer (witch splash potions); ticks 1 damage per poisonTickT while > 0 */
   poisonT = 0;
   poisonTickT = 0;
+
+  // ── drowning (vanilla-style: 15s of air underwater, then 2 dmg/s) ──
+  /** remaining air in seconds (max PLAYER_AIR_MAX); shown as the bubble bar */
+  air = PLAYER_AIR_MAX;
+  /** accumulates while drowning; 1 damage tick per second */
+  drownT = 0;
 
   hotbar: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
   /** main inventory 27 slots (hotbar is slots 0..8) */
@@ -155,6 +164,9 @@ export class Player {
       e.vy += GRAVITY * 0.28 * dt;
       if (wishJump) e.vy = Math.min(e.vy + 30 * dt, 3.4);
       e.vy *= Math.pow(0.35, dt);
+      // vanilla-like slow sink (the old uncapped -8 b/s plummet dropped the
+      // player onto the lakebed instantly — MC sinks at about -1.5 b/s)
+      e.vy = Math.max(e.vy, -1.8);
       this.sprinting = false;
     } else {
       const accel = e.onGround ? 10 : 2.2;
@@ -169,7 +181,17 @@ export class Player {
     }
 
     const wasOnGround = e.onGround;
+    const prevX = e.x, prevZ = e.z;
     moveEntity(world, e, dt);
+
+    // shore climb: pushing into a wall while in water hops like MC wading —
+    // a full jump from the lakebed, a breach push while swimming at the surface
+    if (e.inWater && len > 0) {
+      const made = Math.hypot(e.x - prevX, e.z - prevZ);
+      if (made < WALK_SPEED * dt * 0.35 && e.vy < 3.2) {
+        e.vy = Math.max(e.vy, e.onGround ? JUMP_VELOCITY : 3.4);
+      }
+    }
 
     // fall damage (creative immune)
     if (!e.inWater && !this.isCreative) {
@@ -191,6 +213,29 @@ export class Player {
 
     if (e.onGround) {
       this.stepDistance += Math.hypot(e.vx, e.vz) * dt;
+    }
+  }
+
+  /** vanilla drowning: air drains while the head is submerged; at 0 → 2 dmg/s.
+   *  Creative players and corpses never drown; air refills 4× faster than it drains. */
+  updateAir(dt: number, headInWater: boolean): void {
+    if (this.isCreative || this.dead) {
+      this.air = PLAYER_AIR_MAX;
+      this.drownT = 0;
+      return;
+    }
+    if (headInWater) {
+      this.air = Math.max(0, this.air - dt);
+      if (this.air <= 0) {
+        this.drownT += dt;
+        if (this.drownT >= 1) {
+          this.drownT = 0;
+          this.damage(2);
+        }
+      }
+    } else {
+      this.air = Math.min(PLAYER_AIR_MAX, this.air + dt * 4);
+      this.drownT = 0;
     }
   }
 
@@ -232,5 +277,7 @@ export class Player {
     this.dead = false;
     this.flying = false;
     this.fallStartY = y;
+    this.air = PLAYER_AIR_MAX;
+    this.drownT = 0;
   }
 }
