@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from '../physics';
 import { BLOCK, isWaterId } from '../blocks';
-import { getMobSkins } from './mobSkins';
+import { getMobSkins, type MobSkinPart, type MobSkins } from './mobSkins';
+import { boxUV } from './vanillaSkins';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
@@ -104,49 +105,43 @@ interface Potion {
   mesh: THREE.Mesh;
 }
 
-// ─── Model builders ──────────────────────────────────────────────────────────
-function partMat(tex: THREE.CanvasTexture): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ map: tex });
-}
-
-function boxPart(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial, tag: string): THREE.Mesh {
+// ─── Model builders (vanilla textures + MC box-UV mapping) ───────────────────
+/** Build a box mesh textured from a vanilla skin part via standard MC box UVs. */
+function boxPart(p: MobSkinPart, w: number, h: number, d: number, tag: string): THREE.Mesh {
   const geo = new THREE.BoxGeometry(w, h, d);
-  const mesh = new THREE.Mesh(geo, mat);
+  boxUV(geo, p.lay, p.texW, p.texH);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: p.tex }));
   mesh.userData.part = tag;
   return mesh;
+}
+
+/** Collect a mesh's material(s) into the parts list (per-instance tint/light). */
+function collectMats(list: THREE.MeshLambertMaterial[], mesh: THREE.Mesh): void {
+  const m = mesh.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[];
+  if (Array.isArray(m)) list.push(...m);
+  else list.push(m);
 }
 
 /**
  * Leg with a proper HIP PIVOT (Minecraft-style limb rigging): the pivot Group
  * sits at the hip joint (top of the leg) and the leg box hangs BELOW it, so
- * animating pivot.rotation.x swings the leg from the top — like MC — instead
- * of spinning around the leg's middle (which made feet orbit and sink into
- * the body). The pivot is stored in parts.legs and the walk animation rotates
- * it directly. `side` (-1 left / +1 right) is kept on userData for animators.
+ * animating pivot.rotation.x swings the leg from the top — like MC. `furPart`
+ * optionally adds an inflated fleece box (sheep) that rides the swing.
  */
-function legPivot(w: number, h: number, d: number, mat: THREE.MeshLambertMaterial, hipX: number, hipY: number, hipZ: number, side = 0): THREE.Group {
+function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }): THREE.Group {
   const pivot = new THREE.Group();
   pivot.position.set(hipX, hipY, hipZ);
   pivot.userData.side = side;
-  const leg = boxPart(w, h, d, mat, 'limb');
+  const leg = boxPart(p, w, h, d, 'limb');
   leg.position.y = -h / 2; // hang from the hip
   pivot.add(leg);
+  if (furPart) {
+    const f = furPart.inflate;
+    const fur = boxPart(furPart.part, w + f * 2, h + f * 2, d + f * 2, 'fur');
+    leg.add(fur);
+    fur.position.y = 0;
+  }
   return pivot;
-}
-
-/**
- * Head box with Minecraft-accurate texturing: the face texture is applied ONLY
- * to the front (+Z — the model's forward axis); the other 5 faces get the
- * featureless skin. Both materials are pushed onto extraMats so per-instance
- * cloning and world-light tinting cover the whole head.
- */
-function headPart(w: number, h: number, d: number, skins: { head: THREE.CanvasTexture; headPlain: THREE.CanvasTexture }, extraMats: THREE.MeshLambertMaterial[], tag = 'head'): THREE.Mesh {
-  const face = partMat(skins.head);
-  const plain = partMat(skins.headPlain);
-  extraMats.push(face, plain);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [plain, plain, plain, plain, face, plain]);
-  mesh.userData.part = tag;
-  return mesh;
 }
 
 function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
@@ -159,66 +154,93 @@ function makeShadow(radius: number, scene: THREE.Scene): THREE.Mesh {
   return mesh;
 }
 
-function quadruped(skins: ReturnType<typeof getMobSkins>, opts: {
+function quadruped(skins: MobSkins, opts: {
   bodyW: number; bodyH: number; bodyD: number; bodyY: number;
   legW: number; legH: number;
   headS: number; headY: number; headZ: number;
   shadowR: number;
+  fur?: { head: MobSkinPart; body: MobSkinPart; limb: MobSkinPart; inflate: number };
 }): MobParts {
-  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
-  const extra: THREE.MeshLambertMaterial[] = [];
   const group = new THREE.Group();
-  const body = boxPart(opts.bodyW, opts.bodyH, opts.bodyD, mats[1], 'body');
+  const mats: THREE.MeshLambertMaterial[] = [];
+  const body = boxPart(skins.body, opts.bodyW, opts.bodyH, opts.bodyD, 'body');
   body.position.y = opts.bodyY;
   group.add(body);
-  const head = headPart(opts.headS, opts.headS, opts.headS, skins, extra);
+  if (opts.fur) {
+    // fleece layer as a CHILD of the body — rides along, inflates by ~MC 1.75u
+    const f = opts.fur.inflate;
+    const furBody = boxPart(opts.fur.body, opts.bodyW + f * 2, opts.bodyH + f * 2, opts.bodyD + f * 2, 'fur');
+    body.add(furBody);
+    furBody.position.set(0, 0, 0);
+  }
+  const head = boxPart(skins.head, opts.headS, opts.headS, opts.headS, 'head');
   head.position.set(0, opts.headY, opts.headZ);
   group.add(head);
+  if (opts.fur) {
+    const f = opts.fur.inflate * 0.6;
+    const furHead = boxPart(opts.fur.head, opts.headS + f * 2, opts.headS + f * 2, opts.headS + f * 2, 'fur');
+    head.add(furHead);
+    furHead.position.set(0, 0, 0);
+  }
   const legs: THREE.Mesh[] = [];
   const lx = opts.bodyW / 2 - opts.legW / 2;
   const lz = opts.bodyD / 2 - opts.legW / 2;
   const hipY = opts.bodyY - opts.bodyH / 2; // hips at the body's underside
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    const pivot = legPivot(opts.legW, opts.legH, opts.legW, mats[2], sx * lx, hipY, sz * lz, sx);
+    const pivot = legPivot(skins.limb, opts.legW, opts.legH, opts.legW, sx * lx, hipY, sz * lz, sx, opts.fur ? { part: opts.fur.limb, inflate: opts.fur.inflate * 0.5 } : undefined);
     group.add(pivot);
     legs.push(pivot as unknown as THREE.Mesh);
   }
-  return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+  for (const mesh of [body, head]) collectMats(mats, mesh);
+  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
 }
 
-function humanoid(skins: ReturnType<typeof getMobSkins>, thin = false): MobParts {
+function humanoid(skins: MobSkins, thin = false): MobParts {
   const lw = thin ? 0.16 : 0.25;
   const aw = thin ? 0.14 : 0.22;
-  const mats = [partMat(skins.head), partMat(skins.body), partMat(skins.limb)];
-  const extra: THREE.MeshLambertMaterial[] = [];
   const group = new THREE.Group();
-  const body = boxPart(0.5, 0.72, 0.26, mats[1], 'body');
+  const mats: THREE.MeshLambertMaterial[] = [];
+  const body = boxPart(skins.body, 0.5, 0.72, 0.26, 'body');
   body.position.y = 1.1;
   group.add(body);
-  const head = headPart(0.5, 0.5, 0.5, skins, extra);
+  const head = boxPart(skins.head, 0.5, 0.5, 0.5, 'head');
   head.position.y = 1.72;
   group.add(head);
   const legs: THREE.Mesh[] = [];
   for (const sx of [-1, 1]) {
-    const pivot = legPivot(lw, 0.74, lw, mats[2], sx * 0.125, 0.74, 0, sx);
+    const pivot = legPivot(skins.limb, lw, 0.74, lw, sx * 0.125, 0.74, 0, sx);
     group.add(pivot);
     legs.push(pivot as unknown as THREE.Mesh);
   }
   const arms: THREE.Mesh[] = [];
+  const armPart = skins.limb2 ?? skins.limb;
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * (0.25 + aw / 2), 1.42, 0);
-    const arm = boxPart(aw, 0.7, aw, mats[2], 'limb');
+    const arm = boxPart(armPart, aw, 0.7, aw, 'limb');
     arm.position.y = -0.32;
     pivot.add(arm);
     group.add(pivot);
     arms.push(arm);
     (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
   }
-  return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+  for (const mesh of [body, head]) collectMats(mats, mesh);
+  for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+  for (const arm of arms) collectMats(mats, arm);
+  return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
 }
 
 // ─── Mob definitions ─────────────────────────────────────────────────────────
+/** Standalone model builder (Asset Viewer / QA): no world needed. */
+export function buildMobModel(type: string, variant?: string): MobParts | null {
+  const base = (type === 'mooshroom_brown' ? 'mooshroom' : type) as MobType;
+  const def = MOB_DEFS[base];
+  if (!def) return null;
+  const skins = getMobSkins(variant ? `${type}:${variant}` : type);
+  return def.builder(skins);
+}
+
 const MOB_DEFS: Record<MobType, MobDef> = {
   pig: {
     hostile: false, width: 0.9, height: 0.9, health: 10, speed: 1.1, damage: 0,
@@ -233,7 +255,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   sheep: {
     hostile: false, width: 0.9, height: 1.3, health: 8, speed: 1.05, damage: 0,
     drops: [{ id: ITEM.MUTTON, min: 1, max: 2 }, { id: BLOCK.WOOL, min: 1, max: 2 }], sound: 'baa',
-    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48 }),
+    builder: (s) => quadruped(s, { bodyW: 0.68, bodyH: 0.58, bodyD: 1.0, bodyY: 0.78, legW: 0.22, legH: 0.5, headS: 0.42, headY: 1.02, headZ: 0.6, shadowR: 0.48, fur: s.fur }),
   },
   chicken: {
     hostile: false, width: 0.4, height: 0.7, health: 4, speed: 0.9, damage: 0,
@@ -241,30 +263,25 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     // proper BIPEDAL bird: 2 legs (not the quadruped's 4!), 3D beak + wattle,
     // side wings that flap while airborne (MC chicken)
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
-      const body = boxPart(0.38, 0.38, 0.5, mats[1], 'body');
+      const mats: THREE.MeshLambertMaterial[] = [];
+      const body = boxPart(s.body, 0.38, 0.38, 0.5, 'body');
       body.position.y = 0.5;
       group.add(body);
-      const head = headPart(0.26, 0.26, 0.26, s, extra);
+      const head = boxPart(s.head, 0.26, 0.26, 0.26, 'head');
       head.position.set(0, 0.78, 0.3);
       group.add(head);
-      // 3D beak (orange) protruding from the face + red wattle under it
-      const beak = boxPart(0.12, 0.07, 0.09, mats[2], 'beak');
+      // 3D beak (vanilla texture) protruding from the face + red wattle under it
+      const beak = boxPart(s.extra!, 0.12, 0.07, 0.09, 'beak');
       beak.position.set(0, 0.77, 0.3 + 0.13 + 0.035);
       group.add(beak);
-      if (s.extra) {
-        const wattleMat = partMat(s.extra);
-        extra.push(wattleMat);
-        const wattle = boxPart(0.08, 0.1, 0.05, wattleMat, 'wattle');
-        wattle.position.set(0, 0.7, 0.3 + 0.13 + 0.015);
-        group.add(wattle);
-      }
+      const wattle = boxPart(s.extra2!, 0.08, 0.1, 0.05, 'wattle');
+      wattle.position.set(0, 0.7, 0.3 + 0.13 + 0.015);
+      group.add(wattle);
       // TWO legs with hip pivots at the body underside (front-ish, MC-like)
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const pivot = legPivot(0.06, 0.31, 0.06, mats[2], sx * 0.06, 0.31, 0.07, sx);
+        const pivot = legPivot(s.legsBaked ?? s.limb, 0.06, 0.31, 0.06, sx * 0.06, 0.31, 0.07, sx);
         group.add(pivot);
         legs.push(pivot as unknown as THREE.Mesh);
       }
@@ -275,14 +292,17 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         const pivot = new THREE.Group();
         pivot.position.set(sx * (0.19 + 0.03), 0.62, 0);
         pivot.userData.side = sx;
-        const wing = boxPart(0.06, 0.28, 0.36, mats[1], 'wing');
+        const wing = boxPart(s.wing ?? s.body, 0.06, 0.28, 0.36, 'wing');
         wing.position.y = -0.14;
         pivot.add(wing);
         group.add(pivot);
         arms.push(wing);
         (wing as unknown as { pivot: THREE.Group }).pivot = pivot;
       }
-      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [body, head, beak, wattle]) collectMats(mats, mesh);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const wing of arms) collectMats(mats, wing);
+      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
   zombie: {
@@ -294,22 +314,23 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
     drops: [], sound: 'hiss',
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
-      const body = boxPart(0.5, 0.78, 0.32, mats[1], 'body');
+      const mats: THREE.MeshLambertMaterial[] = [];
+      const body = boxPart(s.body, 0.5, 0.78, 0.32, 'body');
       body.position.y = 0.76;
       group.add(body);
-      const head = headPart(0.52, 0.52, 0.52, s, extra);
+      const head = boxPart(s.head, 0.52, 0.52, 0.52, 'head');
       head.position.y = 1.42;
       group.add(head);
       const legs: THREE.Mesh[] = [];
       for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const pivot = legPivot(0.24, 0.38, 0.24, mats[2], sx * 0.14, 0.38, sz * 0.18, sx);
+        const pivot = legPivot(s.limb, 0.24, 0.38, 0.24, sx * 0.14, 0.38, sz * 0.18, sx);
         group.add(pivot);
         legs.push(pivot as unknown as THREE.Mesh);
       }
-      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [body, head]) collectMats(mats, mesh);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
   skeleton: {
@@ -325,14 +346,13 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [{ id: ITEM.STRING, min: 1, max: 2 }, { id: ITEM.SPIDER_EYE, min: 0, max: 1 }], sound: 'spider',
     neutralInDay: true, climbs: true,
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
+      const mats: THREE.MeshLambertMaterial[] = [];
       // abdomen (back) + thorax (front) — flat wide body
-      const abdomen = boxPart(0.8, 0.45, 0.8, mats[1], 'body');
+      const abdomen = boxPart(s.body, 0.8, 0.45, 0.8, 'body');
       abdomen.position.set(0, 0.55, -0.34);
       group.add(abdomen);
-      const head = headPart(0.52, 0.44, 0.5, s, extra);
+      const head = boxPart(s.head, 0.52, 0.44, 0.5, 'head');
       head.position.set(0, 0.55, 0.5);
       group.add(head);
       // 8 legs: 4 per side, thin boxes angled out from pivots on the body
@@ -345,18 +365,20 @@ const MOB_DEFS: Record<MobType, MobDef> = {
           const baseYaw = side * (0.9 - Math.abs(i - 1.5) * 0.22);
           pivot.rotation.y = baseYaw;
           pivot.userData.baseYaw = baseYaw;
-          const leg = boxPart(0.62, 0.09, 0.09, mats[2], 'limb');
+          const leg = boxPart(s.limb, 0.62, 0.09, 0.09, 'limb');
           leg.position.set(side * 0.31, -0.06, 0);
           pivot.add(leg);
           // knee tip angled down
-          const tip = boxPart(0.34, 0.08, 0.08, mats[2], 'limb');
+          const tip = boxPart(s.limb, 0.34, 0.08, 0.08, 'limb');
           tip.position.set(side * 0.24, -0.16, 0);
           pivot.add(tip);
           group.add(pivot);
           legs.push(pivot as unknown as THREE.Mesh);
         }
       }
-      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [abdomen, head]) collectMats(mats, mesh);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
   enderman: {
@@ -364,73 +386,73 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [{ id: ITEM.ENDER_PEARL, min: 1, max: 1 }], sound: 'enderman',
     teleports: true, neutralInDay: true,
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
-      const body = boxPart(0.42, 0.8, 0.26, mats[1], 'body');
+      const mats: THREE.MeshLambertMaterial[] = [];
+      const body = boxPart(s.body, 0.42, 0.8, 0.26, 'body');
       body.position.y = 1.75;
       group.add(body);
-      const head = headPart(0.46, 0.42, 0.46, s, extra);
+      const head = boxPart(s.head, 0.46, 0.42, 0.46, 'head');
       head.position.y = 2.44;
       group.add(head);
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const pivot = legPivot(0.13, 1.35, 0.13, mats[2], sx * 0.11, 1.35, 0, sx);
+        const pivot = legPivot(s.limb, 0.13, 1.35, 0.13, sx * 0.11, 1.35, 0, sx);
         group.add(pivot);
         legs.push(pivot as unknown as THREE.Mesh);
       }
       const arms: THREE.Mesh[] = [];
+      const armPart = s.limb2 ?? s.limb;
       for (const sx of [-1, 1]) {
         const pivot = new THREE.Group();
         pivot.position.set(sx * 0.29, 2.1, 0);
-        const arm = boxPart(0.11, 1.25, 0.11, mats[2], 'limb');
+        const arm = boxPart(armPart, 0.11, 1.25, 0.11, 'limb');
         arm.position.y = -0.62;
         pivot.add(arm);
         group.add(pivot);
         arms.push(arm);
         (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
       }
-      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [body, head]) collectMats(mats, mesh);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      for (const arm of arms) collectMats(mats, arm);
+      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
   villager: {
     hostile: false, width: 0.6, height: 1.95, health: 20, speed: 0.85, damage: 0,
     drops: [], sound: 'villager',
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
+      const mats: THREE.MeshLambertMaterial[] = [];
       // robe torso
-      const body = boxPart(0.56, 0.72, 0.32, mats[1], 'body');
+      const body = boxPart(s.body, 0.56, 0.72, 0.32, 'body');
       body.position.y = 1.08;
       group.add(body);
       // robe skirt over legs
-      const skirt = boxPart(0.54, 0.42, 0.3, mats[1], 'body');
+      const skirt = boxPart(s.body, 0.54, 0.42, 0.3, 'body');
       skirt.position.y = 0.51;
       group.add(skirt);
-      // head + long nose
-      const head = headPart(0.5, 0.5, 0.5, s, extra);
+      // head + long nose (vanilla villager face: unibrow + green eyes + nose)
+      const head = boxPart(s.head, 0.5, 0.5, 0.5, 'head');
       head.position.y = 1.69;
       group.add(head);
-      if (s.extra) {
-        const noseMat = partMat(s.extra);
-        extra.push(noseMat);
-        const nose = boxPart(0.13, 0.26, 0.11, noseMat, 'nose');
-        nose.position.set(0, 1.63, 0.31);
-        group.add(nose);
-      }
+      const nose = boxPart(s.head2!, 0.13, 0.26, 0.11, 'nose');
+      nose.position.set(0, 1.63, 0.31);
+      group.add(nose);
       // crossed arms: single horizontal box on the chest
-      const armsBox = boxPart(0.58, 0.16, 0.16, mats[2], 'arm');
+      const armsBox = boxPart(s.limb2 ?? s.limb, 0.58, 0.16, 0.16, 'arm');
       armsBox.position.set(0, 1.26, 0.24);
       group.add(armsBox);
       // short legs under the skirt (hip pivots so they swing from the top)
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const pivot = legPivot(0.2, 0.32, 0.2, mats[2], sx * 0.12, 0.32, 0, sx);
+        const pivot = legPivot(s.limb, 0.2, 0.32, 0.2, sx * 0.12, 0.32, 0, sx);
         group.add(pivot);
         legs.push(pivot as unknown as THREE.Mesh);
       }
-      return { group, head, legs, arms: [], materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [body, skirt, head, nose, armsBox]) collectMats(mats, mesh);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
   witch: {
@@ -444,32 +466,26 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       const parts = humanoid(s);
       const extra: THREE.MeshLambertMaterial[] = [];
       const group = parts.group;
-      // long hooked nose (villager-style)
-      if (s.headPlain) {
-        const noseMat = partMat(s.headPlain);
-        extra.push(noseMat);
-        const nose = boxPart(0.12, 0.3, 0.12, noseMat, 'nose');
-        nose.position.set(0, 1.62, 0.3);
-        group.add(nose);
-      }
+      // long hooked nose (villager-style, vanilla texture region)
+      const nose = boxPart(s.head2!, 0.12, 0.3, 0.12, 'nose');
+      nose.position.set(0, 1.62, 0.3);
+      group.add(nose);
       // pointy hat: brim + tapering cone boxes, slightly tilted (MC witch)
-      if (s.extra) {
-        const hatMat = partMat(s.extra);
-        extra.push(hatMat);
-        const brim = boxPart(0.6, 0.06, 0.6, hatMat, 'hat');
-        brim.position.set(0, 1.99, 0);
-        group.add(brim);
-        const cone1 = boxPart(0.44, 0.2, 0.44, hatMat, 'hat');
-        cone1.position.set(0, 2.11, -0.02);
-        group.add(cone1);
-        const cone2 = boxPart(0.28, 0.18, 0.28, hatMat, 'hat');
-        cone2.position.set(0, 2.29, -0.06);
-        group.add(cone2);
-        const tip = boxPart(0.13, 0.16, 0.13, hatMat, 'hat');
-        tip.position.set(0.02, 2.45, -0.1);
-        tip.rotation.z = -0.25;
-        group.add(tip);
-      }
+      const brim = boxPart(s.hat!, 0.6, 0.06, 0.6, 'hat');
+      brim.position.set(0, 1.99, 0);
+      group.add(brim);
+      const cone1 = boxPart(s.hat1!, 0.44, 0.2, 0.44, 'hat');
+      cone1.position.set(0, 2.11, -0.02);
+      group.add(cone1);
+      const cone2 = boxPart(s.hat2!, 0.28, 0.18, 0.28, 'hat');
+      cone2.position.set(0, 2.29, -0.06);
+      group.add(cone2);
+      const tip = boxPart(s.hat3!, 0.13, 0.16, 0.13, 'hat');
+      tip.position.set(0.02, 2.45, -0.1);
+      tip.rotation.z = -0.25;
+      group.add(tip);
+      collectMats(extra, nose);
+      for (const hat of [brim, cone1, cone2, tip]) collectMats(extra, hat);
       return { group, head: parts.head, legs: parts.legs, arms: parts.arms, materials: [...parts.materials, ...extra], shadow: parts.shadow };
     },
   },
@@ -483,34 +499,30 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     hostile: false, width: 1.3, height: 2.7, health: 100, speed: 1.35, damage: 0,
     drops: [{ id: ITEM.IRON_INGOT, min: 3, max: 5 }], sound: 'golem',
     builder: (s) => {
-      const mats = [partMat(s.head), partMat(s.body), partMat(s.limb)];
-      const extra: THREE.MeshLambertMaterial[] = [];
       const group = new THREE.Group();
+      const mats: THREE.MeshLambertMaterial[] = [];
       // massive torso
-      const body = boxPart(1.0, 0.92, 0.55, mats[1], 'body');
+      const body = boxPart(s.body, 1.0, 0.92, 0.55, 'body');
       body.position.y = 1.58;
       group.add(body);
       // hip block
-      const hips = boxPart(0.82, 0.3, 0.5, mats[1], 'body');
+      const hips = boxPart(s.body, 0.82, 0.3, 0.5, 'body');
       hips.position.y = 1.02;
       group.add(hips);
       // head with long villager-style nose
-      const head = headPart(0.62, 0.56, 0.62, s, extra);
+      const head = boxPart(s.head, 0.62, 0.56, 0.62, 'head');
       head.position.y = 2.36;
       group.add(head);
-      if (s.extra) {
-        const noseMat = partMat(s.extra);
-        extra.push(noseMat);
-        const nose = boxPart(0.18, 0.34, 0.16, noseMat, 'nose');
-        nose.position.set(0, 2.26, 0.37);
-        group.add(nose);
-      }
+      const nose = boxPart(s.head2!, 0.18, 0.34, 0.16, 'nose');
+      nose.position.set(0, 2.26, 0.37);
+      group.add(nose);
       // long hanging arms with pivots (swing while walking)
       const arms: THREE.Mesh[] = [];
+      const armPart = s.limb2 ?? s.limb;
       for (const sx of [-1, 1]) {
         const pivot = new THREE.Group();
         pivot.position.set(sx * 0.64, 1.95, 0);
-        const arm = boxPart(0.3, 1.05, 0.3, mats[2], 'limb');
+        const arm = boxPart(armPart, 0.3, 1.05, 0.3, 'limb');
         arm.position.y = -0.5;
         pivot.add(arm);
         group.add(pivot);
@@ -520,11 +532,14 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       // sturdy legs (hip pivots; 0.88 tall so the top meets the hip block)
       const legs: THREE.Mesh[] = [];
       for (const sx of [-1, 1]) {
-        const pivot = legPivot(0.34, 0.88, 0.34, mats[2], sx * 0.2, 0.88, 0, sx);
+        const pivot = legPivot(s.limb, 0.34, 0.88, 0.34, sx * 0.2, 0.88, 0, sx);
         group.add(pivot);
         legs.push(pivot as unknown as THREE.Mesh);
       }
-      return { group, head, legs, arms, materials: [...mats, ...extra], shadow: null as unknown as THREE.Mesh };
+      for (const mesh of [body, hips, head, nose]) collectMats(mats, mesh);
+      for (const arm of arms) collectMats(mats, arm);
+      for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
+      return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
 };

@@ -50,6 +50,14 @@ export function MainMenu() {
             Achievements
           </McButton>
           <McButton onClick={() => { audio.click(); useGameStore.getState().setScreen('settings'); }}>Settings…</McButton>
+          <McButton
+            onClick={() => {
+              audio.click();
+              useGameStore.getState().setScreen('assets');
+            }}
+          >
+            Asset Viewer
+          </McButton>
         </div>
       </div>
 

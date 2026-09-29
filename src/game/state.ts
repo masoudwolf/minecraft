@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import type { InvSlot } from './inventory';
 
-export type Screen = 'menu' | 'worlds' | 'createWorld' | 'achievements' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead';
+export type Screen = 'menu' | 'worlds' | 'createWorld' | 'achievements' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead' | 'assets';
 
 export type GameMode = 'survival' | 'creative';
 

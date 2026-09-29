@@ -1,82 +1,68 @@
-// ─── Procedural mob skins (Minecraft-style pixel textures via canvas) ────────
+// ─── Mob skins: real Minecraft vanilla entity textures + standard box UVs ───
+// Rebuilt (post-reset) on top of vanillaSkins.ts. Each part carries the
+// official texture and its Minecraft model box definition (texOffs + dims),
+// so every face samples the exact vanilla pixels — pixel-perfect by
+// construction, no hand-extracted texel data to drift out of alignment.
 import * as THREE from 'three';
-
-type Ctx = CanvasRenderingContext2D;
-
-function makeCanvas(w: number, h: number): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  return c;
-}
-
-function seeded(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function noiseFill(ctx: Ctx, x0: number, y0: number, w: number, h: number, colors: string[], rnd: () => number): void {
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) {
-      ctx.fillStyle = colors[Math.floor(rnd() * colors.length)];
-      ctx.fillRect(x0 + x, y0 + y, 1, 1);
-    }
-}
-
-function px(ctx: Ctx, x: number, y: number, c: string): void {
-  ctx.fillStyle = c;
-  ctx.fillRect(x, y, 1, 1);
-}
+import { vanillaTex, tintedTex, type MobSkinPart, type BoxUVLayout } from './vanillaSkins';
 
 export interface MobSkins {
-  head: THREE.CanvasTexture;        // face features — applied ONLY to the front (+Z) face
-  headPlain: THREE.CanvasTexture;   // featureless skin for the other 5 head faces (MC-accurate)
-  body: THREE.CanvasTexture;
-  limb: THREE.CanvasTexture;
-  extra?: THREE.CanvasTexture; // e.g. snout, beak
+  head: MobSkinPart;
+  /** long nose (villager/witch/golem) */
+  head2?: MobSkinPart;
+  body: MobSkinPart;
+  limb: MobSkinPart;
+  /** arms when they use a different region than legs (zombie/skeleton/villager/golem) */
+  limb2?: MobSkinPart;
+  /** beak (chicken) */
+  extra?: MobSkinPart;
+  /** wattle (chicken) */
+  extra2?: MobSkinPart;
+  /** wings (chicken) */
+  wing?: MobSkinPart;
+  /** chicken legs: whole-texture orange bake (vanilla tints legs at runtime) */
+  legsBaked?: MobSkinPart;
+  /** sheep fleece layer (MC renders wool as an inflated second box layer) */
+  fur?: { head: MobSkinPart; body: MobSkinPart; limb: MobSkinPart; inflate: number };
+  /** witch hat pieces */
+  hat?: MobSkinPart;
+  hat1?: MobSkinPart;
+  hat2?: MobSkinPart;
+  hat3?: MobSkinPart;
+}
+
+function p(file: string, texW: number, texH: number, u: number, v: number, w: number, h: number, d: number): MobSkinPart {
+  return { tex: vanillaTex(file), lay: { u, v, w, h, d }, texW, texH };
+}
+
+function tintP(file: string, texW: number, texH: number, color: string, strength: number, u: number, v: number, w: number, h: number, d: number): MobSkinPart {
+  return { tex: tintedTex(file, color, strength), lay: { u, v, w, h, d }, texW, texH };
 }
 
 const skinCache = new Map<string, MobSkins>();
 
-function tex(canvas: HTMLCanvasElement): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(canvas);
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
-  t.generateMipmaps = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
-  const c = makeCanvas(src.width, src.height);
-  c.getContext('2d')!.drawImage(src, 0, 0);
-  return c;
-}
-
-/** eyes: two 1x2-ish dark eyes on head front */
-function eyes(ctx: Ctx, y: number, left: number, right: number, color: string, w = 2, h = 2): void {
-  ctx.fillStyle = color;
-  ctx.fillRect(left, y, w, h);
-  ctx.fillRect(right, y, w, h);
-}
+// ─── Sheep dye palette (vanilla wool colors) ─────────────────────────────────
+export const SHEEP_COLORS: Record<string, string> = {
+  white: '#E9ECEC',
+  light_gray: '#8E8E86',
+  gray: '#3E4447',
+  brown: '#724728',
+  black: '#141519',
+};
 
 export function getMobSkins(type: string): MobSkins {
   const cached = skinCache.get(type);
   if (cached) return cached;
   let skins: MobSkins;
-  // sheep color variants: "sheep:white" | "sheep:light_gray" | ... (default white)
   if (type.startsWith('sheep')) {
     const color = type.split(':')[1] ?? 'white';
     skins = buildSheep(color);
   } else
   switch (type) {
     case 'pig': skins = buildPig(); break;
-    case 'cow': skins = buildCow(); break;
-    case 'sheep': skins = buildSheep('white'); break;
+    case 'cow': skins = buildCow('cow'); break;
+    case 'mooshroom': skins = buildCow('mooshroom_red'); break;
+    case 'mooshroom_brown': skins = buildCow('mooshroom_brown'); break;
     case 'chicken': skins = buildChicken(); break;
     case 'zombie': skins = buildZombie(); break;
     case 'creeper': skins = buildCreeper(); break;
@@ -85,7 +71,6 @@ export function getMobSkins(type: string): MobSkins {
     case 'enderman': skins = buildEnderman(); break;
     case 'villager': skins = buildVillager(); break;
     case 'witch': skins = buildWitch(); break;
-    case 'mooshroom': skins = buildMooshroom(); break;
     case 'golem': skins = buildGolem(); break;
     default: skins = buildPig();
   }
@@ -93,523 +78,147 @@ export function getMobSkins(type: string): MobSkins {
   return skins;
 }
 
-// ── PIG ──────────────────────────────────────────────────────────────────────
+// ── PIG: head(0,0)8x8x8 · body(28,8)10x16x8 · leg(0,16)4x6x4 ─────────────────
 function buildPig(): MobSkins {
-  const rnd = seeded(101);
-  const pink = ['#f0a2a2', '#e89696', '#f4adad', '#e08d8d'];
-  // head 16x16 with face on front (we use whole texture per face; draw face centrally)
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, pink, rnd);
-  const headPlain = cloneCanvas(head);
-  eyes(ctx, 6, 3, 11, '#1a1a1a');
-  // snout
-  ctx.fillStyle = '#d87c7c';
-  ctx.fillRect(5, 9, 6, 4);
-  ctx.fillStyle = '#b06060';
-  px(ctx, 6, 10, '#6a3a3a'); px(ctx, 9, 10, '#6a3a3a');
-  px(ctx, 6, 11, '#6a3a3a'); px(ctx, 9, 11, '#6a3a3a');
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, pink, rnd);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, pink, rnd);
-  ctx.fillStyle = '#d87c7c';
-  ctx.fillRect(0, 14, 8, 2);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+  return {
+    head: p('pig', 64, 32, 0, 0, 8, 8, 8),
+    body: p('pig', 64, 32, 28, 8, 10, 16, 8),
+    limb: p('pig', 64, 32, 0, 16, 4, 6, 4),
+  };
 }
 
-// ── COW ──────────────────────────────────────────────────────────────────────
-function buildCow(): MobSkins {
-  const rnd = seeded(202);
-  const brown = ['#6e4a32', '#5d3d28', '#7a5438', '#664530'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, brown, rnd);
-  const headPlain = cloneCanvas(head);
-  ctx.fillStyle = '#e8e0d8';
-  ctx.fillRect(4, 10, 8, 6); // muzzle
-  eyes(ctx, 5, 2, 12, '#1a1a1a');
-  ctx.fillStyle = '#c8b8a8';
-  px(ctx, 6, 12, '#a89888'); px(ctx, 9, 12, '#a89888');
-  // white patch on forehead
-  ctx.fillStyle = '#e8e4dc';
-  ctx.fillRect(6, 1, 4, 3);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, brown, rnd);
-  // white patches
-  ctx.fillStyle = '#e8e4dc';
-  ctx.fillRect(2, 3, 5, 4);
-  ctx.fillRect(10, 9, 4, 5);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, brown, rnd);
-  ctx.fillStyle = '#4a3020';
-  ctx.fillRect(0, 14, 8, 2);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+// ── COW / MOOSHROOM: head(0,0)8x8x6 · body(18,4)12x18x10 · leg(0,16)4x12x4 ───
+function buildCow(tex: string): MobSkins {
+  return {
+    head: p(tex, 64, 32, 0, 0, 8, 8, 6),
+    body: p(tex, 64, 32, 18, 4, 12, 18, 10),
+    limb: p(tex, 64, 32, 0, 16, 4, 12, 4),
+  };
 }
 
-// ── SHEEP (color variants: white, light_gray, gray, brown, black) ───────────
-const SHEEP_WOOL_PALETTES: Record<string, string[]> = {
-  white: ['#f0f0f0', '#e8e8e8', '#f8f8f8', '#e0e0e0'],
-  light_gray: ['#c8c8c8', '#bcbcbc', '#d2d2d2', '#b2b2b2'],
-  gray: ['#8a8a8a', '#7e7e7e', '#969696', '#727272'],
-  brown: ['#8a6a4a', '#7c5e40', '#9a7a56', '#6a5034'],
-  black: ['#3a3a3a', '#303030', '#444444', '#2a2a2a'],
-};
-
+// ── SHEEP: two layers (skin + fleece) like vanilla; color = runtime tint ─────
+// body model: head(0,0)6x6x6 · body(28,8)8x16x6 · leg(0,16)4x12x4
 function buildSheep(color = 'white'): MobSkins {
-  const rnd = seeded(303);
-  const wool = SHEEP_WOOL_PALETTES[color] ?? SHEEP_WOOL_PALETTES.white;
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, wool, rnd);
-  // wool tuft on top (wraps all sides — kept on plain faces too)
-  ctx.fillStyle = wool[2];
-  ctx.fillRect(1, 1, 14, 4);
-  const headPlain = cloneCanvas(head);
-  // face (pinkish skin)
-  ctx.fillStyle = '#d8b8a0';
-  ctx.fillRect(4, 6, 8, 10);
-  eyes(ctx, 9, 4, 10, '#1a1a1a');
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, wool, rnd);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 8, wool, rnd);
-  noiseFill(ctx, 0, 8, 8, 8, ['#d8b8a0', '#cca890', '#e2c4ae'], rnd);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+  const dye = SHEEP_COLORS[color] ?? SHEEP_COLORS.white;
+  const white = color === 'white';
+  const fleeceFile = 'sheep_fur';
+  const skinFile = 'sheep_body';
+  return {
+    // skin layer: vanilla sheep skin, lightly tinted with the dye so the
+    // sheared look keeps the sheep's color (user requirement — Task 32)
+    head: white ? p(skinFile, 64, 32, 0, 0, 6, 6, 6) : tintP(skinFile, 64, 32, dye, 0.4, 0, 0, 6, 6, 6),
+    body: white ? p(skinFile, 64, 32, 28, 8, 8, 16, 6) : tintP(skinFile, 64, 32, dye, 0.4, 28, 8, 8, 16, 6),
+    limb: white ? p(skinFile, 64, 32, 0, 16, 4, 12, 4) : tintP(skinFile, 64, 32, dye, 0.4, 0, 16, 4, 12, 4),
+    fur: {
+      head: white ? p(fleeceFile, 64, 32, 0, 0, 6, 6, 6) : tintP(fleeceFile, 64, 32, dye, 1, 0, 0, 6, 6, 6),
+      body: white ? p(fleeceFile, 64, 32, 28, 8, 8, 16, 6) : tintP(fleeceFile, 64, 32, dye, 1, 28, 8, 8, 16, 6),
+      limb: white ? p(fleeceFile, 64, 32, 0, 16, 4, 12, 4) : tintP(fleeceFile, 64, 32, dye, 1, 0, 16, 4, 12, 4),
+      inflate: 0.12,
+    },
+  };
 }
 
-// ── CHICKEN ──────────────────────────────────────────────────────────────────
+// ── CHICKEN: head(0,0)4x6x3 · body(0,9)6x8x6 · beak(14,0)4x2x2 · wattle(14,4)2x2x2
+// legs are runtime-tinted orange by vanilla → baked orange texture here
 function buildChicken(): MobSkins {
-  const rnd = seeded(404);
-  const white = ['#f4f4f4', '#eaeaea', '#fcfcfc', '#e0e0e0'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, white, rnd);
-  const headPlain = cloneCanvas(head);
-  eyes(ctx, 6, 3, 11, '#1a1a1a', 2, 2);
-  // beak
-  ctx.fillStyle = '#e8a23c';
-  ctx.fillRect(5, 9, 6, 3);
-  // wattle
-  ctx.fillStyle = '#c83c3c';
-  ctx.fillRect(6, 12, 4, 2);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, white, rnd);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, ['#e8a23c', '#d8942f', '#f0b050'], rnd);
-
-  // extra: red wattle (3D box under the beak)
-  const wattle = makeCanvas(8, 8);
-  ctx = wattle.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 8, ['#c83c3c', '#b83030', '#d44848', '#a82a2a'], rnd);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(wattle) };
+  const legs = tintP('chicken', 64, 32, '#E0A020', 1, 14, 16, 2, 5, 2);
+  return {
+    head: p('chicken', 64, 32, 0, 0, 4, 6, 3),
+    body: p('chicken', 64, 32, 0, 9, 6, 8, 6),
+    limb: legs,
+    legsBaked: legs,
+    extra: p('chicken', 64, 32, 14, 0, 4, 2, 2),
+    extra2: p('chicken', 64, 32, 14, 4, 2, 2, 2),
+    wing: p('chicken', 64, 32, 24, 13, 1, 8, 6),
+  };
 }
 
-// ── ZOMBIE ───────────────────────────────────────────────────────────────────
+// ── ZOMBIE (64x64): head(0,0)8x8x8 · body(16,16)8x12x4 · leg(0,16) · arm(40,16)
 function buildZombie(): MobSkins {
-  const rnd = seeded(505);
-  const green = ['#5a9c4a', '#4f8c40', '#65a854', '#488038'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, green, rnd);
-  // dark hair top (wraps all sides — kept on plain faces too)
-  ctx.fillStyle = '#2a3a24';
-  ctx.fillRect(0, 0, 16, 2);
-  const headPlain = cloneCanvas(head);
-  eyes(ctx, 6, 3, 11, '#101a10', 2, 2);
-  // mouth
-  ctx.fillStyle = '#2a3a24';
-  ctx.fillRect(6, 11, 4, 2);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  // shirt (cyan-ish torn)
-  noiseFill(ctx, 0, 0, 16, 16, ['#3a7a8c', '#326a7c', '#44889c'], rnd);
-  ctx.fillStyle = '#2a5a68';
-  ctx.fillRect(2, 12, 12, 4); // pants hint at bottom? keep shirt
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, green, rnd);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+  return {
+    head: p('zombie', 64, 64, 0, 0, 8, 8, 8),
+    body: p('zombie', 64, 64, 16, 16, 8, 12, 4),
+    limb: p('zombie', 64, 64, 0, 16, 4, 12, 4),
+    limb2: p('zombie', 64, 64, 40, 16, 4, 12, 4),
+  };
 }
 
-// ── CREEPER ──────────────────────────────────────────────────────────────────
-function buildCreeper(): MobSkins {
-  const rnd = seeded(606);
-  const greens = ['#4fae4f', '#44a044', '#5cb85c', '#3c903c', '#58b458'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, greens, rnd);
-  const headPlain = cloneCanvas(head);
-  // iconic sad face (dark)
-  ctx.fillStyle = '#0c1c0c';
-  ctx.fillRect(3, 4, 4, 4);   // left eye
-  ctx.fillRect(9, 4, 4, 4);   // right eye
-  ctx.fillRect(6, 8, 4, 5);   // mouth center
-  ctx.fillRect(4, 10, 2, 4);  // mouth left drop
-  ctx.fillRect(10, 10, 2, 4); // mouth right drop
-  ctx.fillRect(5, 9, 6, 1);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, greens, rnd);
-  // mottled darker patches
-  ctx.fillStyle = '#388438';
-  for (let i = 0; i < 10; i++) {
-    ctx.fillRect(Math.floor(rnd() * 14), Math.floor(rnd() * 14), 2, 2);
-  }
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, greens, rnd);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
-}
-
-// ── SPIDER ────────────────────────────────────────────────────────────────────
-function buildSpider(): MobSkins {
-  const rnd = seeded(808);
-  const fur = ['#2c2420', '#241c18', '#38302a', '#1e1714'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, fur, rnd);
-  const headPlain = cloneCanvas(head);
-  // iconic red eyes (cluster like MC: 2 big + 4 small)
-  ctx.fillStyle = '#c02020';
-  ctx.fillRect(3, 5, 2, 2); ctx.fillRect(11, 5, 2, 2);
-  ctx.fillStyle = '#8a1414';
-  ctx.fillRect(6, 4, 1, 1); ctx.fillRect(9, 4, 1, 1);
-  ctx.fillRect(5, 8, 1, 1); ctx.fillRect(10, 8, 1, 1);
-  // fangs
-  ctx.fillStyle = '#c8b890';
-  ctx.fillRect(5, 12, 1, 2); ctx.fillRect(10, 12, 1, 2);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, fur, rnd);
-  // abdomen marking (dark hourglass-ish)
-  ctx.fillStyle = '#161010';
-  ctx.fillRect(6, 3, 4, 3);
-  ctx.fillRect(5, 7, 6, 2);
-  ctx.fillRect(7, 10, 2, 3);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, fur, rnd);
-  ctx.fillStyle = '#12100e';
-  ctx.fillRect(0, 7, 8, 1);
-  ctx.fillRect(0, 14, 8, 1);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
-}
-
-// ── ENDERMAN ──────────────────────────────────────────────────────────────────
-function buildEnderman(): MobSkins {
-  const rnd = seeded(909);
-  const black = ['#161616', '#101010', '#1e1e1e', '#0c0c0c'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, black, rnd);
-  const headPlain = cloneCanvas(head);
-  // purple glowing eyes (wide, enderman style)
-  ctx.fillStyle = '#cc78e8';
-  ctx.fillRect(1, 6, 5, 3); ctx.fillRect(10, 6, 5, 3);
-  ctx.fillStyle = '#f0bcff';
-  ctx.fillRect(2, 7, 3, 1); ctx.fillRect(11, 7, 3, 1);
-  // jaw line (mouth opens when provoked — drawn lighter, base state subtle)
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(5, 12, 6, 1);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, black, rnd);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, black, rnd);
-  ctx.fillStyle = '#060606';
-  ctx.fillRect(0, 15, 8, 1);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
-}
-
-// ── SKELETON ─────────────────────────────────────────────────────────────────
+// ── SKELETON (64x32): same layout, thin 2x12x2 limbs ─────────────────────────
 function buildSkeleton(): MobSkins {
-  const rnd = seeded(707);
-  const bone = ['#d8d8d0', '#cccccc', '#e4e4dc', '#c2c2ba'];
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, bone, rnd);
-  const headPlain = cloneCanvas(head);
-  eyes(ctx, 6, 3, 11, '#2a2a2a', 2, 2);
-  // nose
-  px(ctx, 7, 9, '#8a8a82'); px(ctx, 8, 9, '#8a8a82');
-  // mouth: vertical teeth lines
-  ctx.fillStyle = '#8a8a82';
-  for (let x = 5; x <= 10; x += 2) ctx.fillRect(x, 11, 1, 3);
-
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, bone, rnd);
-  // ribcage lines
-  ctx.fillStyle = '#a8a8a0';
-  ctx.fillRect(2, 4, 12, 1);
-  ctx.fillRect(2, 7, 12, 1);
-  ctx.fillRect(2, 10, 12, 1);
-  ctx.fillStyle = '#b8b8b0';
-  ctx.fillRect(7, 3, 2, 10); // spine
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, bone, rnd);
-  ctx.fillStyle = '#a8a8a0';
-  ctx.fillRect(0, 5, 8, 1);
-  ctx.fillRect(0, 10, 8, 1);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
+  return {
+    head: p('skeleton', 64, 32, 0, 0, 8, 8, 8),
+    body: p('skeleton', 64, 32, 16, 16, 8, 12, 4),
+    limb: p('skeleton', 64, 32, 0, 16, 2, 12, 2),
+    limb2: p('skeleton', 64, 32, 40, 16, 2, 12, 2),
+  };
 }
 
-// ── VILLAGER (phase 8) ───────────────────────────────────────────────────────
+// ── CREEPER: head(0,0)8x8x8 · body(16,16)8x12x4 · leg(0,16)4x6x4 ─────────────
+function buildCreeper(): MobSkins {
+  return {
+    head: p('creeper', 64, 32, 0, 0, 8, 8, 8),
+    body: p('creeper', 64, 32, 16, 16, 8, 12, 4),
+    limb: p('creeper', 64, 32, 0, 16, 4, 6, 4),
+  };
+}
+
+// ── SPIDER: head(0,0)8x8x8 · body(0,12)10x8x10 · leg(18,3)16x2x2 ─────────────
+function buildSpider(): MobSkins {
+  return {
+    head: p('spider', 64, 32, 0, 0, 8, 8, 8),
+    body: p('spider', 64, 32, 0, 12, 10, 8, 10),
+    limb: p('spider', 64, 32, 18, 3, 16, 2, 2),
+  };
+}
+
+// ── ENDERMAN: head(0,0)8x8x8 (eyes on front); body/limbs from solid black area
+function buildEnderman(): MobSkins {
+  return {
+    head: p('enderman', 64, 32, 0, 0, 8, 8, 8),
+    body: p('enderman', 64, 32, 32, 20, 8, 8, 2),
+    limb: p('enderman', 64, 32, 54, 20, 2, 8, 2),
+    limb2: p('enderman', 64, 32, 54, 20, 2, 8, 2),
+  };
+}
+
+// ── VILLAGER (64x64): head(0,0)8x10x8 · nose(24,0)2x4x2 · body(16,20)8x12x6 ·
+// leg(0,22)4x12x4 · arm(44,22)2x12x2 ─────────────────────────────────────────
 function buildVillager(): MobSkins {
-  const rnd = seeded(808);
-  const skin = ['#c8a07a', '#bd9570', '#d2ab84', '#b38a66'];
-  const robe = ['#7a5b3a', '#6e5133', '#856542', '#63482c'];
-  // head: bald with big unibrow + green eyes + long nose shadow
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, skin, rnd);
-  const headPlain = cloneCanvas(head);
-  // unibrow
-  ctx.fillStyle = '#5c4428';
-  ctx.fillRect(3, 5, 10, 1);
-  // eyes (green)
-  ctx.fillStyle = '#3a7a34';
-  ctx.fillRect(4, 6, 2, 2); ctx.fillRect(10, 6, 2, 2);
-  ctx.fillStyle = '#1c1c1c';
-  px(ctx, 5, 7, '#1c1c1c'); px(ctx, 10, 7, '#1c1c1c');
-  // mouth
-  ctx.fillStyle = '#8a6848';
-  ctx.fillRect(6, 12, 4, 1);
-  // nose bridge shadow down the middle
-  ctx.fillStyle = '#a8845e';
-  ctx.fillRect(7, 8, 2, 6);
-
-  // body: brown robe with darker hem + belt
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, robe, rnd);
-  ctx.fillStyle = '#543d24';
-  ctx.fillRect(0, 13, 16, 3); // hem
-  ctx.fillStyle = '#8a6a42';
-  ctx.fillRect(0, 6, 16, 2); // robe fold highlight
-  ctx.fillStyle = '#4a3620';
-  ctx.fillRect(0, 9, 16, 1); // belt line
-
-  // limb texture: robe-colored sleeves/legs
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, robe, rnd);
-  ctx.fillStyle = '#543d24';
-  ctx.fillRect(0, 14, 8, 2);
-
-  // extra: nose (single warm skin tone)
-  const nose = makeCanvas(8, 8);
-  ctx = nose.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 8, ['#c8a07a', '#bd9570', '#b38a66'], rnd);
-  ctx.fillStyle = '#a87d58';
-  ctx.fillRect(0, 6, 8, 2);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(nose) };
+  return {
+    head: p('villager', 64, 64, 0, 0, 8, 10, 8),
+    head2: p('villager', 64, 64, 24, 0, 2, 4, 2),
+    body: p('villager', 64, 64, 16, 20, 8, 12, 6),
+    limb: p('villager', 64, 64, 0, 22, 4, 12, 4),
+    limb2: p('villager', 64, 64, 44, 22, 2, 12, 2),
+  };
 }
 
-// ── WITCH (phase 10): green-faced hag, purple robe, pointy hat ──────────────
+// ── WITCH (64x128): villager layout + hat pieces from the hat texture areas ──
 function buildWitch(): MobSkins {
-  const rnd = seeded(1111);
-  const skin = ['#7ca04a', '#6e9240', '#88ac54', '#648539'];
-  const robe = ['#5b3a6e', '#4f3160', '#67437c', '#452a54'];
-  // head: green hag face with wart + wrinkle, hooked nose shadow
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, skin, rnd);
-  const headPlain = cloneCanvas(head);
-  // brows (angry)
-  ctx.fillStyle = '#2c3a1c';
-  ctx.fillRect(3, 5, 4, 1); ctx.fillRect(9, 5, 4, 1);
-  // eyes (dark with red glint)
-  ctx.fillStyle = '#1c1c14';
-  ctx.fillRect(4, 6, 2, 2); ctx.fillRect(10, 6, 2, 2);
-  px(ctx, 4, 6, '#8a2020'); px(ctx, 11, 7, '#8a2020');
-  // mouth (grim line)
-  ctx.fillStyle = '#33421f';
-  ctx.fillRect(5, 11, 6, 1);
-  px(ctx, 5, 12, '#33421f'); px(ctx, 10, 12, '#33421f');
-  // wart on the cheek
-  px(ctx, 12, 10, '#4c6430');
-  // nose ridge shadow (the 3D nose box covers the middle)
-  ctx.fillStyle = '#5c7a38';
-  ctx.fillRect(7, 7, 2, 5);
-
-  // body: purple robe with darker hem + belt
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, robe, rnd);
-  ctx.fillStyle = '#3a2450';
-  ctx.fillRect(0, 13, 16, 3); // hem
-  ctx.fillStyle = '#7a5494';
-  ctx.fillRect(0, 3, 16, 2); // collar highlight
-  ctx.fillStyle = '#2e1c40';
-  ctx.fillRect(0, 8, 16, 1); // belt
-
-  // limb: robe sleeves / skirt-colored legs
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, robe, rnd);
-  ctx.fillStyle = '#3a2450';
-  ctx.fillRect(0, 14, 8, 2);
-
-  // extra: pointy hat texture (dark purple with star band + bent tip shading)
-  const hat = makeCanvas(8, 8);
-  ctx = hat.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 8, ['#3a2450', '#322045', '#42285c'], rnd);
-  // hat band (golden)
-  ctx.fillStyle = '#c9a227';
-  ctx.fillRect(0, 5, 8, 1);
-  // buckle
-  px(ctx, 3, 5, '#f0d060'); px(ctx, 4, 5, '#f0d060');
-  // tip shading
-  ctx.fillStyle = '#241634';
-  px(ctx, 6, 1, '#241634'); px(ctx, 6, 2, '#241634'); px(ctx, 5, 2, '#241634');
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(hat) };
+  return {
+    head: p('witch', 64, 128, 0, 0, 8, 10, 8),
+    head2: p('witch', 64, 128, 24, 0, 2, 4, 2),
+    body: p('witch', 64, 128, 16, 20, 8, 12, 6),
+    limb: p('witch', 64, 128, 0, 22, 4, 12, 4),
+    limb2: p('witch', 64, 128, 44, 22, 2, 12, 2),
+    hat: p('witch', 64, 128, 0, 44, 6, 1, 6),
+    hat1: p('witch', 64, 128, 26, 44, 4, 4, 4),
+    hat2: p('witch', 64, 128, 44, 44, 3, 3, 3),
+    hat3: p('witch', 64, 128, 54, 46, 2, 4, 2),
+  };
 }
 
-// ── MOOSHROOM (phase 8): red cow with white patches ─────────────────────────
-function buildMooshroom(): MobSkins {
-  const rnd = seeded(909);
-  const red = ['#a83226', '#9c2c20', '#b43a2c', '#90281e'];
-  // head with white muzzle patch
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, red, rnd);
-  const headPlain = cloneCanvas(head);
-  ctx.fillStyle = '#e8e0d8';
-  ctx.fillRect(3, 10, 10, 6); // muzzle
-  eyes(ctx, 5, 2, 11, '#1a1a1a');
-  ctx.fillStyle = '#c8b8b0';
-  px(ctx, 5, 12, '#c8b8b0'); px(ctx, 10, 12, '#c8b8b0');
-  px(ctx, 5, 13, '#c8b8b0'); px(ctx, 10, 13, '#c8b8b0');
-  // small white patch on forehead
-  ctx.fillStyle = '#e8e0d8';
-  ctx.fillRect(6, 2, 4, 2);
-
-  // body: red with big white patches
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, red, rnd);
-  ctx.fillStyle = '#e8e0d8';
-  ctx.fillRect(2, 2, 5, 4);
-  ctx.fillRect(10, 7, 4, 5);
-  ctx.fillRect(4, 11, 3, 3);
-  ctx.fillRect(11, 1, 3, 2);
-
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, red, rnd);
-  ctx.fillStyle = '#8a6a5a';
-  ctx.fillRect(0, 14, 8, 2);
-  // one patched leg
-  ctx.fillStyle = '#e8e0d8';
-  ctx.fillRect(4, 4, 3, 5);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb) };
-}
-
-// ── IRON GOLEM (phase 9): massive pale-metal defender with vines ────────────
+// ── IRON GOLEM (128x128): head(0,0)8x10x8 · body(0,40)18x12x11 ·
+// arm(60,21)4x30x2 · leg(0,70)4x8x4 ──────────────────────────────────────────
 function buildGolem(): MobSkins {
-  const rnd = seeded(1010);
-  const iron = ['#d8d4c8', '#ccc8ba', '#e0dcd0', '#c2beae', '#d4d0c2'];
-  // head: pale metal face + deep-set eyes + brow
-  const head = makeCanvas(16, 16);
-  let ctx = head.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, iron, rnd);
-  const headPlain = cloneCanvas(head);
-  // brow ridge shadow
-  ctx.fillStyle = '#a8a498';
-  ctx.fillRect(2, 5, 12, 1);
-  // eyes (dark, deep-set)
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(4, 6, 2, 2);
-  ctx.fillRect(10, 6, 2, 2);
-  // nose shadow strip between the eyes
-  ctx.fillStyle = '#b0aca0';
-  ctx.fillRect(7, 6, 2, 6);
-  // rust speckles
-  for (let i = 0; i < 5; i++) {
-    px(ctx, 2 + Math.floor(rnd() * 12), 1 + Math.floor(rnd() * 13), '#a67a52');
-  }
-
-  // body: pale metal plates with cracks + vine detail on chest
-  const body = makeCanvas(16, 16);
-  ctx = body.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 16, 16, iron, rnd);
-  // plate seams
-  ctx.fillStyle = '#a8a498';
-  ctx.fillRect(0, 4, 16, 1);
-  ctx.fillRect(0, 10, 16, 1);
-  // cracks
-  ctx.fillStyle = '#8e8a7c';
-  px(ctx, 3, 6, '#8e8a7c'); px(ctx, 4, 7, '#8e8a7c'); px(ctx, 4, 8, '#8e8a7c');
-  px(ctx, 11, 11, '#8e8a7c'); px(ctx, 12, 12, '#8e8a7c');
-  // vines (green strands creeping over the chest)
-  ctx.fillStyle = '#4c8a32';
-  px(ctx, 1, 2, '#4c8a32'); px(ctx, 2, 3, '#4c8a32'); px(ctx, 2, 4, '#3a7026');
-  px(ctx, 13, 8, '#4c8a32'); px(ctx, 14, 9, '#3a7026'); px(ctx, 13, 10, '#4c8a32');
-  px(ctx, 7, 13, '#4c8a32'); px(ctx, 8, 14, '#3a7026');
-  // rust patches
-  for (let i = 0; i < 4; i++) {
-    px(ctx, 2 + Math.floor(rnd() * 12), 2 + Math.floor(rnd() * 12), '#a67a52');
-  }
-
-  // limb: metal arms/legs with vine wraps
-  const limb = makeCanvas(8, 16);
-  ctx = limb.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 16, iron, rnd);
-  ctx.fillStyle = '#a8a498';
-  ctx.fillRect(0, 5, 8, 1);
-  ctx.fillRect(0, 11, 8, 1);
-  ctx.fillStyle = '#4c8a32';
-  px(ctx, 2, 8, '#4c8a32'); px(ctx, 3, 8, '#3a7026'); px(ctx, 5, 9, '#4c8a32');
-  ctx.fillStyle = '#a67a52';
-  px(ctx, 6, 3, '#a67a52'); px(ctx, 1, 13, '#a67a52');
-
-  // extra: nose (long pale-metal strip, darker tip)
-  const nose = makeCanvas(8, 8);
-  ctx = nose.getContext('2d')!;
-  noiseFill(ctx, 0, 0, 8, 8, ['#c8c4b6', '#bebaac', '#d2cec0'], rnd);
-  ctx.fillStyle = '#9a9688';
-  ctx.fillRect(0, 6, 8, 2);
-
-  return { head: tex(head), headPlain: tex(headPlain), body: tex(body), limb: tex(limb), extra: tex(nose) };
+  return {
+    head: p('iron_golem', 128, 128, 0, 0, 8, 10, 8),
+    head2: p('iron_golem', 128, 128, 10, 8, 2, 4, 2),
+    body: p('iron_golem', 128, 128, 0, 40, 18, 12, 11),
+    limb: p('iron_golem', 128, 128, 0, 70, 4, 8, 4),
+    limb2: p('iron_golem', 128, 128, 60, 21, 4, 30, 2),
+  };
 }
+
+// re-export for mobs.ts convenience
+export type { MobSkinPart, BoxUVLayout };
