@@ -110,7 +110,7 @@ export function createPlayerModel(scene: THREE.Scene): PlayerModelParts {
     pivot.add(arm);
     group.add(pivot);
     arms.push(arm);
-    (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+    (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
   }
 
   // shadow blob
@@ -242,7 +242,7 @@ export function animatePlayerModel(
   model.legs[0].rotation.x = swing;
   model.legs[1].rotation.x = -swing;
   for (const arm of model.arms) {
-    const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+    const pivot = (arm as unknown as { limbPivot?: THREE.Group }).limbPivot;
     if (pivot) {
       pivot.rotation.x = -swing * 0.8;
       pivot.rotation.z = Math.sin(walkPhase * 0.5) * 0.04;

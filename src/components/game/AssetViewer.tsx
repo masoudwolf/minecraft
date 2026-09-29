@@ -164,7 +164,7 @@ function AssetViewer() {
         }
         if (arms) {
           arms.forEach((arm, i) => {
-            const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+            const pivot = (arm as unknown as { limbPivot?: THREE.Group }).limbPivot;
             const target = pivot ?? arm;
             const side = i === 0 ? 1 : -1;
             const wing = (arm.userData as { part?: string }).part === 'wing';

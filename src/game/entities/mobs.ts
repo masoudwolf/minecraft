@@ -280,7 +280,7 @@ function humanoid(skins: MobSkins, thin = false): MobParts {
     pivot.add(arm);
     group.add(pivot);
     arms.push(arm);
-    (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+    (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
   }
   for (const mesh of [body, head]) collectMats(mats, mesh);
   for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
@@ -295,7 +295,8 @@ export function buildMobModel(type: string, variant?: string): MobParts | null {
   const def = MOB_DEFS[base];
   if (!def) return null;
   const skins = getMobSkins(variant ? `${type}:${variant}` : type);
-  return def.builder(skins);
+  const parts = def.builder(skins);
+  return parts;
 }
 
 const MOB_DEFS: Record<MobType, MobDef> = {
@@ -366,7 +367,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         pivot.add(wing);
         group.add(pivot);
         arms.push(wing);
-        (wing as unknown as { pivot: THREE.Group }).pivot = pivot;
+        (wing as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       for (const mesh of [body, head, beak, wattle]) collectMats(mats, mesh);
       for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
@@ -418,7 +419,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       const rightArm = parts.arms[1];
       rightArm.add(bow);
       for (const child of bow.children) collectMats(parts.materials, child as THREE.Mesh);
-      const pv = (rightArm as unknown as { pivot?: THREE.Group }).pivot;
+      const pv = (rightArm as unknown as { limbPivot?: THREE.Group }).limbPivot;
       if (pv) pv.userData.bowArm = true;
       return parts;
     },
@@ -498,7 +499,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         pivot.add(arm);
         group.add(pivot);
         arms.push(arm);
-        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       for (const mesh of [body, head]) collectMats(mats, mesh);
       for (const pv of legs) for (const child of (pv as unknown as THREE.Group).children) collectMats(mats, child as THREE.Mesh);
@@ -614,7 +615,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         pivot.add(arm);
         group.add(pivot);
         arms.push(arm);
-        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       // long sturdy legs (vanilla 6×24×6), hip pivots inside the body
       const legs: THREE.Mesh[] = [];
@@ -657,7 +658,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
         pivot.add(arm);
         group.add(pivot);
         arms.push(arm);
-        (arm as unknown as { pivot: THREE.Group }).pivot = pivot;
+        (arm as unknown as { limbPivot: THREE.Group }).limbPivot = pivot;
       }
       for (const mesh of [body, head]) collectMats(mats, mesh);
       for (const arm of arms) collectMats(mats, arm);
@@ -1472,7 +1473,7 @@ export class MobManager {
       // arms: zombie reaches forward; enderman hangs/swings (raised when provoked);
       // chicken wings flap while airborne
       for (const arm of m.parts.arms) {
-        const pivot = (arm as unknown as { pivot?: THREE.Group }).pivot;
+        const pivot = (arm as unknown as { limbPivot?: THREE.Group }).limbPivot;
         if (!pivot) continue;
         if (m.type === 'chicken') {
           // wings fold against the body on the ground; flap fast while falling
@@ -1499,7 +1500,7 @@ export class MobManager {
         } else if (m.type === 'golem') {
           // heavy pendulum sway; raised when charging a target
           const raised = m.state === 'chase' ? -1.2 : 0;
-          pivot.rotation.x = raised + Math.sin(m.walkPhase * 2.4 + (pivot === (m.parts.arms[0] as unknown as { pivot?: THREE.Group }).pivot ? 0 : Math.PI)) * 0.3;
+          pivot.rotation.x = raised + Math.sin(m.walkPhase * 2.4 + (pivot === (m.parts.arms[0] as unknown as { limbPivot?: THREE.Group }).limbPivot ? 0 : Math.PI)) * 0.3;
           pivot.rotation.z = Math.sin(m.walkPhase * 1.2) * 0.05;
         } else if (m.type === 'enderman') {
           if (m.provoked) {
