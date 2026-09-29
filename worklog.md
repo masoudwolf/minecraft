@@ -742,3 +742,22 @@ Stage Summary:
 - Asset Viewer restored with the SAME block rendering path as the world (fixes the user's "grass looks weird in the viewer" report).
 - 3 protective commits: 4373df9, ee476d4 (+ this one).
 - STILL MISSING (lost with the reset, to rebuild next): enchanting table (Phase 11), fishing (Phase 12), Phase 13 items; then the user's pending queue: creator test-tools button (time change etc.), creative inventory completeness audit, Minecraft-style inventory redesign, E-screen 3D character with mouse-follow, Task 32 shear color persistence (foundation done), Task 33 snow golem buildable.
+---
+Task ID: 19 (Feature — Creator Tools Panel, F4)
+Agent: main (user request: "دکمه ابزار های اختصاصی تست بزار تا من سازنده بتونم سریع همچیز رو تست کنم مثلا تایم عوض کردن و...")
+
+Work Log:
+- NEW src/components/game/CreatorTools.tsx + state.creatorOpen/setCreatorOpen + engine F4 toggle (guarded to playing screen; panel floats top-right, pointer-events scoped so the game keeps running behind it).
+- Features: TIME (Sunrise 130 / Noon 240 / Sunset 350 / Midnight 20 presets + live 0..479 slider reading eng.sky.time), WEATHER (Clear/Rain/Storm — sets weather.state + intensity directly), GAME MODE (creative/survival via player.gameMode), Heal (health=20), To Spawn (eng.spawnPoint + zero vy), SPAWN MOB (15 buttons: pig/cow/sheep white+black+brown/chicken/mooshroom/zombie/skeleton/creeper/spider/enderman/villager/witch/golem → mobs.debugSpawn 4 blocks in front at scanned ground height), Kill Hostiles (dead=true + deathT for hostiles), Clear All Mobs (mobs.clear()).
+- React hooks-lint compliance: render-time engine access is READ-ONLY (display); all mutating handlers refetch via act((g)=>...) wrapper (no captured-engine mutation after render).
+
+QA (agent-browser, world "Mob Rig QA" creative):
+- F4 opens panel ✓; ✕ closes ✓; F4 reopens ✓ (toggle verified both ways).
+- Noon button → sky.time=240, sunLevel=1.00 ✓; slider tracks ✓.
+- Clear → rain stops ✓ (weather cleared, fading drops visible only as residue).
+- Spawn Creeper/Sheep → mob count 20→22, zombie spawned 4 blocks ahead visible in frame ✓.
+- No console/page errors ✓. lint CLEAN, tsc 22 pre-existing / 0 new. Browser closed + pkill.
+
+Stage Summary:
+- Creator has a one-keystroke (F4) test console: time, weather, mode, spawns, cleanup.
+- NEXT: rebuild enchanting (Phase 11) + fishing (Phase 12); creative inventory completeness audit; Minecraft-style inventory redesign; E-screen 3D character w/ mouse-follow; Task 32 shear color (foundation: sheep two-layer skin model done); Task 33 snow golem.
