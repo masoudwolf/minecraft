@@ -115,6 +115,11 @@ export interface KnightRig {
   /** in-game swing: seconds since the swing started (-1 = not swinging) */
   swingT: number;
   swingHitDone: boolean;
+  /** game-side hero-pose state (seconds left posing; cooldown) — pose itself is the demo's verbatim 'pose' mode */
+  poseT: number;
+  poseCd: number;
+  /** last rendered arm-R angle — used to fire the game hit when the blade LANDS */
+  prevAR: number;
 }
 const rigMap = new WeakMap<THREE.Object3D, KnightRig>();
 export function getKnightRig(group: THREE.Object3D): KnightRig | undefined {
@@ -271,6 +276,7 @@ export function buildKnight(theme = 'cyber'): MobParts {
     head, cape, torso, sl,
     cur: { aL: 0, aR: -.75, lL: 0, lR: 0, ty: 0, by: 0, cp: .1, hy: 0, hx: 0 },
     tt: 0, swingT: -1, swingHitDone: true,
+    poseT: 0, poseCd: 6, prevAR: -.75,
   });
 
   const mats: THREE.MeshLambertMaterial[] = [];
@@ -293,7 +299,9 @@ export interface KnightAnimOpts {
   lookPitch?: number;
   /** in-game attack phase override (seconds since swing start; demo loops on tt) */
   attackPhase?: number;
-  /** fires ONCE per swing on the sword's hit frame (p ∈ 0.4..0.6) */
+  /** fires ONCE per swing when the rendered blade sweeps DOWN through the
+   *  strike plane (damage on landing — NOT at the slash start, where the sword
+   *  is still raised at its apex) */
   onHit?: () => void;
 }
 export function animateKnight(
@@ -343,6 +351,20 @@ export function animateKnight(
   const hxT = opts.lookPitch !== undefined ? Math.max(-.9, Math.min(.9, -opts.lookPitch)) * .3 : 0;
   cur.hx += (hxT - cur.hx) * Math.min(1, dt * 4);
   const r2 = r;
+  // ── game IMPACT detection (before rotations apply so an onHit that switches
+  // the mode — e.g. a victory pose on a killing blow — renders the SAME frame)
+  // The demo's `hit` window starts at p=0.4 = the sword's APEX (fully raised);
+  // firing damage there read as "damage while the sword is up". Instead the hit
+  // fires when the RENDERED arm (cur.aR, includes the lerp lag) sweeps DOWN
+  // through the strike plane (-0.9 rad — blade at torso height, just before
+  // recovery). The demo's light-pulse `hit` stays exactly as-is below.
+  let impact = 0;
+  if (opts.attackPhase !== undefined && !r2.swingHitDone && cur.aR > -.9 && r2.prevAR <= -.9) impact = 1;
+  r2.prevAR = cur.aR;
+  if (impact) {
+    r2.swingHitDone = true;
+    opts.onHit?.();
+  }
   r2.armL.rotation.x = cur.aL;
   r2.armL.rotation.z = .05;
   r2.armR.rotation.x = cur.aR;
@@ -357,9 +379,5 @@ export function animateKnight(
   r2.cape.rotation.x = cur.cp;
   r2.cape.rotation.z = sin(r.tt * 3) * .05;
   r2.sl.intensity = (.9 + hit * 3.5 + sin(r.tt * 5) * .15) * K_LIGHT; // scaled demo formula
-  if (hit && !r2.swingHitDone) {
-    r2.swingHitDone = true;
-    opts.onHit?.();
-  }
   return { hit: !!hit };
 }

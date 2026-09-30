@@ -864,7 +864,10 @@ function rayAABB(ox: number, oy: number, oz: number, dx: number, dy: number, dz:
 
 // ─── MobManager ──────────────────────────────────────────────────────────────
 export interface MobCallbacks {
-  damagePlayer: (amount: number, fromX: number, fromZ: number) => void;
+  /** apply melee damage to the player; RETURNS the player's remaining hp (0 = killed) */
+  damagePlayer: (amount: number, fromX: number, fromZ: number) => number;
+  /** true while the player is dead (knight's victory hero-pose trigger) */
+  playerDead?: boolean;
   /** witch splash potion: apply poison for N seconds (ticks 1 dmg / 1.5s, non-lethal) */
   poisonPlayer?: (seconds: number) => void;
   spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
@@ -1027,6 +1030,11 @@ export class MobManager {
     };
     mob.targetYaw = mob.yaw;
     parts.shadow = shadow;
+    if (type === 'knight') {
+      // dramatic entrance: strike the demo's hero pose for a moment on arrival
+      const kr = getKnightRig(parts.group);
+      if (kr) { kr.poseT = 2.6; kr.poseCd = 14; }
+    }
     this.mobs.push(mob);
     return mob;
   }
@@ -1593,20 +1601,36 @@ export class MobManager {
         }
       } else if (m.type === 'knight') {
         // NEON SHADOW KNIGHT: relentless elite duelist — closes in and swings
-        // the greatsword (the swing is the ORIGINAL animation; damage lands on
-        // its hit frame so visuals and gameplay are one motion)
+        // the greatsword (damage lands when the RENDERED blade sweeps down
+        // through the strike plane — see animateKnight impact — so visuals and
+        // gameplay are one motion). Between fights it strikes the demo's hero
+        // pose: a taunt when the player is near, and a victory stance over a
+        // freshly slain player.
+        const ka0 = getKnightRig(m.parts.group);
+        const posing = !!ka0 && ka0.poseT > 0;
+        // getting hit snaps it out of a taunt
+        if (ka0 && m.hurtT > 0 && posing) { ka0.poseT = 0; ka0.poseCd = 6; }
+        // victory pose: player slain nearby → sword to the sky until respawn
+        if (ka0 && cb.playerDead && distToPlayer < 12) ka0.poseT = Math.max(ka0.poseT, 0.6);
+        // taunt: idle flourish when the player watches from outside melee range
+        if (ka0 && !posing && ka0.swingT < 0 && ka0.poseT <= 0 && ka0.poseCd <= 0
+          && distToPlayer > 4 && distToPlayer < 20 && !cb.playerDead
+          && Math.random() < dt * 0.09) {
+          ka0.poseT = 2.4 + Math.random() * 1.2;
+          ka0.poseCd = 16 + Math.random() * 12;
+        }
         if (distToPlayer < 26 && !cb.playerCreative) {
           m.state = 'chase';
           const dx = player.x - m.x;
           const dz = player.z - m.z;
           const len = Math.hypot(dx, dz) || 1;
-          const ka = getKnightRig(m.parts.group);
+          const ka = ka0;
           const swinging = !!ka && ka.swingT >= 0;
-          if (distToPlayer > 2.1 && !swinging) {
+          if (!posing && distToPlayer > 2.1 && !swinging) {
             wantX = dx / len; wantZ = dz / len;
             moveSpeed = m.def.speed;
           }
-          if (!swinging && distToPlayer < 2.7 && m.attackCd <= 0) {
+          if (!posing && !swinging && distToPlayer < 2.7 && m.attackCd <= 0) {
             m.attackCd = 2.1; // swing cycle 1.5s + recovery
             if (ka) { ka.swingT = 0; ka.swingHitDone = false; }
             audio.knightSlash(distToPlayer);
@@ -1694,11 +1718,14 @@ export class MobManager {
         // demo's signature head-follows-camera behavior, ported 1:1)
         const ka = getKnightRig(m.parts.group);
         if (ka) {
+          // hero-pose state decay (taunt / victory / spawn flourish)
+          if (ka.poseT > 0) ka.poseT -= dt;
+          if (ka.poseCd > 0) ka.poseCd -= dt;
           if (ka.swingT >= 0) {
             ka.swingT += dt;
             if (ka.swingT > 1.5) ka.swingT = -1;
           }
-          const mode = ka.swingT >= 0 ? 'attack' : hSpeed > 0.25 ? 'walk' : 'idle';
+          const mode = ka.swingT >= 0 ? 'attack' : ka.poseT > 0 ? 'pose' : hSpeed > 0.25 ? 'walk' : 'idle';
           let lookYaw = 0;
           let lookPitch: number | undefined;
           if (distToPlayer < 26 && !cb.playerCreative) {
@@ -1715,8 +1742,16 @@ export class MobManager {
             attackPhase: ka.swingT >= 0 ? ka.swingT : undefined,
             onHit: () => {
               if (distToPlayer < 3.4) {
-                cb.damagePlayer(m.def.damage, m.x, m.z);
+                const hpLeft = cb.damagePlayer(m.def.damage, m.x, m.z);
                 audio.knightClang(distToPlayer);
+                if (hpLeft <= 0) {
+                  // killed the player → hero-pose victory over the fallen foe
+                  // (snap the channels to the demo's pose targets so the frozen
+                  // death-cam shows the stance, not a blend)
+                  ka.poseT = 4; ka.poseCd = 10;
+                  ka.cur.aR = -1.7; ka.cur.aL = .35; ka.cur.ty = -.25;
+                  ka.cur.lL = .2; ka.cur.lR = -.2; ka.cur.cp = .22; ka.cur.by = 0;
+                }
               }
             },
           });

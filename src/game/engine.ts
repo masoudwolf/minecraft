@@ -13,7 +13,7 @@ import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type Player
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, ITEM } from './items';
-import { matchRecipe, freshDur } from './crafting';
+import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
 import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { BlockEntityManager } from './blockEntities';
@@ -1783,6 +1783,79 @@ export class Game {
     this.syncInventory(true);
   }
 
+  /**
+   * Recipe book auto-fill: lay a recipe's pattern into the crafting grid,
+   * pulling the ingredients from the inventory (vanilla recipe-book behavior).
+   * Current grid contents are returned to the inventory first. Returns the
+   * outcome (UI toasts are handled here).
+   */
+  recipeFill(recipeIdx: number): 'ok' | 'missing' | 'table' | 'closed' {
+    const st = useGameStore.getState();
+    if (!st.inv.open || st.inv.creative || st.inv.container !== 'none') { this.showToast('Open a crafting grid first'); return 'closed'; }
+    const recipe = RECIPES[recipeIdx];
+    if (!recipe) return 'closed';
+    if (needsTable(recipe) && !this.invTable) {
+      this.showToast('Requires a Crafting Table (3×3)');
+      return 'table';
+    }
+
+    // target pattern in grid coordinates (2x2 or 3x3, anchored top-left)
+    const size = this.invTable ? 3 : 2;
+    const pattern: number[] = new Array(size * size).fill(0);
+    if (recipe.kind === 'shaped') {
+      for (let r = 0; r < recipe.h; r++)
+        for (let c = 0; c < recipe.w; c++)
+          pattern[r * size + c] = recipe.cells[r * recipe.w + c] ?? 0;
+    } else {
+      recipe.ids.forEach((id, i) => { pattern[i] = id; });
+    }
+
+    // return whatever is in the grid back to the inventory (like closing it)
+    for (const s of this.craftGrid) {
+      if (isEmptySlot(s)) continue;
+      this.addToInventory(s.blockId, s.count, s.dur);
+      s.blockId = 0; s.count = 0; s.dur = undefined;
+    }
+    this.craftOut = null;
+
+    // availability check across hotbar + main
+    const have = new Map<number, number>();
+    for (const s of [...this.player.hotbar, ...this.player.main]) {
+      if (s && s.blockId > 0) have.set(s.blockId, (have.get(s.blockId) ?? 0) + s.count);
+    }
+    for (const id of pattern) {
+      if (id > 0 && (have.get(id) ?? 0) < pattern.filter((v) => v === id).length) {
+        this.showToast(`Missing ${this.itemLabel(id)}`);
+        return 'missing';
+      }
+    }
+
+    // place one ingredient per pattern cell (hotbar first, like vanilla)
+    for (let i = 0; i < pattern.length; i++) {
+      const id = pattern[i];
+      if (id <= 0) continue;
+      let taken = false;
+      for (const list of [this.player.hotbar, this.player.main]) {
+        const s = list.find((sl) => sl && sl.blockId === id && sl.count > 0);
+        if (s) {
+          s.count--;
+          if (s.count === 0) { s.blockId = 0; s.dur = undefined; }
+          taken = true;
+          break;
+        }
+      }
+      if (!taken) return 'missing';
+      const cell = this.craftGrid[i];
+      cell.blockId = id; cell.count = 1; cell.dur = undefined;
+    }
+
+    this.updateCraftOut();
+    audio.click();
+    this.syncInventory(true);
+    this.syncHUD(true);
+    return 'ok';
+  }
+
   // ── cheats (Creator Tools → Cheats): fast testing hooks ─────────────────────
   /** cheat: give items straight into the inventory (works in any mode) */
   cheatGive(id: number, count: number): void {
@@ -2786,7 +2859,7 @@ export class Game {
       const fwd = p.forwardVector();
       this.mobCb = {
         damagePlayer: (amount, fx, fz) => {
-          if (amount <= 0 || p.isCreative) return; // creative: hostiles can't touch you
+          if (amount <= 0 || p.isCreative) return p.health; // creative: hostiles can't touch you
           p.damage(amount);
           audio.hurt();
           // knockback away from source
@@ -2796,6 +2869,7 @@ export class Game {
           p.entity.vx += (kx / len) * 6.5;
           p.entity.vz += (kz / len) * 6.5;
           p.entity.vy = Math.max(p.entity.vy, 4.2);
+          return p.health; // remaining hp (0 = the hit was lethal)
         },
         spawnDrop: (itemId, dx, dy, dz) => {
           this.drops.spawn(itemId, dx, dy, dz, 1);
@@ -2830,6 +2904,7 @@ export class Game {
         playerY: p.y,
         playerZ: p.z,
         playerCreative: p.isCreative,
+        playerDead: p.dead,
         poisonPlayer: (seconds) => {
           if (p.isCreative || p.dead) return;
           p.poisonT = Math.max(p.poisonT, seconds);

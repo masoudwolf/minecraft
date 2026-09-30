@@ -68,7 +68,7 @@ function buildEntries(): BookEntry[] {
   }));
 }
 
-export function RecipeBook({ tableMode, onCraftHint }: { tableMode: boolean; onCraftHint?: (msg: string) => void }) {
+export function RecipeBook({ tableMode, onFill }: { tableMode: boolean; onFill?: (idx: number) => void }) {
   const inv = useGameStore((s) => s.inv);
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState('');
@@ -243,7 +243,22 @@ export function RecipeBook({ tableMode, onCraftHint }: { tableMode: boolean; onC
               );
             })}
           </div>
-          {selectedOk && onCraftHint && (
+          {selectedOk && onFill && (
+            <button
+              className="mt-2 w-full py-[3px] text-[11px]"
+              style={{
+                background: '#5c7a4f',
+                color: '#fff',
+                border: '2px solid #2c4a20',
+                boxShadow: 'inset 2px 2px 0 rgba(255,255,255,0.3), inset -2px -2px 0 rgba(0,0,0,0.35)',
+                textShadow: '1px 1px 0 #2a3a22',
+              }}
+              onClick={() => onFill(selected.idx)}
+            >
+              ⬇ Fill the {tableMode ? '3×3' : '2×2'} grid
+            </button>
+          )}
+          {selectedOk && !onFill && (
             <div className="mt-1 text-center text-[10px]" style={{ color: '#2c6b1a' }}>
               Place the pattern in the {tableMode ? '3×3' : '2×2'} grid →
             </div>

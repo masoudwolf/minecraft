@@ -1,6 +1,6 @@
 // ─── Creative inventory palette: every obtainable block + item ───────────────
 import { BLOCK, getBlockDef } from './blocks';
-import { ITEMS, isItemId, getItemDef } from './items';
+import { ITEMS, ITEM, isItemId, getItemDef } from './items';
 
 /** block ids offered in the creative palette (world-placeable, in registry order) */
 function blockPalette(): number[] {
@@ -59,4 +59,62 @@ export function creativePalette(): CreativeEntry[] {
 /** ids that cannot be picked (shouldn't happen — kept for safety) */
 export function isCreativePickable(id: number): boolean {
   return getBlockDef(id) !== undefined || (isItemId(id) && getItemDef(id) !== undefined);
+}
+
+// ─── Creative category tabs (MC-style) ───────────────────────────────────────
+export type CreativeCat = 'all' | 'building' | 'nature' | 'functional' | 'tools' | 'food' | 'materials';
+
+export interface CreativeTab {
+  key: CreativeCat;
+  label: string;
+  /** representative id shown as the tab icon */
+  iconId: number;
+  entries: CreativeEntry[];
+}
+
+const NATURE_WORDS = ['grass', 'dirt', 'sand', 'gravel', 'log', 'leaves', 'flower', 'poppy', 'dandelion', 'cactus', 'sugarcane', 'dead bush', 'lily', 'mycelium', 'mushroom', 'water', 'ice', 'snowy', 'snow block', 'ore', 'podzol', 'clay', 'vine'];
+const BUILDING_WORDS = ['stone', 'cobble', 'planks', 'brick', 'sandstone', 'glass', 'wool', 'obsidian', 'bedrock', 'bookshelf', 'quartz', 'terracotta', 'concrete', 'slab', 'stairs', 'fence', 'door', 'trapdoor'];
+const FUNCTIONAL_WORDS = ['crafting', 'furnace', 'chest', 'torch', 'tnt', 'bed', 'glowstone', 'ladder', 'rail', 'boat', 'sign', 'lantern', 'jack'];
+
+function classify(e: CreativeEntry): CreativeCat {
+  const n = e.name.toLowerCase();
+  const hit = (words: string[]): boolean => words.some((w) => n.includes(w));
+  if (e.isItem) {
+    const def = getItemDef(e.id)!;
+    if (def.food) return 'food';
+    if (def.tool || isItemId(e.id) && (n.includes('sword') || n.includes('bow') || n.includes('arrow') || n.includes('helmet') || n.includes('chestplate') || n.includes('leggings') || n.includes('boots'))) return 'tools';
+    return 'materials';
+  }
+  if (hit(FUNCTIONAL_WORDS)) return 'functional';
+  if (hit(NATURE_WORDS)) return 'nature';
+  if (hit(BUILDING_WORDS)) return 'building';
+  return 'building'; // blocks default to building (MC's first tab)
+}
+
+interface CreativeTabDef { key: CreativeCat; label: string; iconId: number }
+
+const TAB_DEFS: CreativeTabDef[] = [
+  { key: 'all', label: 'All', iconId: BLOCK.CHEST },
+  { key: 'building', label: 'Building', iconId: BLOCK.PLANKS },
+  { key: 'nature', label: 'Nature', iconId: BLOCK.GRASS },
+  { key: 'functional', label: 'Functional', iconId: BLOCK.CRAFTING_TABLE },
+  { key: 'tools', label: 'Tools & Combat', iconId: ITEM.IRON_PICKAXE },
+  { key: 'food', label: 'Food', iconId: ITEM.BREAD },
+  { key: 'materials', label: 'Materials', iconId: ITEM.STICK },
+];
+
+let cachedTabs: CreativeTab[] | null = null;
+
+/** MC-style creative tabs: the full palette split into category buckets */
+export function creativeTabs(): CreativeTab[] {
+  if (cachedTabs) return cachedTabs;
+  const palette = creativePalette();
+  const buckets = new Map<CreativeCat, CreativeEntry[]>();
+  for (const e of palette) {
+    const c = classify(e);
+    if (!buckets.has(c)) buckets.set(c, []);
+    buckets.get(c)!.push(e);
+  }
+  cachedTabs = TAB_DEFS.map((d) => ({ ...d, entries: d.key === 'all' ? palette : (buckets.get(d.key) ?? []) }));
+  return cachedTabs;
 }

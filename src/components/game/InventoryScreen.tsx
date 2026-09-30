@@ -2,11 +2,11 @@
 
 // ─── Inventory screen (E): creative palette, 2x2 crafting, table 3x3, chest 27, furnace ─
 // Minecraft-style: live 3D player preview (head tracks the cursor), recipe book.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
 import { getToolDef, getArmorDef, isItemId } from '@/game/items';
-import { creativePalette } from '@/game/creativeItems';
+import { creativePalette, creativeTabs, type CreativeCat } from '@/game/creativeItems';
 import type { InvSlot } from '@/game/inventory';
 import { slotIconUrl, slotName } from './slotIcon';
 import { InventoryPlayer3D } from './InventoryPlayer3D';
@@ -127,6 +127,15 @@ export function InventoryScreen() {
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [hoverInfo, setHoverInfo] = useState<{ id: number; x: number; y: number; name: string } | null>(null);
   const [palette] = useState(() => creativePalette());
+  const [tabs] = useState(() => creativeTabs());
+  const [tab, setTab] = useState<CreativeCat>('all');
+  const [palQuery, setPalQuery] = useState('');
+
+  const paletteShown = useMemo(() => {
+    const base = tab === 'all' ? palette : (tabs.find((t) => t.key === tab)?.entries ?? palette);
+    const q = palQuery.trim().toLowerCase();
+    return q ? base.filter((e) => e.name.toLowerCase().includes(q)) : base;
+  }, [palette, tabs, tab, palQuery]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent): void => {
@@ -194,12 +203,60 @@ export function InventoryScreen() {
         {/* ── mode-specific top section ── */}
         {inv.creative && (
           <div className="mb-4">
+            {/* MC-style category tabs + search */}
+            <div className="mb-[2px] flex items-end gap-[3px]">
+              {tabs.map((t) => {
+                const active = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    title={t.label}
+                    aria-label={`Creative tab: ${t.label}`}
+                    aria-pressed={active}
+                    className="relative flex h-[30px] w-[36px] items-center justify-center"
+                    style={{
+                      background: active ? '#c6c6c6' : '#9a9a9a',
+                      border: '2px solid #1d1d21',
+                      borderBottom: active ? 'none' : '2px solid #1d1d21',
+                      boxShadow: active
+                        ? 'inset 2px 2px 0 #ffffff, inset -2px 0 0 #555555'
+                        : 'inset 2px 2px 0 rgba(255,255,255,0.4), inset -2px -2px 0 rgba(0,0,0,0.35)',
+                      marginBottom: active ? -2 : 0,
+                      zIndex: active ? 2 : 1,
+                    }}
+                    onClick={() => setTab(t.key)}
+                  >
+                    {slotIconUrl(t.iconId) && (
+                      <img
+                        src={slotIconUrl(t.iconId)!}
+                        alt=""
+                        className="h-[22px] w-[22px]"
+                        style={{ imageRendering: 'pixelated', opacity: active ? 1 : 0.72 }}
+                        draggable={false}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+              <input
+                value={palQuery}
+                onChange={(e) => setPalQuery(e.target.value)}
+                placeholder="Search items…"
+                aria-label="Search creative items"
+                className="ml-1 h-[26px] w-[110px] px-1.5 text-[11px] outline-none"
+                style={{ background: '#f4f4f4', border: '2px solid #1d1d21', color: '#2d2d2d', fontFamily: 'var(--font-mc)' }}
+              />
+              <span className="mb-[2px] ml-auto text-[10px]" style={{ fontFamily: 'var(--font-mc)', color: '#5a5a5a' }}>
+                {tabs.find((t) => t.key === tab)?.label}
+              </span>
+            </div>
+
             <div
               className="mc-scrollbar max-h-[250px] overflow-y-auto"
               style={{ boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff' }}
             >
-              <div className="grid gap-[2px] bg-[#8b8b8b] p-[2px]" style={{ gridTemplateColumns: 'repeat(9, 44px)' }}>
-                {palette.map((entry) => (
+              <div className="grid gap-[2px] bg-[#8b8b8b] p-[2px]" style={{ gridTemplateColumns: 'repeat(9, 44px)', minHeight: 92 }}>
+                {paletteShown.map((entry) => (
                   <div
                     key={`${entry.isItem ? 'i' : 'b'}${entry.id}`}
                     className="relative flex h-[44px] w-[44px] cursor-pointer items-center justify-center"
@@ -223,6 +280,11 @@ export function InventoryScreen() {
                     )}
                   </div>
                 ))}
+                {paletteShown.length === 0 && (
+                  <div className="col-span-9 p-3 text-center text-[12px]" style={{ fontFamily: 'var(--font-mc)', color: '#5a5a5a' }}>
+                    Nothing matches “{palQuery}”
+                  </div>
+                )}
               </div>
             </div>
             {/* destroy item slot */}
@@ -247,7 +309,7 @@ export function InventoryScreen() {
         {!inv.creative && inv.container === 'none' && (
           <div className="mb-4 flex items-start gap-3">
             {/* recipe book (Minecraft-style crafting guide) */}
-            <RecipeBook tableMode={inv.table} />
+            <RecipeBook tableMode={inv.table} onFill={(idx) => getEngine()?.recipeFill(idx)} />
 
             <div className="flex items-center gap-4">
               <div
