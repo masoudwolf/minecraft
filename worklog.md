@@ -1032,3 +1032,25 @@ Work Log:
 Stage Summary:
 - VoxelCraft now ships a shader-pack: atmospheric sky + HDR sun, raymarched volumetric clouds (weather-reactive), planar-reflective water with wave normals & sun glints, real PCF sun shadows integrated into the voxel lighting, wind-swept instanced grass with density slider, and a full post stack (bloom/god-rays/ACES grade/underwater/FXAA) — all user-tunable in the new Graphics screen (5 presets + per-option overrides), EN+FA labels.
 - Version bumped to 0.42.0 (menu + VERSION file). Tag v0.42-graphics.
+
+---
+Task ID: 42
+Agent: Z.ai Code (main)
+Task: v0.42.1 graphics fixes — cloud drift speed + water black-patch shadow model
+
+Work Log:
+- Anti-rollback check: restore-from-github.sh → tree matched origin/main (e08ad85), no restore needed.
+- User reported 2 issues (screenshot): (1) clouds move far too fast vs reality, (2) water turns black in places even on Ultra.
+- Root cause 1 (clouds): uWind accumulated at dt*(2.2+storm*5) → shape layer world speed = rate*0.85/SCALE ≈ 163 blocks/s (absurd). Fixed rate to dt*(0.0068+storm*0.027) ≈ 0.5 blocks/s calm (≈ Minecraft vanilla), ~2.5 blocks/s storm. Detail layer offset retuned (uWind*4.6, -uWind*3.2 in q*3.4 space) so fine detail drifts ~2x base shape (wind shear).
+- Root cause 2 (black water): water+terrain shaders used light = max(vBlock, vSky*uSunLevel*sf) → in full shadow (sf=0, e.g. tree shadows cast across a lake at low sun) only vBlock≈0.045 remained → pitch-black wedges matching canopy silhouettes (user screenshot). Physically wrong: a mirror keeps reflecting the sky regardless of local shadows.
+- Fix water (waterGfx.ts): sunKeep = mix(sf,1,0.62) → shadow keeps 62% sky ambient; shadowTint still cools it; reflection term uses rl = max(l, 0.62) so sky reflections stay alive in shadow; sun glint stays gated by sf (no glints in shadow — physically correct).
+- Fix terrain (world.ts chunk frag): sAmb = mix(sf,1,0.45) → shadows keep 45% ambient + blue shift, Unreal/shader-pack convention, no black pools on land either.
+- QA via agent-browser (llvmpipe software GL, world seed 7777): menu→world→flying; verified cloud drift now imperceptible over 10 s (was racing); verified volumetric clouds at quality 2 (puffy cumulus, silver linings); verified sun glint path on water (HDR sparkle + bloom) looking straight down at noon; scanned lake at grazing angles + golden hour (t=350, sun 7°) — NO black patches anywhere; dark spots near shore = lily pads/seagrass (world content, not a bug).
+- QA tooling notes: game ignores synthetic Escape (no pause menu); cheat panel button needs real gesture; graphics presets testable by writing voxelcraft.settings {gfx:{preset, presetUser:true,...}} + reload; player/time teleports must be same-eval edit+reload (running autosave races separate evals); software-GL auto-downgrade only fires for non-user-picked 'medium'.
+- Bumped VERSION→0.42.1, MainMenu footer→0.42.1. lint clean. commit 200723d pushed (origin/main).
+
+Stage Summary:
+- Clouds now drift at realistic ~0.5 blocks/s (storm ~2.5), detail layer shears faster than base shape.
+- Water can no longer render pitch black in shadows: 62% ambient + live reflections; terrain shadows keep 45% ambient — shader-pack/Unreal look preserved, black wedges eliminated.
+- All changes shipped to GitHub (200723d); VERSION marker 0.42.1 for rollback detection.
+- Risk note: sandbox llvmpipe can't visually confirm distant shadow wedges at 60fps; the fix is constructive (monotonic ambient floor), and terrain shadow sampling was A/B-verified in v0.42. If user still sees black water on their GPU, next suspect would be reflection-RT holes — add sky-fallback floor on reflCol.
