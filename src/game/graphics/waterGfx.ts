@@ -15,6 +15,7 @@ const VERT = /* glsl */ `
   attribute float aSky;
   attribute float aBlock;
   attribute vec3 aTint;
+  attribute float aDepth; // baked water-column depth 0=shore → 1=deep (v0.47)
   varying vec2 vUv;
   varying float vShade;
   varying float vSky;
@@ -23,6 +24,7 @@ const VERT = /* glsl */ `
   varying float vFogDepth;
   varying vec3 vWorldPos;
   varying vec4 vMirrorCoord;
+  varying float vDepth;
   uniform float uTime;
   uniform float uWave;
   uniform mat4 uReflMatrix;
@@ -32,6 +34,7 @@ const VERT = /* glsl */ `
     vSky = aSky;
     vBlock = aBlock;
     vTint = aTint;
+    vDepth = aDepth;
     vec3 pos = position;
     vec4 wp0 = modelMatrix * vec4(position, 1.0);
     if (uWave > 0.5) {
@@ -97,12 +100,14 @@ const FRAG = /* glsl */ `
     if (tex.a < uAlphaTest) discard;
 
     // ── animated normal from the wave height field ──
+    // (strength fades with distance — far water keeps its mirror calm and
+    // stops the normals from aliasing into shimmer at the horizon)
     float e = 0.16;
     vec2 p = vWorldPos.xz;
     float h0 = waveH(p);
     float hx = waveH(p + vec2(e, 0.0));
     float hz = waveH(p + vec2(0.0, e));
-    float strength = mix(0.55, 1.0, clamp(uWaterQ, 0.0, 1.0));
+    float strength = mix(0.55, 1.0, clamp(uWaterQ, 0.0, 1.0)) * exp(-vFogDepth * 0.011);
     vec3 nrm = normalize(vec3(-(hx - h0) * strength * 2.2, 1.0, -(hz - h0) * strength * 2.2));
 
     // flat faces always face up (top surface); underside handled below
@@ -138,7 +143,13 @@ const FRAG = /* glsl */ `
     light = clamp(light, 0.045, 1.0);
     float l = pow(light, 1.15);
     vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
-    vec3 baseCol = mix(tex.rgb, vec3(0.16, 0.42, 0.55), 0.72) * vTint;
+
+    // ── depth-driven absorption (v0.47 — the Unreal-water core) ──
+    // Sandy shallows stay translucent and green-tinted; the color sinks into
+    // a rich deep teal as the floor drops away, exactly like BSL/SEUS.
+    float deepF = clamp(vDepth, 0.0, 1.0);
+    vec3 deepTint = mix(vec3(0.32, 0.55, 0.50), vec3(0.07, 0.30, 0.42), deepF);
+    vec3 baseCol = mix(tex.rgb, deepTint, mix(0.42, 0.88, deepF)) * vTint;
 
     vec3 col = baseCol * vShade * l * shadowTint;
 
@@ -157,7 +168,10 @@ const FRAG = /* glsl */ `
         uvR += nrm.xz * vec2(0.055, 0.11) * distFade * (uWaterQ >= 1.5 ? 1.35 : 0.8);
         if (uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0) {
           reflCol = texture2D(uReflMap, uvR).rgb;
-          reflCol = mix(reflCol, skyRefl, 0.22);
+          // v0.47: dilute less toward procedural sky (0.22 → 0.12) — the
+          // planar mirror now carries the terrain/sky reflection much harder,
+          // per the user's "reflect the environment like Unreal" request
+          reflCol = mix(reflCol, skyRefl, 0.12);
           // RT-hole guard: a mirror can never be darker than faint sky
           reflCol = max(reflCol, skyRefl * 0.05);
         } else {
@@ -183,7 +197,14 @@ const FRAG = /* glsl */ `
 
     float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
     col = mix(col, uFogColor, fogF);
-    float alpha = under ? 0.92 : mix(0.78, 0.94, clamp(0.4 + fres, 0.0, 1.0));
+    // ── shoreline band (v0.47): a soft bright line where water meets land —
+    // reads as the thin water edge MC shaders paint over their depth fade
+    float shore = smoothstep(0.085, 0.0, deepF);
+    col += vec3(0.85, 0.94, 1.0) * shore * shore * 0.10 * max(uSunLevel, 0.25);
+    // translucent shallows → near-opaque depths (see the sand through the
+    // first blocks of water; deep water keeps its body)
+    float alpha = under ? 0.92 : mix(0.55, 0.96, deepF);
+    alpha = mix(alpha, clamp(0.4 + fres, 0.0, 1.0), 0.35);
     gl_FragColor = vec4(col, alpha);
   }
 `;

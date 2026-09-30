@@ -648,21 +648,27 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW, ndl);
         sf = mix(1.0, sf, uShadowStrength);
       }
-      // Shadow keeps a per-material sky-ambient floor (shader-pack / Unreal
-      // convention: ambient never dies). Opaque terrain 0.52; cutout 0.64 —
-      // leaves/cane/plants are thin translucent geometry, vanilla treats them
-      // as light-diffusing, so their shadowed parts keep extra ambient and no
-      // longer read as black patches inside the canopy (user report).
-      float sAmb = mix(sf, 1.0, uShadowAmbient);
       // ── moving cloud shadows (BSL/SEUS staple): the same fbm the cloud dome
       // renders, projected along the light ray onto the cloud slab. Clouds
       // filter the sun, they never block it (55% floor).
       float cloudS = gfxCloudShadow(vWorldPos, uSunDirW);
+      // ── v0.47 ambient split (SEUS/BSL light model) ──
+      // The old code multiplied the WHOLE sky term by the shadow factor
+      // (sf→ambient floor), which punished interiors twice: the voxel light
+      // engine already reduced vSky for being indoors, then sf crushed what
+      // was left — rooms read dim gray at noon (user report: "as if it's not
+      // noon, the interior light doesn't come from the sun"). Now the DIRECT
+      // sun term is shadow-gated while the AMBIENT sky-dome term follows vSky
+      // alone — and vSky already encodes openings (glass/doorways let the
+      // light BFS through), so rooms go bright at noon while outdoor shadows
+      // keep their shape. Direct sun patches through windows read hot.
+      float direct = vSky * uSunLevel * sf * cloudS;
+      float ambient = vSky * uSunLevel * uShadowAmbient * cloudS;
+      float sunL = max(direct, ambient);
       // torch (block) light vs sun light are SEPARATE terms: the torch term is
       // modulated by the point-light cube shadow map (fences/trees/mobs cast
       // real radial shadows), and torch-dominant areas get a warm Unreal-style
       // tint while sun-dominant areas stay neutral daylight.
-      float sunL = vSky * uSunLevel * sAmb * cloudS;
       float torchL = vBlock;
       if (uTorchCount > 0.5 && torchL > 0.02) {
         float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vNormalW, uTorchFar0, uTorchRange0);
@@ -681,7 +687,9 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       vec3 sunTintN = uSunColorW / max(max(uSunColorW.r, max(uSunColorW.g, uSunColorW.b)), 0.001);
       lightCol *= mix(vec3(1.0), sunTintN, 0.42);
       float l = pow(light, 1.15);
-      vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
+      // blue-shift only the SHADOWED (ambient-dominant) parts, softer than
+      // before so indoor wood doesn't go gray-blue (ambient split above)
+      vec3 shadowTint = mix(vec3(0.85, 0.90, 1.06), vec3(1.0), sf);
       vec3 col = tex.rgb * vTint * vShade * l * lightCol * shadowTint;
       // ── water caustics (SEUS-style) on floors beneath the water line: two
       // animated fbm layers interfere into a traveling bright web. Gated by
@@ -726,7 +734,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uShadowMatrix: { value: new THREE.Matrix4() },
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
         uShadowStrength: { value: 0 },
-        uShadowAmbient: { value: opts.shadowAmbient },
+        uShadowAmbient: { value: opts.shadowAmbient }, // sky-dome ambient strength (NOT shadow-gated — see v0.47 ambient split)
         uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
         uTorchPos0: { value: new THREE.Vector3() },
         uTorchPos1: { value: new THREE.Vector3() },
@@ -746,8 +754,8 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
   };
 
   return {
-    opaque: make({ transparent: false, alphaTest: 0.0, wave: 0, side: THREE.FrontSide, depthWrite: true, shadowAmbient: 0.52 }),
-    cutout: make({ transparent: false, alphaTest: 0.5, wave: 0, side: THREE.DoubleSide, depthWrite: true, shadowAmbient: 0.64 }),
+    opaque: make({ transparent: false, alphaTest: 0.0, wave: 0, side: THREE.FrontSide, depthWrite: true, shadowAmbient: 0.56 }),
+    cutout: make({ transparent: false, alphaTest: 0.5, wave: 0, side: THREE.DoubleSide, depthWrite: true, shadowAmbient: 0.66 }),
     water: createWaterMaterial(texture),
   };
 }

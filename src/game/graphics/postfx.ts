@@ -19,6 +19,28 @@ const GodRaysShader = {
     uSamples: { value: 40 },
     uFlare: { value: 0.55 },   // lens flare intensity (0 = off)
     uAspect: { value: 1.777 }, // screen aspect — keeps ghosts circular
+    // v0.47: occlusion × facing gate for the flare overlays ONLY. The radial
+    // god-ray blur stays frame-driven (bright pixels = shafts through windows
+    // even when the sun disk itself is behind a wall), but the streak/ghosts/
+    // halo are pure math overlays — without this gate they drew straight
+    // through terrain, so a player indoors staring at a wall saw a giant sun
+    // blob in the middle of the room (user report).
+    uVis: { value: 1 },
+    // ── volumetric light shafts (SEUS/BSL "volumetric lighting") ──
+    // ray-march camera→pixel through the air, sample the SUN SHADOW MAP at
+    // each step: air under a roof reads shadowed, air inside a window beam
+    // reads lit — the lit/shadowed contrast along each view ray paints real
+    // light shafts entering houses, dappled canopy light and horizon haze.
+    uDepthTex: { value: null as THREE.Texture | null },
+    uInvVP: { value: new THREE.Matrix4() },
+    uCamPos: { value: new THREE.Vector3() },
+    uLightDirW: { value: new THREE.Vector3(0, 1, 0) }, // TO the light (sun or moon)
+    uVlsColor: { value: new THREE.Color(1, 1, 1) },    // light color × level
+    uVls: { value: 0 },                                 // master strength (0 = off)
+    uVlsSteps: { value: 10 },
+    uShadowMap: { value: null as THREE.Texture | null },
+    uShadowMatrix: { value: new THREE.Matrix4() },
+    uHasDepth: { value: 0 }, // GLSL can't compare samplers to null — CPU flips this
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -34,38 +56,92 @@ const GodRaysShader = {
     uniform float uSamples;
     uniform float uFlare;
     uniform float uAspect;
+    uniform float uVis;
+    uniform sampler2D uDepthTex;
+    uniform mat4 uInvVP;
+    uniform vec3 uCamPos;
+    uniform vec3 uLightDirW;
+    uniform vec3 uVlsColor;
+    uniform float uVls;
+    uniform float uVlsSteps;
+    uniform sampler2D uShadowMap;
+    uniform mat4 uShadowMatrix;
+    uniform float uHasDepth;
     varying vec2 vUv;
+    float gfxUnpackDepth(vec4 c) {
+      return c.r + c.g / 255.0 + c.b / 65025.0 + c.a / 16581375.0;
+    }
     void main() {
       vec4 base = texture2D(tDiffuse, vUv);
       // wide off-screen tolerance: indoor window/door shafts keep working even
       // when the sun disk itself is well outside the frame
-      bool sunOff = uStrength <= 0.001 || uSunPos.x < -0.55 || uSunPos.x > 1.55 || uSunPos.y < -0.55 || uSunPos.y > 1.55;
+      bool sunOff = uStrength <= 0.001 && uVls <= 0.001;
       if (sunOff) { gl_FragColor = base; return; }
-      vec2 dir = (uSunPos - vUv) / max(uSamples, 1.0);
-      vec2 uv = vUv;
-      float w = 1.0;
-      vec3 acc = vec3(0.0);
-      float total = 0.0;
-      for (int i = 0; i < 48; i++) {
-        if (float(i) >= uSamples) break;
-        uv += dir;
-        vec3 s = texture2D(tDiffuse, uv).rgb;
-        float lum = dot(s, vec3(0.299, 0.587, 0.114));
-        float k = smoothstep(0.5, 1.9, lum);
-        acc += s * k * w;
-        total += w;
-        w *= 0.955;
+
+      // ── volumetric light shafts (ray-march, shadow-map gated) ──
+      vec3 col = base.rgb;
+      if (uVls > 0.001 && uHasDepth > 0.5) {
+        float d = texture2D(uDepthTex, vUv).x;
+        vec4 wp4 = uInvVP * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+        vec3 wp = wp4.xyz / max(wp4.w, 1e-4);
+        vec3 ray = wp - uCamPos;
+        float fullDist = length(ray);
+        vec3 dir = ray / max(fullDist, 1e-4);
+        float march = min(fullDist, 150.0);
+        float stepLen = march / max(uVlsSteps, 1.0);
+        // interleaved-gradient jitter kills banding at low step counts
+        float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        float scat = 0.0;
+        for (int i = 0; i < 16; i++) {
+          if (float(i) >= uVlsSteps) break;
+          vec3 p = uCamPos + dir * ((float(i) + jitter) * stepLen);
+          vec4 sc = uShadowMatrix * vec4(p, 1.0);
+          vec3 s = sc.xyz / max(sc.w, 1e-4);
+          s = s * 0.5 + 0.5;
+          float vis = 1.0;
+          if (s.x > 0.0 && s.x < 1.0 && s.y > 0.0 && s.y < 1.0 && s.z > 0.0 && s.z < 1.0) {
+            vis = step(s.z - 0.0016, gfxUnpackDepth(texture2D(uShadowMap, s.xy)));
+          }
+          scat += vis;
+        }
+        scat /= max(uVlsSteps, 1.0);
+        // forward-scatter peak (Henyey-Greenstein flavor, g≈0.55) + height fade
+        float phase = 0.55 + 0.45 * pow(max(dot(dir, uLightDirW), 0.0), 6.0);
+        float hf = exp(-max(uCamPos.y - 42.0, 0.0) * 0.012);
+        col += uVlsColor * (scat * phase * hf) * uVls;
       }
-      acc /= max(total, 1e-4);
-      float dist = distance(vUv, uSunPos);
-      float falloff = smoothstep(1.55, 0.05, dist);
-      vec3 col = base.rgb + acc * uStrength * falloff;
+
+      // screen-space radial god rays — frame-driven (bright pixels along the
+      // sun ray), so shafts through windows survive even with the sun off-screen
+      if (uStrength > 0.001) {
+        vec2 dir = (uSunPos - vUv) / max(uSamples, 1.0);
+        vec2 uv = vUv;
+        float w = 1.0;
+        vec3 acc = vec3(0.0);
+        float total = 0.0;
+        for (int i = 0; i < 48; i++) {
+          if (float(i) >= uSamples) break;
+          uv += dir;
+          vec3 s = texture2D(tDiffuse, uv).rgb;
+          float lum = dot(s, vec3(0.299, 0.587, 0.114));
+          float k = smoothstep(0.5, 1.9, lum);
+          acc += s * k * w;
+          total += w;
+          w *= 0.955;
+        }
+        acc /= max(total, 1e-4);
+        float dist = distance(vUv, uSunPos);
+        float falloff = smoothstep(1.55, 0.05, dist);
+        col += acc * uStrength * falloff;
+      }
 
       // ── cinematic lens flare (BSL/Complementary style) ──
       // anamorphic horizontal streak through the sun + three ghosts chasing
-      // the sun-to-center axis, all scaled by the same visibility factor that
-      // gates the god rays (storm/cover/off-screen already folded into it).
-      if (uFlare > 0.001) {
+      // the sun-to-center axis. v0.47: gated by uVis = voxel-raycast sun
+      // occlusion × camera-facing — walls between you and the sun now kill
+      // the flare, and turning away from it fades it out (user report: giant
+      // sun blob indoors while staring at a wall).
+      if (uFlare > 0.001 && uVis > 0.001 && uSunPos.x > -0.55 && uSunPos.x < 1.55 && uSunPos.y > -0.55 && uSunPos.y < 1.55) {
         vec2 toC = 0.5 - uSunPos;
         float vis = clamp(uStrength * 1.3, 0.0, 1.0);
         // anamorphic streak: wide horizontally, razor thin vertically
@@ -86,7 +162,7 @@ const GodRaysShader = {
         // halo ring right around the sun
         float ring = smoothstep(0.05, 0.10, dist) * smoothstep(0.30, 0.13, dist);
         flare += vec3(1.0, 0.82, 0.58) * ring * ring * 0.30;
-        col += flare * uFlare * vis;
+        col += flare * uFlare * vis * uVis;
       }
       gl_FragColor = vec4(col, base.a);
     }
@@ -159,6 +235,12 @@ export class PostFX {
   private outputPass: OutputPass;
   private fxaaPass: ShaderPass;
   active = true;
+  // fixed depth attachments for the two composer buffers — RenderPass fills
+  // readBuffer's depth every frame, and the VLS pass samples exactly that
+  // texture (writeBuffer holds the OTHER texture, so there is never a
+  // texture-attached-while-sampled feedback loop)
+  private depthA: THREE.DepthTexture;
+  private depthB: THREE.DepthTexture;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, opts: PostFXOptions) {
     this.composer = new EffectComposer(renderer);
@@ -166,6 +248,20 @@ export class PostFX {
 
     this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
+
+    // scene depth plumbing for volumetric shafts
+    const mkDepth = (): THREE.DepthTexture => {
+      const d = new THREE.DepthTexture(1, 1);
+      d.type = THREE.UnsignedIntType;
+      d.format = THREE.DepthFormat;
+      d.minFilter = THREE.NearestFilter;
+      d.magFilter = THREE.NearestFilter;
+      return d;
+    };
+    this.depthA = mkDepth();
+    this.depthB = mkDepth();
+    this.composer.renderTarget1.depthTexture = this.depthA;
+    this.composer.renderTarget2.depthTexture = this.depthB;
 
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.30, 0.5, 0.9);
     this.bloomPass.enabled = opts.bloom;
@@ -197,6 +293,11 @@ export class PostFX {
     this.composer.setSize(w, h);
     this.setFxaaResolution(w, h);
     this.bloomPass.resolution.set(w, h);
+    for (const d of [this.depthA, this.depthB]) {
+      d.image.width = w;
+      d.image.height = h;
+      d.dispose(); // force FBO re-attach at the new size
+    }
   }
 
   /** sun screen-space position + ray strength (caller clamps to daylight) */
@@ -209,6 +310,29 @@ export class PostFX {
   setFlare(strength: number, aspect: number): void {
     this.godRaysPass.uniforms.uFlare.value = strength;
     this.godRaysPass.uniforms.uAspect.value = aspect;
+  }
+
+  /** flare visibility gate: voxel-raycast sun occlusion × camera facing */
+  setFlareVis(v: number): void {
+    this.godRaysPass.uniforms.uVis.value = v;
+  }
+
+  /** volumetric shafts: per-frame camera/light state */
+  setVls(invVP: THREE.Matrix4, camPos: THREE.Vector3, lightDir: THREE.Vector3, color: THREE.Color, strength: number, steps: number): void {
+    const u = this.godRaysPass.uniforms;
+    u.uInvVP.value.copy(invVP);
+    u.uCamPos.value.copy(camPos);
+    u.uLightDirW.value.copy(lightDir);
+    u.uVlsColor.value.copy(color);
+    u.uVls.value = strength;
+    u.uVlsSteps.value = steps;
+  }
+
+  /** shadow-map feed for the shaft march (called after runShadowPass) */
+  setVlsShadow(map: THREE.Texture | null, matrix: THREE.Matrix4): void {
+    const u = this.godRaysPass.uniforms;
+    u.uShadowMap.value = map;
+    u.uShadowMatrix.value.copy(matrix);
   }
 
   setGrade(exposure: number, saturation: number, contrast: number, vignette: number): void {
@@ -236,10 +360,18 @@ export class PostFX {
   }
 
   render(dt: number): void {
+    // RenderPass draws the scene into readBuffer (needsSwap=false) — its depth
+    // attachment IS the current-frame scene depth; the VLS pass samples it
+    // while rendering into writeBuffer (other depth texture → no feedback)
+    const depth = this.composer.readBuffer?.depthTexture ?? null;
+    this.godRaysPass.uniforms.uDepthTex.value = depth;
+    this.godRaysPass.uniforms.uHasDepth.value = depth ? 1 : 0;
     this.composer.render(dt);
   }
 
   dispose(): void {
     this.composer.dispose();
+    this.depthA.dispose();
+    this.depthB.dispose();
   }
 }

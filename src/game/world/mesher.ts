@@ -56,11 +56,12 @@ interface MeshBuffers {
   blocks: number[];
   tints: number[];
   sways: number[];
+  depths: number[];
   indices: number[];
 }
 
 function newBuffers(): MeshBuffers {
-  return { positions: [], normals: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], sways: [], indices: [] };
+  return { positions: [], normals: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], sways: [], depths: [], indices: [] };
 }
 
 function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
@@ -91,7 +92,7 @@ function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
     console.warn(`[mesher] uv count ${b.uvs.length} != ${vertCount * 2} — padded`);
     while (b.uvs.length < vertCount * 2) b.uvs.push(0, 0);
   }
-  for (const [name, arr] of [['aShade', b.shades], ['aSky', b.skies], ['aBlock', b.blocks], ['aSway', b.sways]] as const) {
+  for (const [name, arr] of [['aShade', b.shades], ['aSky', b.skies], ['aBlock', b.blocks], ['aSway', b.sways], ['aDepth', b.depths]] as const) {
     if (arr.length !== vertCount) {
       console.warn(`[mesher] ${name} count ${arr.length} != ${vertCount} — padded`);
       while (arr.length < vertCount) arr.push(0);
@@ -107,6 +108,7 @@ function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
   geo.setAttribute('aBlock', new THREE.Float32BufferAttribute(b.blocks, 1));
   geo.setAttribute('aTint', new THREE.Float32BufferAttribute(b.tints, 3));
   geo.setAttribute('aSway', new THREE.Float32BufferAttribute(b.sways, 1));
+  geo.setAttribute('aDepth', new THREE.Float32BufferAttribute(b.depths, 1));
   geo.setIndex(b.indices);
   geo.computeBoundingSphere();
   return geo;
@@ -149,6 +151,8 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
   const getB = (wx: number, wy: number, wz: number): number => world.getBlock(wx, wy, wz);
   /** biome tint for this column (cached per chunk build) */
   const tintCache = new Map<number, [number, number, number]>();
+  /** water-column floor y per (lx,lz) — cached so deep oceans scan once */
+  const depthCache = new Map<number, number>();
   const biomeTint = (wx: number, wz: number): [number, number, number] => {
     const key = (wx & 0xffff) << 16 | (wz & 0xffff);
     const cached = tintCache.get(key);
@@ -300,6 +304,30 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
         if (isWater && !isWaterId(aboveId)) {
           waterTopH = id === BLOCK.WATER ? 0.875 : Math.max(0.12, 0.875 - waterLevel(id) * 0.105);
         }
+        // ── baked water depth (v0.47): floor distance below this water cell,
+        // 0 = shoreline shallow → 1 = deep. Drives the shader-pack absorption
+        // gradient (sandy shallows → rich deep teal), translucent shore edges
+        // and the bright waterline band — the Unreal-water look without a
+        // screen-space depth pass. The y-loop runs bottom-up, so the FIRST
+        // water cell of a column is the lowest one — we cache the column's
+        // FLOOR y there and derive per-cell depth from it.
+        let wDepth = 0;
+        if (isWater) {
+          const colKey = (lx << 8) | lz;
+          const floorY = depthCache.get(colKey);
+          if (floorY !== undefined) {
+            wDepth = Math.min(1, Math.max(0, y - 1 - floorY) / 9);
+          } else {
+            let fy = y - 1;
+            while (fy > 0 && y - fy <= 24) {
+              const bid = getB(wx, fy, wz);
+              if (bid !== BLOCK.AIR && !isWaterId(bid)) break;
+              fy--;
+            }
+            depthCache.set(colKey, fy);
+            wDepth = Math.min(1, Math.max(0, y - 1 - fy) / 9);
+          }
+        }
         // partial-height blocks (bed)
         const hTop = def.height ?? 1;
 
@@ -404,6 +432,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             target.blocks.push(blockLevels[c]);
             pushTint(target, tint);
             target.sways.push(sway);
+            target.depths.push(isWater ? wDepth : 0);
           }
 
           // flip quad diagonal for better AO interpolation

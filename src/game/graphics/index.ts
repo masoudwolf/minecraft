@@ -7,7 +7,8 @@
 import * as THREE from 'three';
 import { SkySystem } from '../sky';
 import type { World, Chunk } from '../world/world';
-import { DAY_LENGTH } from '../constants';
+import { BLOCK, isOpaque, isWaterId } from '../blocks';
+import { DAY_LENGTH, WORLD_HEIGHT } from '../constants';
 import type { Settings } from '../state';
 import { AtmosphereSky } from './atmosphere';
 import { VolumetricClouds } from './cloudsVolumetric';
@@ -101,6 +102,18 @@ export class GraphicsSystem {
   private grassSweepTimer = 0;
   /** true when GPU reports as software renderer (llvmpipe etc.) */
   isSoftware = false;
+
+  // ── lens-flare occlusion gate (v0.47) ──
+  // The flare overlays used to draw unconditionally from the sun's screen
+  // position, so standing indoors facing a wall produced a giant sun blob in
+  // the middle of the room. Two CPU gates fix it: (1) a voxel DDA raycast
+  // toward the light — any opaque block kills it, water/leaves attenuate;
+  // (2) a camera-facing factor — the flare fades out as you turn away.
+  private flareVis = 0;
+  private tmpFwd = new THREE.Vector3();
+  private tmpVP = new THREE.Matrix4();
+  private tmpInvVP = new THREE.Matrix4();
+  private tmpVlsCol = new THREE.Color();
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunLight: THREE.DirectionalLight) {
     this.renderer = renderer;
@@ -424,6 +437,8 @@ export class GraphicsSystem {
       if (m.uniforms.uTorchCount) m.uniforms.uTorchCount.value = this.maxTorchShadows > 0 && this.torchSources.length > 0 ? Math.min(this.maxTorchShadows, this.torchSources.length) : 0;
     }
     this.grass.setTorchCount(this.torchSources.length > 0 ? Math.min(this.maxTorchShadows, this.torchSources.length) : 0);
+    // feed the same depth map to the volumetric-shafts post pass
+    this.postfx?.setVlsShadow(this.shadowRT.texture, this.shadowMatrix);
   }
 
   private setShadowStrength(s: number): void {
@@ -587,7 +602,23 @@ export class GraphicsSystem {
       const expoTarget = (1 + (1 - dayAmount) * 0.35 + sunsetAmount * 0.06) * (underwater ? 1.18 : 1);
       this.expAdapt += (expoTarget - this.expAdapt) * Math.min(1, dt * 1.4);
       this.postfx.setGrade(this.expAdapt * gfx.exposure, gfx.saturation, gfx.contrast, gfx.vignette);
+
+      // ── flare gate: voxel occlusion × camera facing (v0.47) ──
+      // Raycast from the eye toward the light through the voxel grid — walls
+      // between the player and the sun/moon must kill the lens flare, and
+      // turning away from it fades it (both were user-reported artifacts).
+      let flareVis = 0;
+      if (gfx.godRays && !underwater && dayAmount > 0.02) {
+        camera.getWorldDirection(this.tmpFwd);
+        const facing = CLAMP((this.tmpFwd.dot(sunDir) + 0.08) / 0.5, 0, 1);
+        const facingSmooth = facing * facing * (3 - 2 * facing);
+        const occl = this.sunOcclusion(camera.position, sunDir);
+        flareVis = facingSmooth * occl * dayAmount;
+      }
+      this.flareVis = flareVis;
+      this.postfx.setFlareVis(flareVis);
       this.postfx.setFlare(gfx.godRays ? 0.55 : 0, camera.aspect);
+
       // sun screen position for god rays
       let gx = -1, gy = -1, strength = 0;
       if (gfx.godRays && !underwater) {
@@ -607,7 +638,61 @@ export class GraphicsSystem {
       const samples = gfx.preset === 'ultra' || gfx.preset === 'high' ? 48 : gfx.preset === 'medium' ? 36 : 24;
       this.postfx.setSunScreen(gx, gy, strength, samples);
       this.postfx.setUnderwater(underwater ? 1 : 0, performance.now() / 1000);
+
+      // ── volumetric light shafts (SEUS/BSL staple): ray-march camera→pixel
+      // through the sun shadow map — air in a window beam reads lit, air under
+      // a roof reads shadowed, so real shafts paint themselves into the room.
+      if (gfx.godRays && !underwater) {
+        const vlsSteps = gfx.preset === 'ultra' ? 16 : gfx.preset === 'high' ? 12 : gfx.preset === 'medium' ? 8 : 6;
+        const vlsStrength = gfx.godRaysStrength * 0.5 * (1 - storm * 0.7) * (1 - cover * 0.4);
+        this.tmpVlsCol.copy(this.lastSunColor).multiplyScalar(0.5 + 0.5 * dayAmount);
+        camera.updateMatrixWorld();
+        camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+        this.tmpVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        this.tmpInvVP.copy(this.tmpVP).invert();
+        this.postfx.setVls(this.tmpInvVP, camera.position, lightDir, this.tmpVlsCol, vlsStrength, vlsSteps);
+      } else {
+        this.postfx.setVls(this.tmpInvVP, camera.position, lightDir, this.tmpVlsCol, 0, 1);
+      }
     }
+  }
+
+  /** voxel DDA raycast toward the light — 1.0 = clear sky, 0 = fully blocked.
+   *  Water and leaves attenuate (light filters through), glass barely dims. */
+  private sunOcclusion(origin: THREE.Vector3, dir: THREE.Vector3): number {
+    const world = this.world;
+    if (!world) return 1;
+    let vis = 1;
+    let x = Math.floor(origin.x);
+    let y = Math.floor(origin.y);
+    let z = Math.floor(origin.z);
+    const stepX = dir.x > 0 ? 1 : -1;
+    const stepY = dir.y > 0 ? 1 : -1;
+    const stepZ = dir.z > 0 ? 1 : -1;
+    const invX = dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity;
+    const invY = dir.y !== 0 ? Math.abs(1 / dir.y) : Infinity;
+    const invZ = dir.z !== 0 ? Math.abs(1 / dir.z) : Infinity;
+    let tMaxX = dir.x !== 0 ? ((stepX > 0 ? x + 1 - origin.x : origin.x - x)) * invX : Infinity;
+    let tMaxY = dir.y !== 0 ? ((stepY > 0 ? y + 1 - origin.y : origin.y - y)) * invY : Infinity;
+    let tMaxZ = dir.z !== 0 ? ((stepZ > 0 ? z + 1 - origin.z : origin.z - z)) * invZ : Infinity;
+    for (let i = 0; i < 260 && vis > 0.01; i++) {
+      if (tMaxX < tMaxY && tMaxX < tMaxZ) {
+        x += stepX; tMaxX += invX;
+      } else if (tMaxY < tMaxZ) {
+        y += stepY; tMaxY += invY;
+      } else {
+        z += stepZ; tMaxZ += invZ;
+      }
+      if (y >= WORLD_HEIGHT) break;        // above the world → open sky
+      if (y < 0) return 0;                 // ray left the world downward
+      const id = world.getBlock(x, y, z);
+      if (id === BLOCK.AIR) continue;
+      if (isOpaque(id)) return 0;          // solid wall → no flare
+      if (isWaterId(id)) vis *= 0.72;      // water filters the glare
+      else if (id === BLOCK.LEAVES || id === BLOCK.SPRUCE_LEAVES || id === BLOCK.JUNGLE_LEAVES) vis *= 0.62;
+      else if (id === BLOCK.GLASS) vis *= 0.96;
+    }
+    return vis;
   }
 
   // ── entity shadow flags + blob-shadow suppression ──────────────────────────
@@ -767,6 +852,9 @@ export class GraphicsSystem {
   render(_dt: number): void {
     if (this.gfx && this.gfx.shadows > 0 && this.shadowRT) {
       this.runShadowPass();
+    } else {
+      // no shadow map → volumetric shafts lose their occlusion source
+      this.postfx?.setVlsShadow(null, this.shadowMatrix);
     }
     const useComposer = this.gfx?.postfx === true && this.postfx !== null;
     if (useComposer && this.gfx!.waterQuality >= 1 && !this.underwaterCam) {
