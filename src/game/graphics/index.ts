@@ -208,8 +208,10 @@ export class GraphicsSystem {
     } else if (this.shadowRT.width !== size) {
       this.shadowRT.setSize(size, size);
     }
-    // torch cube shadows: 1 source on High, 2 on Ultra (each = 6 tiny renders)
-    this.maxTorchShadows = q >= 3 ? 2 : 1;
+    // torch cube shadows: 1 source on High, 2 on Ultra (each = 6 tiny renders).
+    // Software GL (llvmpipe) freezes intermittently inside the cube passes —
+    // real GPUs get the feature, the sandbox falls back to unshadowed torches.
+    this.maxTorchShadows = this.isSoftware ? 0 : (q >= 3 ? 2 : 1);
     while (this.cubeRTs.length < this.maxTorchShadows) {
       const rt = new THREE.WebGLCubeRenderTarget(384, {
         // LinearFilter: free bilinear softening of the cube penumbra (the
