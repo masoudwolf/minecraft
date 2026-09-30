@@ -23,6 +23,8 @@ export class Player {
   gameMode: GameMode = 'survival';
   /** creative flight (double-tap space) */
   flying = false;
+  /** cheat flag (Creator Tools): all damage() calls are ignored while true */
+  godMode = false;
 
   health = 20;
   maxHealth = 20;
@@ -240,7 +242,7 @@ export class Player {
   }
 
   damage(amount: number): void {
-    if (this.isCreative) return; // creative players are invulnerable
+    if (this.isCreative || this.godMode) return; // creative + cheat god mode are invulnerable
     if (this.dead || this.hurtCooldown > 0) return;
     // armor damage reduction (MC formula: each point = 4% reduction, min 1 dmg)
     let dmg = amount;

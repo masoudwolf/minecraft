@@ -43,7 +43,7 @@ const decodedImages = new Map<string, HTMLImageElement>();
 const onPreloaded: (() => void)[] = [];
 let preloadDone = false;
 export function preloadEntityTextures(files?: string[]): Promise<unknown> {
-  const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch', 'snow_golem', 'pumpkin_top', 'pumpkin_side', 'carved_pumpkin'];
+  const list = files ?? ['pig', 'cow', 'mooshroom_red', 'mooshroom_brown', 'sheep_body', 'sheep_fur', 'chicken', 'zombie', 'skeleton', 'creeper', 'spider', 'enderman', 'villager', 'iron_golem', 'witch', 'snow_golem', 'pumpkin_top', 'pumpkin_side', 'carved_pumpkin', 'steve'];
   return Promise.all(
     list.map(
       (f) =>

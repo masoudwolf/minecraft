@@ -25,6 +25,11 @@ import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL
 import { getItemIconCanvas } from './items';
 import { useGameStore, type GameMode, type WorldMeta } from './state';
 
+/** display name for any block or item id (cheat toasts, etc.) */
+function itemLabel(id: number): string {
+  return isItemId(id) ? (getItemDef(id)?.name ?? `#${id}`) : (getBlockDef(id)?.name ?? `#${id}`);
+}
+
 const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration source)
 
 interface SaveData {
@@ -596,7 +601,15 @@ export class Game {
     }
     if (st.screen !== 'playing') return;
     this.keys.add(e.code);
-    if (e.code === 'F4') { e.preventDefault(); useGameStore.getState().setCreatorOpen(!st.creatorOpen); return; }
+    if (e.code === 'F4') {
+      e.preventDefault();
+      const next = !st.creatorOpen;
+      useGameStore.getState().setCreatorOpen(next);
+      // unlock the cursor while the panel is open (clicks must reach the UI)
+      if (next && document.pointerLockElement === this.canvas) document.exitPointerLock();
+      else if (!next) this.requestLock();
+      return;
+    }
     if (e.code === 'KeyE') { e.preventDefault(); this.openInventory(false); return; }
     if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5), 10);
@@ -670,6 +683,7 @@ export class Game {
     // flash-engage/disengage cycles (headless, alt-tab quirks) must not pause the game.
     if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
     if (useGameStore.getState().tradeOpen) return; // villager trade panel: world keeps running
+    if (useGameStore.getState().creatorOpen) return; // cheat panel (F4): world keeps running
     if (
       this.hadLock &&
       performance.now() - this.lockHeldAt > 500 &&
@@ -1300,7 +1314,9 @@ export class Game {
     }
     const def = getBlockDef(t.id);
     if (!def) { this.crackMesh.visible = false; return; }
-    const { time, harvest } = breakInfo(def, heldTool);
+    const bi = breakInfo(def, heldTool);
+    const time = this.instantBreak ? 0.04 : bi.time; // cheat: instant break
+    const harvest = bi.harvest;
     if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
     this.mineProgress += dt / time;
 
@@ -1766,6 +1782,36 @@ export class Game {
     audio.pop();
     this.syncInventory(true);
   }
+
+  // ── cheats (Creator Tools → Cheats): fast testing hooks ─────────────────────
+  /** cheat: give items straight into the inventory (works in any mode) */
+  cheatGive(id: number, count: number): void {
+    const left = this.addToInventory(id, count, freshDur(id));
+    audio.pop();
+    this.syncHUD(true);
+    this.syncInventory(true);
+    this.updateHandMesh();
+    const given = count - left;
+    this.showToast(given > 0 ? `+${given} × ${itemLabel(id)}` : 'Inventory full!');
+  }
+
+  /** cheat: restore every tool/armor/bow in hotbar + main + armor to full durability */
+  cheatRepairAll(): void {
+    let n = 0;
+    const fix = (s: { blockId: number; dur?: number }): void => {
+      const d = freshDur(s.blockId);
+      if (d !== undefined && s.dur !== undefined && s.dur < d) { s.dur = d; n++; }
+    };
+    for (const s of this.player.hotbar) fix(s);
+    for (const s of this.player.main) fix(s);
+    for (const s of this.player.armor) if (s) fix(s);
+    this.syncHUD(true);
+    this.syncInventory(true);
+    this.showToast(n > 0 ? `Repaired ${n} item${n > 1 ? 's' : ''}` : 'Nothing to repair');
+  }
+
+  /** cheat: instantly mine blocks in survival (Creator Tools toggle) */
+  instantBreak = false;
 
   setInvHover(hover: { area: 'hotbar' | 'main' | 'craft' | 'container' | 'armor'; idx: number } | null): void {
     this.invHover = hover;
