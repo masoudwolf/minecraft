@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>شوالیه سایه نئونی | کاراکتر پیکسلی ماینکرفتی</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--s1:#4fa9f5;--s2:#e6f5ff;--pn:rgba(255,255,255,.78);--ink:#121629;--ln:rgba(18,22,41,.2);--ac:#0ea5c6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--s1:#060920;--s2:#2d1f66;--pn:rgba(12,14,34,.74);--ink:#eef1ff;--ln:rgba(255,255,255,.2)}}
+:root[data-theme="dark"]{--s1:#060920;--s2:#2d1f66;--pn:rgba(12,14,34,.74);--ink:#eef1ff;--ln:rgba(255,255,255,.2)}
+html,body{height:100%;margin:0}
+body{background:linear-gradient(var(--s1),var(--s2));color:var(--ink);font-family:Vazirmatn,Tahoma,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none}
+#c{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#c:active{cursor:grabbing}
+header{position:fixed;top:0;left:0;right:0;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 0;text-align:center;pointer-events:none}
+h1{margin:0;font-size:clamp(22px,5vw,34px);font-weight:900}
+header p{margin:2px 0 0;font-size:13px;opacity:.75}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));background:var(--pn);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--ln);display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center}
+.g{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center}
+.g small{font-size:12px;opacity:.7}
+button{font:inherit;font-size:13px;color:var(--ink);background:transparent;border:1px solid var(--ln);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.on{background:var(--ac);color:#06131a;border-color:transparent;font-weight:700}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<header><h1>شوالیه سایه نئونی</h1><p>کاراکتر سه‌بعدی پیکسلی به سبک ماینکرفت — بکشید تا بچرخد، اسکرول یا دو انگشت برای زوم</p></header>
+<div class="bar">
+<div class="g"><small>حالت</small><button data-m="idle" class="on">ایستاده</button><button data-m="walk">راه رفتن</button><button data-m="attack">حمله</button><button data-m="pose">ژست قهرمان</button></div>
+<div class="g"><small>رنگ</small><button data-t="0" class="on">سایبر</button><button data-t="1">آتشین</button><button data-t="2">سمی</button><button data-t="3">اندر</button></div>
+<div class="g"><button id="au" class="on">چرخش خودکار</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+if(!window.THREE){document.body.innerHTML='<p style="padding:24px">بارگذاری موتور سه‌بعدی ممکن نشد. اتصال اینترنت را بررسی کنید.</p>'}else(()=>{
+const T=THREE;let seed=11;
+const rnd=()=>(seed=seed*16807%2147483647)/2147483647,cl=(v,a=0,b=255)=>Math.max(a,Math.min(b,v)),
+sh=(c,k)=>c.map(v=>cl(v*k)),lt=c=>c.map(v=>v+(255-v)*.6),css=c=>`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`,
+tex=n=>{const t=new T.CanvasTexture(n);t.magFilter=t.minFilter=T.NearestFilter;return t};
+// painter: main texture + glow (emissive) map
+function P(w,h,fn,o){
+const a=document.createElement('canvas'),b=document.createElement('canvas');a.width=b.width=w;a.height=b.height=h;
+const x=a.getContext('2d'),y=b.getContext('2d');y.fillStyle='#000';y.fillRect(0,0,w,h);
+const px=(i,j,c)=>{x.fillStyle=css(c);x.fillRect(i,j,1,1)},
+gl=(i,j,c)=>{px(i,j,c);y.fillStyle=css(c);y.fillRect(i,j,1,1)},
+clr=(i,j)=>{x.clearRect(i,j,1,1);y.fillStyle='#000';y.fillRect(i,j,1,1)},
+fl=(i,j,ww,hh,c,v=.12,f=px)=>{for(let p=0;p<ww;p++)for(let q=0;q<hh;q++)f(i+p,j+q,sh(c,1+(rnd()-.5)*2*v))};
+fn({px,gl,clr,fl});
+return new T.MeshLambertMaterial(Object.assign({map:tex(a),emissive:0xffffff,emissiveMap:tex(b)},o));
+}
+const cv=document.getElementById('c'),R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;
+const S=new T.Scene(),cam=new T.PerspectiveCamera(35,1,.1,400);
+S.add(new T.AmbientLight(0xffffff,.78));
+const sun=new T.DirectionalLight(0xffffff,.85);sun.position.set(30,60,40);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.bias=-.001;
+Object.assign(sun.shadow.camera,{left:-45,right:45,top:45,bottom:-45,near:1,far:200});sun.shadow.camera.updateProjectionMatrix();S.add(sun);
+const rim=new T.PointLight(0xffffff,1.1,120);rim.position.set(-22,26,-22);S.add(rim);
+// ground blocks
+const gr=P(16,16,({fl,px})=>{fl(0,0,16,16,[92,164,54],.14);for(let i=0;i<26;i++)px(rnd()*16|0,rnd()*16|0,[64,126,42])}),
+di=P(16,16,({fl,px})=>{fl(0,0,16,16,[136,98,68],.16);for(let i=0;i<22;i++)px(rnd()*16|0,rnd()*16|0,rnd()<.5?[104,74,52]:[164,124,92])}),
+sd=P(16,16,({fl,px})=>{fl(0,0,16,16,[136,98,68],.16);for(let i=0;i<18;i++)px(rnd()*16|0,4+rnd()*12|0,[104,74,52]);for(let i=0;i<16;i++)fl(i,0,1,3+(rnd()*3|0),[92,164,54],.14)}),
+bg=new T.BoxGeometry(16,16,16);
+[[0,0,0],[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],[2,0,-16],[0,2,-16],[-2,0,-16],[0,-2,-16]].forEach(([i,j,d])=>{const m=new T.Mesh(bg,[sd,sd,gr,di,sd,sd]);m.position.set(i*16,-8+d,j*16);m.receiveShadow=true;S.add(m)});
+// embers + orbiting crystals
+const N=90,pp=new Float32Array(N*3);for(let i=0;i<N;i++){pp[i*3]=(Math.random()-.5)*70;pp[i*3+1]=Math.random()*55;pp[i*3+2]=(Math.random()-.5)*70}
+const pg=new T.BufferGeometry();pg.setAttribute('position',new T.BufferAttribute(pp,3));
+const pts=new T.Points(pg,new T.PointsMaterial({size:1.1,transparent:true,opacity:.9,depthWrite:false}));pts.frustumCulled=false;S.add(pts);
+const cmat=new T.MeshBasicMaterial(),cr=[0,1,2].map(()=>{const m=new T.Mesh(new T.BoxGeometry(2.4,2.4,2.4),cmat);S.add(m);return m});
+// character
+const ch=new T.Group();S.add(ch);let rig={},A,B;
+const mk=(w,h,d,m,x=0,y=0,z=0)=>{const b=new T.Mesh(new T.BoxGeometry(w,h,d),m);b.position.set(x,y,z);b.castShadow=true;return b},
+gp=(x,y,z,...k)=>{const g=new T.Group();g.position.set(x,y,z);k.forEach(o=>g.add(o));return g};
+function build(th){
+seed=11;A=th.A;B=th.B;const L=lt(A),al=k=>sh(A,k);
+while(ch.children.length)ch.remove(ch.children[0]);
+const D=[36,38,56],E=[22,23,36],M=[112,120,146],N2=[62,66,88],Y=[244,192,62],K=[14,14,20],BT=[86,54,34];
+// head
+const hs=P(8,8,({fl,gl})=>{fl(0,0,8,8,D);fl(0,0,8,1,E);fl(0,1,8,1,M,.1);for(let i=2;i<6;i++)gl(i,4,al(.75))}),
+hf=P(8,8,({fl,gl,px})=>{fl(0,0,8,8,D);fl(0,0,8,1,E);fl(0,1,8,1,M,.1);gl(3,1,A);gl(4,1,A);fl(1,2,6,3,[8,8,14],.04);
+[1,2,5,6].forEach(i=>{gl(i,2,al(.3));gl(i,4,al(.3))});gl(1,3,A);gl(2,3,L);gl(5,3,L);gl(6,3,A);
+fl(0,5,8,3,[28,30,44],.08);fl(1,5,6,1,[54,58,80],.06);px(2,6,[236,236,242]);px(5,6,[236,236,242])}),
+hb=P(8,8,({fl,gl})=>{fl(0,0,8,8,D);fl(0,0,8,1,E);fl(0,1,8,1,M,.1);[[2,3],[5,3],[3,4],[4,4],[3,5],[4,5],[2,6],[5,6]].forEach(([i,j])=>gl(i,j,al(.85)))}),
+ht=P(8,8,({fl})=>fl(0,0,8,8,D,.14)),hd=P(8,8,({fl})=>fl(0,0,8,8,E)),
+cm=P(4,4,({fl,gl})=>fl(0,0,4,4,A,.25,gl)),hm=P(2,6,({fl,gl})=>{fl(0,0,2,6,M,.1);fl(0,0,2,2,A,.15,gl)});
+const horn=s=>{const h=mk(1.4,5,1.4,hm,s*4.7,7.2,0);h.rotation.z=-s*.55;return h};
+const head=gp(0,24,0,mk(8,8,8,[hs,hs,ht,hd,hf,hb],0,4,0),mk(1.6,2.6,6.5,cm,0,9.1,-.5),horn(1),horn(-1));
+// body
+const bf=P(8,12,({fl,gl,px})=>{fl(0,0,8,12,D);fl(0,0,8,2,B,.14);fl(1,2,6,6,N2,.09);for(let i=1;i<7;i++)px(i,2,sh(M,1.05));for(let j=3;j<8;j++){px(1,j,M);px(6,j,M)}
+fl(2,3,4,4,al(.35),.04,gl);fl(3,4,2,2,L,0,gl);gl(3,7,al(.7));gl(4,7,al(.7));fl(0,8,8,2,BT,.1);fl(3,8,2,2,Y,.08);fl(0,10,8,2,E,.1);[1,6].forEach(i=>{gl(i,10,al(.6));gl(i,11,al(.6))})}),
+bb=P(8,12,({fl,gl})=>{fl(0,0,8,12,D);fl(0,0,8,2,B,.14);for(let j=3;j<10;j++){gl(3,j,al(.45));gl(4,j,al(.45))}fl(0,10,8,2,E,.1)}),
+bs=P(4,12,({fl,gl})=>{fl(0,0,4,12,D);fl(0,0,4,2,B,.14);fl(0,8,4,2,BT,.1);gl(1,4,al(.5));gl(2,4,al(.5))}),
+bt=P(8,4,({fl})=>fl(0,0,8,4,B,.14)),body=mk(8,12,4,[bs,bs,bt,hd,bf,bb],0,18,0);
+// arms + pauldrons
+const am=P(4,12,({fl,gl,px})=>{fl(0,0,4,12,D);fl(0,0,4,2,M,.1);for(let j=3;j<7;j++)gl(1,j,al(.7));for(let i=0;i<4;i++)gl(i,7,al(.8));fl(0,8,4,3,N2,.08);px(1,9,M);px(2,9,M);fl(0,11,4,1,K)}),
+at=P(4,4,({fl})=>fl(0,0,4,4,D)),ab=P(4,4,({fl})=>fl(0,0,4,4,K)),
+pm=P(6,3,({fl,gl})=>{fl(0,0,6,3,M,.12);fl(0,2,6,1,N2,.08);gl(2,1,A);gl(3,1,A)});
+const arm=(x,s)=>{const k=mk(1,2.4,1,hm,s*.7,2.6,0);k.rotation.z=-s*.3;return gp(x,24,0,mk(4,12,4,[am,am,at,ab,am,am],0,-6,0),mk(5,2.6,5,pm,s*.7,.4,0),k)};
+// legs
+const lm=P(4,12,({fl,gl})=>{fl(0,0,4,5,D);for(let j=0;j<5;j++)gl(0,j,al(.5));fl(0,5,4,2,M,.1);gl(1,5,A);gl(2,5,A);fl(0,7,4,2,E);fl(0,9,4,2,[46,48,64],.08);for(let i=0;i<4;i++)gl(i,9,al(.8));fl(0,11,4,1,K)}),
+lu=P(4,4,({fl})=>fl(0,0,4,4,D)),leg=x=>gp(x,12,0,mk(4,12,4,[lm,lm,lu,ab,lm,lm],0,-6,0));
+// cape (jagged hem via alpha test)
+const cp=P(8,14,({fl,gl,clr})=>{for(let j=0;j<14;j++){fl(0,j,8,1,sh(B,1-j*.035),.1);gl(0,j,al(.6));gl(7,j,al(.6))}
+[[3,4],[4,4],[2,5],[3,5],[4,5],[5,5],[3,6],[4,6]].forEach(([i,j])=>gl(i,j,A));[2,0,1,3,1,0,2,1].forEach((h,i)=>{for(let j=14-h;j<14;j++)clr(i,j)})},{alphaTest:.5});
+const cape=gp(0,23.5,-2.3,mk(8,14,.6,cp,0,-7,-.3));
+// glowing sword
+const bm=P(2,8,({fl,gl})=>{fl(0,0,2,8,A,.12,gl);for(let j=0;j<8;j++)gl(0,j,L)}),gm=P(4,2,({fl})=>fl(0,0,4,2,Y,.1)),rm=P(2,4,({fl})=>fl(0,0,2,4,BT,.12)),
+sl=new T.PointLight(0xffffff,.9,45);sl.color.set(css(A));sl.position.set(0,10,0);
+const sw=gp(0,-11,1.2,mk(1.2,3.6,1.2,rm),mk(5,1,1.6,gm,0,2.3,0),mk(1.5,15,.5,bm,0,10.4,0),mk(1.8,1.2,1.8,gm,0,-2.4,0),sl);sw.rotation.x=Math.PI/2;
+const armR=arm(-6,-1),armL=arm(6,1);armR.add(sw);
+const torso=gp(0,0,0,body,head,armL,armR,cape),legL=leg(2),legR=leg(-2);ch.add(legL,legR,torso);
+rig={legL,legR,armL,armR,head,cape,torso,sl};
+const c=css(A);rim.color.set(c);pts.material.color.set(c);cmat.color.set(c);document.documentElement.style.setProperty('--ac',c);
+}
+const TH=[{A:[34,230,255],B:[130,50,240]},{A:[255,130,30],B:[190,25,40]},{A:[120,255,80],B:[18,110,90]},{A:[240,90,255],B:[70,35,130]}];
+// controls
+const st={mode:'idle',auto:true,th:.65,ph:1.35,r:1},ptrs=new Map();let drag=false,fit=1;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);drag=true});
+cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;
+if(ptrs.size===1){st.th-=(e.clientX-p[0])*.008;st.ph=cl(st.ph-(e.clientY-p[1])*.006,.5,1.7)}
+else if(ptrs.size===2){const o=[...ptrs].find(([k])=>k!==e.pointerId)[1];st.r=cl(st.r*Math.hypot(p[0]-o[0],p[1]-o[1])/Math.hypot(e.clientX-o[0],e.clientY-o[1]),.45,1.8)}
+p[0]=e.clientX;p[1]=e.clientY});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,e=>{ptrs.delete(e.pointerId);drag=ptrs.size>0}));
+cv.addEventListener('wheel',e=>{e.preventDefault();st.r=cl(st.r*(1+e.deltaY*.001),.45,1.8)},{passive:false});
+const on=(s,b)=>document.querySelectorAll(s).forEach(x=>x.classList.toggle('on',x===b));
+document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{st.mode=b.dataset.m;on('[data-m]',b)});
+document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{build(TH[b.dataset.t]);on('[data-t]',b)});
+const au=document.getElementById('au');au.onclick=()=>{st.auto=!st.auto;au.classList.toggle('on',st.auto)};
+function rs(){const w=innerWidth,h=innerHeight;R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(w,h,false);cam.aspect=w/h;fit=w/h<.8?1.55:w/h<1.2?1.2:1;cam.updateProjectionMatrix()}
+// animation
+const cur={aL:0,aR:-.75,lL:0,lR:0,ty:0,by:0,cp:.1,hy:0,hx:0};let t0=performance.now(),tt=0;
+function loop(now){
+requestAnimationFrame(loop);
+const dt=Math.min((now-t0)/1000,.05);t0=now;tt+=dt;const s=Math.sin,m=st.mode;
+const g={aL:0,aR:-.75,lL:0,lR:0,ty:0,by:0,cp:.08};let hit=0;
+if(m==='idle'){g.aL=s(tt*2)*.06;g.aR=-.75+s(tt*2+1)*.05;g.by=s(tt*2)*.2;g.cp=.08+s(tt*1.6)*.05}
+else if(m==='walk'){const w=s(tt*6);g.lL=w*.85;g.lR=-w*.85;g.aL=-w*.75;g.aR=-.75+w*.3;g.by=Math.abs(w)*.5;g.ty=w*.12;g.cp=.4+w*.12}
+else if(m==='attack'){const p=(tt%1.5)/1.5;let k;
+if(p<.4){k=p/.4;g.aR=-.75-1.85*k;g.ty=-.6*k}
+else if(p<.6){k=(p-.4)/.2;k*=k;g.aR=-2.6+2.4*k;g.ty=-.6+1.3*k;hit=1}
+else{k=(p-.6)/.4;g.aR=-.2-.55*k;g.ty=.7*(1-k)}
+g.aL=.3;g.lL=.35;g.lR=-.35;g.cp=.45}
+else{g.aR=-1.7;g.aL=.35;g.ty=-.25;g.lL=.2;g.lR=-.2;g.cp=.22+s(tt*4)*.07;g.by=s(tt*1.5)*.15}
+const k=Math.min(1,dt*(m==='attack'?14:7));for(const n in g)cur[n]+=(g[n]-cur[n])*k;
+const a=Math.atan2(s(st.th),Math.cos(st.th));
+cur.hy+=((Math.abs(a)<1.5?a*.55:0)-cur.hy)*Math.min(1,dt*4);cur.hx+=((st.ph-1.4)*.3-cur.hx)*Math.min(1,dt*4);
+const r=rig;r.armL.rotation.x=cur.aL;r.armL.rotation.z=.05;r.armR.rotation.x=cur.aR;r.legL.rotation.x=cur.lL;r.legR.rotation.x=cur.lR;r.torso.rotation.y=cur.ty;
+[r.head,r.armL,r.armR].forEach(o=>o.position.y=24+cur.by);
+r.head.rotation.set(cur.hx,cur.hy,0);r.cape.rotation.x=cur.cp;r.cape.rotation.z=s(tt*3)*.05;r.sl.intensity=.9+hit*3.5+s(tt*5)*.15;
+for(let i=0;i<N;i++){pp[i*3+1]+=dt*(5+i%4*2);pp[i*3]+=s(tt+i)*dt*2;if(pp[i*3+1]>55){pp[i*3+1]=0;pp[i*3]=(Math.random()-.5)*70;pp[i*3+2]=(Math.random()-.5)*70}}
+pg.attributes.position.needsUpdate=true;
+cr.forEach((c,i)=>{const b=tt*.9+i*2.094;c.position.set(Math.cos(b)*22,20+s(tt*1.7+i)*4,Math.sin(b)*22);c.rotation.x=c.rotation.y=tt*1.2});
+if(st.auto&&!drag)st.th+=dt*.35;
+const rr=78*st.r*fit;cam.position.set(rr*Math.sin(st.ph)*Math.sin(st.th),10+rr*Math.cos(st.ph),rr*Math.sin(st.ph)*Math.cos(st.th));cam.lookAt(0,10,0);
+R.render(S,cam);
+}
+build(TH[0]);rs();addEventListener('resize',rs);requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
