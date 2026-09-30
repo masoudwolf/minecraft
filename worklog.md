@@ -1002,3 +1002,15 @@ Stage Summary:
 - Game fully restored to v0.41-phase12 + one cosmetic version-string fix; GitHub is now the single source of truth and is ahead of any sandbox snapshot.
 - ANTI-REGRESSION RULE (self-reminder): if the working tree ever looks stale again, FIRST check `git log --oneline -1` vs origin/main and `grep` for a recent feature — NEVER start new work on a stale tree; always `git fetch && git reset --hard origin/main` first.
 - NEXT QUEUE (from v0.41 entry): brewing/potions; villager trade restock UI; item frames/armor stands; cake from milk; performance pass.
+
+---
+Task ID: 40-b (restore infra)
+Agent: main (Z.ai Code)
+Task: User demanded an explanation of the SECOND sandbox regression and asked why it keeps happening.
+
+Work Log:
+- Built scripts/restore-from-github.sh: detects stale tree via feature markers (knightSkin.ts, WATER_BUCKET) + git behind-check; preserves stale tree on a backup branch, hard-resets to origin/main, reinstalls deps, restarts dev server — one command recovery. Tested: "OK — tree matches origin/main".
+- Added VERSION stamp file (0.41.1) at repo root.
+- Pushed to origin/main.
+
+Root-cause note (honest): both regressions happened at session-boundaries (conversation context exhausted → new session starts from an OLD filesystem checkpoint of the sandbox host). It is an environment lifecycle behavior, NOT a git operation gone wrong; local UUID snapshots also roll back with it. Mitigation = GitHub as source of truth + mandatory sync-check at every round start (now enforced by the 15-min cron round + this script).
