@@ -1,0 +1,2932 @@
+{
+  "sha": "81e403ed308141039a09d792a36f8eb328898a60",
+  "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/81e403ed308141039a09d792a36f8eb328898a60",
+  "tree": [
+    {
+      "path": ".github",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7a851ba2a49b122232bea3be31a7d7cd2a40f030",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/7a851ba2a49b122232bea3be31a7d7cd2a40f030"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7cbaee249e7b7389e018c570c1755c84d705bf60",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/7cbaee249e7b7389e018c570c1755c84d705bf60"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/ask-a-question--or-suggest-to-create-change-a-feature.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7ebf8c61d1615af40391e61303b58fea51c18d44",
+      "size": 585,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7ebf8c61d1615af40391e61303b58fea51c18d44"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug-report.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c6a50a87dbb0470c6c8237bf6cefd17ca3f5f1b4",
+      "size": 2335,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c6a50a87dbb0470c6c8237bf6cefd17ca3f5f1b4"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f6ffecad9b22c18630c90502ebf41abceb7bdcdb",
+      "size": 474,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f6ffecad9b22c18630c90502ebf41abceb7bdcdb"
+    },
+    {
+      "path": "CREDITS.txt",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "06f67cea133410929937b90ee55ab99d1cbb9684",
+      "size": 1227,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/06f67cea133410929937b90ee55ab99d1cbb9684"
+    },
+    {
+      "path": "LICENSE.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ebe5a976620f478d35cfc88f2915d0917507d5f0",
+      "size": 40,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ebe5a976620f478d35cfc88f2915d0917507d5f0"
+    },
+    {
+      "path": "README.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2cdfc506d3d6a2d9bbd60e4235d82412e0abad09",
+      "size": 2992,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2cdfc506d3d6a2d9bbd60e4235d82412e0abad09"
+    },
+    {
+      "path": "shaders",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "c9cca895e342305aa6dabaf6b0367297302a6420",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/c9cca895e342305aa6dabaf6b0367297302a6420"
+    },
+    {
+      "path": "shaders/block.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "47ce0b2471b064db6c7776d66c793a12cfbcf834",
+      "size": 1009207,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/47ce0b2471b064db6c7776d66c793a12cfbcf834"
+    },
+    {
+      "path": "shaders/dimension.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aa1999950ac40cbd13d832fd60ea83cdb79dae3b",
+      "size": 690,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/aa1999950ac40cbd13d832fd60ea83cdb79dae3b"
+    },
+    {
+      "path": "shaders/dimensions",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "ac2dd98852901b63818f20b9a5e85ce7eed752c5",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/ac2dd98852901b63818f20b9a5e85ce7eed752c5"
+    },
+    {
+      "path": "shaders/dimensions/DH_solid.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f0c60cfac9b5dfca6f96eba7fa12850771edfed4",
+      "size": 7807,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f0c60cfac9b5dfca6f96eba7fa12850771edfed4"
+    },
+    {
+      "path": "shaders/dimensions/DH_solid.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "48b3ac751641d216fe670008b03c1c2685a969e7",
+      "size": 2945,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/48b3ac751641d216fe670008b03c1c2685a969e7"
+    },
+    {
+      "path": "shaders/dimensions/DH_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d3982e492e03c40eedff764c719c33ff6c1038d8",
+      "size": 15886,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d3982e492e03c40eedff764c719c33ff6c1038d8"
+    },
+    {
+      "path": "shaders/dimensions/DH_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fcd6adc7959d6ff95af751604d33b623c902ba7b",
+      "size": 3089,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/fcd6adc7959d6ff95af751604d33b623c902ba7b"
+    },
+    {
+      "path": "shaders/dimensions/all_particles.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "97a0ba8088341985877ccabd543e3738cecc132d",
+      "size": 14169,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/97a0ba8088341985877ccabd543e3738cecc132d"
+    },
+    {
+      "path": "shaders/dimensions/all_particles.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "20114e5e866545ab308bfb70767f1cc82f0f5b43",
+      "size": 4334,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/20114e5e866545ab308bfb70767f1cc82f0f5b43"
+    },
+    {
+      "path": "shaders/dimensions/all_solid.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5fcaa5924e7c6542f4355900ba0e16e03a307c6e",
+      "size": 15921,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5fcaa5924e7c6542f4355900ba0e16e03a307c6e"
+    },
+    {
+      "path": "shaders/dimensions/all_solid.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "89abca95d1535f95a7c62bdb6c76d5acbef4e5d2",
+      "size": 11422,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/89abca95d1535f95a7c62bdb6c76d5acbef4e5d2"
+    },
+    {
+      "path": "shaders/dimensions/all_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bf28693e752e14f5d6ad731364604b64e6eb5b6b",
+      "size": 27470,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/bf28693e752e14f5d6ad731364604b64e6eb5b6b"
+    },
+    {
+      "path": "shaders/dimensions/all_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "db090381ade009707ce170f21d3d5049b37d98f0",
+      "size": 6441,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/db090381ade009707ce170f21d3d5049b37d98f0"
+    },
+    {
+      "path": "shaders/dimensions/all_vanilla_emissives.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e3f4828e55ed2a93acb16e4e38a0e8374d1e416f",
+      "size": 2796,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e3f4828e55ed2a93acb16e4e38a0e8374d1e416f"
+    },
+    {
+      "path": "shaders/dimensions/all_vanilla_emissives.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e6c60731da833a9a2e0e071dca713a29464a7728",
+      "size": 1967,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e6c60731da833a9a2e0e071dca713a29464a7728"
+    },
+    {
+      "path": "shaders/dimensions/composite.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "23aebc3a26786b8ee7f31a611a254d03545d57b5",
+      "size": 15706,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/23aebc3a26786b8ee7f31a611a254d03545d57b5"
+    },
+    {
+      "path": "shaders/dimensions/composite.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "785dc42353b16e21c1abe71f6d415882e4c62e75",
+      "size": 692,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/785dc42353b16e21c1abe71f6d415882e4c62e75"
+    },
+    {
+      "path": "shaders/dimensions/composite1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a485188b176e9f2cdf65c2a4c4cf12eacbffb366",
+      "size": 45953,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a485188b176e9f2cdf65c2a4c4cf12eacbffb366"
+    },
+    {
+      "path": "shaders/dimensions/composite1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cba28a87e13153093af16eb2be6e82e4fb8bb3b5",
+      "size": 1917,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cba28a87e13153093af16eb2be6e82e4fb8bb3b5"
+    },
+    {
+      "path": "shaders/dimensions/composite10.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8e5c48b7e1831519b437704d87766b6fc55c7a4e",
+      "size": 3949,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8e5c48b7e1831519b437704d87766b6fc55c7a4e"
+    },
+    {
+      "path": "shaders/dimensions/composite10.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a54acba8bdf4fac7d43cb55a889dd8dfecc2ab8",
+      "size": 775,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7a54acba8bdf4fac7d43cb55a889dd8dfecc2ab8"
+    },
+    {
+      "path": "shaders/dimensions/composite11.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5c98b4d732aba12d05063ee87ab544acef8f9f64",
+      "size": 6293,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5c98b4d732aba12d05063ee87ab544acef8f9f64"
+    },
+    {
+      "path": "shaders/dimensions/composite11.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d07930f678ae064839ca91e270aa439cbe121a79",
+      "size": 807,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d07930f678ae064839ca91e270aa439cbe121a79"
+    },
+    {
+      "path": "shaders/dimensions/composite12.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "06a6e0a545ca95063b27446ea188fa7cea9ab869",
+      "size": 5650,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/06a6e0a545ca95063b27446ea188fa7cea9ab869"
+    },
+    {
+      "path": "shaders/dimensions/composite12.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "eccbe104021013e290915a898870a2eb0525c184",
+      "size": 486,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/eccbe104021013e290915a898870a2eb0525c184"
+    },
+    {
+      "path": "shaders/dimensions/composite2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4d89471ea38edd6e192cdbe9e8230215f3711a29",
+      "size": 13972,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4d89471ea38edd6e192cdbe9e8230215f3711a29"
+    },
+    {
+      "path": "shaders/dimensions/composite2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3f1c92f4f925d571d084f0e496aeb588d97fff66",
+      "size": 2601,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3f1c92f4f925d571d084f0e496aeb588d97fff66"
+    },
+    {
+      "path": "shaders/dimensions/composite3.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7ae4579bcfc75a379c70746bf02d9dc02c922382",
+      "size": 16003,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7ae4579bcfc75a379c70746bf02d9dc02c922382"
+    },
+    {
+      "path": "shaders/dimensions/composite3.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3b7d4d06fbc1a1d75c70d00e9ea80b03137b7230",
+      "size": 1293,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3b7d4d06fbc1a1d75c70d00e9ea80b03137b7230"
+    },
+    {
+      "path": "shaders/dimensions/composite4.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f203956e6f299c9432a475436f68f6ccca6504a5",
+      "size": 2846,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f203956e6f299c9432a475436f68f6ccca6504a5"
+    },
+    {
+      "path": "shaders/dimensions/composite4.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4451d61d751a2e44f638f3bdf258065c49679d4a",
+      "size": 557,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4451d61d751a2e44f638f3bdf258065c49679d4a"
+    },
+    {
+      "path": "shaders/dimensions/composite5.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a9d9a1ac1386b8e6fe2afca5f4c7e669903c8449",
+      "size": 16060,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a9d9a1ac1386b8e6fe2afca5f4c7e669903c8449"
+    },
+    {
+      "path": "shaders/dimensions/composite5.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a63e066f39d36a809816885efb98afab7c5ab2d7",
+      "size": 452,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a63e066f39d36a809816885efb98afab7c5ab2d7"
+    },
+    {
+      "path": "shaders/dimensions/composite6.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9496fd225a1d08c84ce17e2f5a82736c2ca115b0",
+      "size": 2644,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9496fd225a1d08c84ce17e2f5a82736c2ca115b0"
+    },
+    {
+      "path": "shaders/dimensions/composite6.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a54acba8bdf4fac7d43cb55a889dd8dfecc2ab8",
+      "size": 775,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7a54acba8bdf4fac7d43cb55a889dd8dfecc2ab8"
+    },
+    {
+      "path": "shaders/dimensions/composite7.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a76a66783fe751c8c1ce37e3cc2134b84106b1a2",
+      "size": 1948,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a76a66783fe751c8c1ce37e3cc2134b84106b1a2"
+    },
+    {
+      "path": "shaders/dimensions/composite7.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c33e780eb52a5aab845c3c9c3e99c0ac5ab37537",
+      "size": 773,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c33e780eb52a5aab845c3c9c3e99c0ac5ab37537"
+    },
+    {
+      "path": "shaders/dimensions/composite8.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4c2f77644335e9add59211738d40ba1fb1517372",
+      "size": 2597,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4c2f77644335e9add59211738d40ba1fb1517372"
+    },
+    {
+      "path": "shaders/dimensions/composite8.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cbc9838336e094cd6a583d0fe67edcb3aec5b8d1",
+      "size": 773,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cbc9838336e094cd6a583d0fe67edcb3aec5b8d1"
+    },
+    {
+      "path": "shaders/dimensions/composite9.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "656f295f894d507eb6e746b3640e419b4abb8927",
+      "size": 2598,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/656f295f894d507eb6e746b3640e419b4abb8927"
+    },
+    {
+      "path": "shaders/dimensions/composite9.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "366226a73608ca670f5cf7e0cd36aabf1a8871c3",
+      "size": 774,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/366226a73608ca670f5cf7e0cd36aabf1a8871c3"
+    },
+    {
+      "path": "shaders/dimensions/deferred.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ea3bf72cf538772ef45768c8ce9bc5a89cf2ac15",
+      "size": 12927,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ea3bf72cf538772ef45768c8ce9bc5a89cf2ac15"
+    },
+    {
+      "path": "shaders/dimensions/deferred.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a1fb6203818569e4418341e9c8e887d387e5f366",
+      "size": 8762,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a1fb6203818569e4418341e9c8e887d387e5f366"
+    },
+    {
+      "path": "shaders/dimensions/deferred1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a0201d0de63d9aec114f744ed4d88eadec9971fb",
+      "size": 1900,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a0201d0de63d9aec114f744ed4d88eadec9971fb"
+    },
+    {
+      "path": "shaders/dimensions/deferred1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3aafbff56fa9104c04129d336a59265b9371964c",
+      "size": 283,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3aafbff56fa9104c04129d336a59265b9371964c"
+    },
+    {
+      "path": "shaders/dimensions/deferred2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b2d8c55e52093ee0729b5dd07c530c889f89d798",
+      "size": 3981,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b2d8c55e52093ee0729b5dd07c530c889f89d798"
+    },
+    {
+      "path": "shaders/dimensions/deferred2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cc7f26b594fcfade8e48f492960f846c7b89e23d",
+      "size": 1540,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cc7f26b594fcfade8e48f492960f846c7b89e23d"
+    },
+    {
+      "path": "shaders/dimensions/final.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "12d3420c8cb33355247a93f7de5307a4b51ae8e8",
+      "size": 3278,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/12d3420c8cb33355247a93f7de5307a4b51ae8e8"
+    },
+    {
+      "path": "shaders/dimensions/final.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "eccbe104021013e290915a898870a2eb0525c184",
+      "size": 486,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/eccbe104021013e290915a898870a2eb0525c184"
+    },
+    {
+      "path": "shaders/dimensions/fogBehindTranslucent_pass.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "87ceb60f0a19c8e6fe8bbeeea850ba7e63b9cb15",
+      "size": 12962,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/87ceb60f0a19c8e6fe8bbeeea850ba7e63b9cb15"
+    },
+    {
+      "path": "shaders/dimensions/fogBehindTranslucent_pass.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1b6f513f1d38d3e55f2f498f1cc7b7cae2827d13",
+      "size": 2524,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1b6f513f1d38d3e55f2f498f1cc7b7cae2827d13"
+    },
+    {
+      "path": "shaders/dimensions/setup.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cc095474bc8832e5d2494340800c887b83e52875",
+      "size": 43325,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cc095474bc8832e5d2494340800c887b83e52875"
+    },
+    {
+      "path": "shaders/dimensions/shadowcomp.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "730c7eb788b460b3878a5fa040fbd9a1a1621659",
+      "size": 5914,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/730c7eb788b460b3878a5fa040fbd9a1a1621659"
+    },
+    {
+      "path": "shaders/entity.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cc4f665ce0093de038afed29a978fe83d1a599da",
+      "size": 1903,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cc4f665ce0093de038afed29a978fe83d1a599da"
+    },
+    {
+      "path": "shaders/item.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "48819c53288d5f9fc7b2368a93a5b73848b87d74",
+      "size": 1538,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/48819c53288d5f9fc7b2368a93a5b73848b87d74"
+    },
+    {
+      "path": "shaders/lang",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "7962f2d81980eedd935cd9527f05783e817b8ba1",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/7962f2d81980eedd935cd9527f05783e817b8ba1"
+    },
+    {
+      "path": "shaders/lang/en_us.lang",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8a636b54ae3d6dd8834bd3bfde238485bf2dbea6",
+      "size": 47757,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8a636b54ae3d6dd8834bd3bfde238485bf2dbea6"
+    },
+    {
+      "path": "shaders/lang/pt_br.lang",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ef7718c526b746d0f26efc3257f0ca62c2828242",
+      "size": 33409,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ef7718c526b746d0f26efc3257f0ca62c2828242"
+    },
+    {
+      "path": "shaders/lang/ru_RU.lang",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c79ed6b9ee7d199af479b885ad6d5b1dbec14bf0",
+      "size": 58296,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c79ed6b9ee7d199af479b885ad6d5b1dbec14bf0"
+    },
+    {
+      "path": "shaders/lang/zh_cn.lang",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "09a7fed3ba791ffed1d8250eebd820c6a3f7ed62",
+      "size": 51493,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/09a7fed3ba791ffed1d8250eebd820c6a3f7ed62"
+    },
+    {
+      "path": "shaders/lib",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "2ff75ace1c01dde31adacc2f4a420e52b97fe6d3",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/2ff75ace1c01dde31adacc2f4a420e52b97fe6d3"
+    },
+    {
+      "path": "shaders/lib/DistantHorizons_projections.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e8ba75c818e7799c46ccb3a1056c5d508dfc3af4",
+      "size": 1735,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e8ba75c818e7799c46ccb3a1056c5d508dfc3af4"
+    },
+    {
+      "path": "shaders/lib/PhotonGTAO.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d1965432149011e7d24ab0b9fb6bf389ba168190",
+      "size": 5964,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d1965432149011e7d24ab0b9fb6bf389ba168190"
+    },
+    {
+      "path": "shaders/lib/ROBOBO_sky.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d7e9c0bdde59c8d94c9a0fed2e34bde3d55d7999",
+      "size": 6815,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d7e9c0bdde59c8d94c9a0fed2e34bde3d55d7999"
+    },
+    {
+      "path": "shaders/lib/Shadow_Params.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d67976ecb689dcc8e52860944cf8763f18fd9dd9",
+      "size": 771,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d67976ecb689dcc8e52860944cf8763f18fd9dd9"
+    },
+    {
+      "path": "shaders/lib/Shadows.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "07cb5a7d93e15262f126986043c04b7e17d60696",
+      "size": 935,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/07cb5a7d93e15262f126986043c04b7e17d60696"
+    },
+    {
+      "path": "shaders/lib/TAA_jitter.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6e36ea959fb2b159537356bd9e80effcd006aae9",
+      "size": 675,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6e36ea959fb2b159537356bd9e80effcd006aae9"
+    },
+    {
+      "path": "shaders/lib/blocks.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "062e78c4bcf402303afd35b6c4741e473ae1b3ba",
+      "size": 10378,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/062e78c4bcf402303afd35b6c4741e473ae1b3ba"
+    },
+    {
+      "path": "shaders/lib/bokeh.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9aec24cc447ccacaaa935484c9fa0325cc7a4569",
+      "size": 21625,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9aec24cc447ccacaaa935484c9fa0325cc7a4569"
+    },
+    {
+      "path": "shaders/lib/climate_settings.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d952f5b69ae75009fed9b3dfe836d02259d46d97",
+      "size": 10839,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d952f5b69ae75009fed9b3dfe836d02259d46d97"
+    },
+    {
+      "path": "shaders/lib/color_dither.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "73c4960d2e2bef471745f4b4046a5b82d02c26db",
+      "size": 1225,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/73c4960d2e2bef471745f4b4046a5b82d02c26db"
+    },
+    {
+      "path": "shaders/lib/color_transforms.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "99c5370f0cd6609c7ef2771c4aea965b9bcb4d5d",
+      "size": 10217,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/99c5370f0cd6609c7ef2771c4aea965b9bcb4d5d"
+    },
+    {
+      "path": "shaders/lib/diffuse_lighting.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "60448523ea810c2f375a431fda8e6911e1632add",
+      "size": 2812,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/60448523ea810c2f375a431fda8e6911e1632add"
+    },
+    {
+      "path": "shaders/lib/end_fog.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0380e6c26493e8e1ca8f9d83b75c4a0daabd0c05",
+      "size": 12317,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0380e6c26493e8e1ca8f9d83b75c4a0daabd0c05"
+    },
+    {
+      "path": "shaders/lib/entities.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3a6d61efc905521ac7d6a9fc7fa281a952e0eef3",
+      "size": 422,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3a6d61efc905521ac7d6a9fc7fa281a952e0eef3"
+    },
+    {
+      "path": "shaders/lib/gameplay_effects.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b9e28ad269bbfab9671a0e180fde3a4f7f3016b3",
+      "size": 4108,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b9e28ad269bbfab9671a0e180fde3a4f7f3016b3"
+    },
+    {
+      "path": "shaders/lib/hsv.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "599aa905f325ce1dd52dbaaf0112c240b7f3f600",
+      "size": 568,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/599aa905f325ce1dd52dbaaf0112c240b7f3f600"
+    },
+    {
+      "path": "shaders/lib/indirect_lighting_effects.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "de824bf578614d55ca63578f247b0c33b17df15a",
+      "size": 13828,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/de824bf578614d55ca63578f247b0c33b17df15a"
+    },
+    {
+      "path": "shaders/lib/items.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "46da56367415c92d8fee54e9d0a95414184d25df",
+      "size": 776,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/46da56367415c92d8fee54e9d0a95414184d25df"
+    },
+    {
+      "path": "shaders/lib/lightning_stuff.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9f14b2b61c57dff78176913cf1e0fad32f1a45a0",
+      "size": 2654,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9f14b2b61c57dff78176913cf1e0fad32f1a45a0"
+    },
+    {
+      "path": "shaders/lib/lpv_blocks.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "954fd73725e3ab43c30a9593c4c3a92599b25564",
+      "size": 245,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/954fd73725e3ab43c30a9593c4c3a92599b25564"
+    },
+    {
+      "path": "shaders/lib/lpv_buffer.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7f544f435ea068e1c6cb456ccab21a91f9e33547",
+      "size": 234,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7f544f435ea068e1c6cb456ccab21a91f9e33547"
+    },
+    {
+      "path": "shaders/lib/lpv_common.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "949bff379b762a1cae25d8c78edf7e4e6fb187bf",
+      "size": 314,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/949bff379b762a1cae25d8c78edf7e4e6fb187bf"
+    },
+    {
+      "path": "shaders/lib/lpv_render.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d5d127bf7ff6051068c3f64a562dfe708055f41d",
+      "size": 763,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d5d127bf7ff6051068c3f64a562dfe708055f41d"
+    },
+    {
+      "path": "shaders/lib/nether_fog.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7fe20b30526e8cac0aa9995213b262a27153974f",
+      "size": 3885,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7fe20b30526e8cac0aa9995213b262a27153974f"
+    },
+    {
+      "path": "shaders/lib/overworld_fog.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5a3159b5ba93d04a2e5d41b2f22791de4451ee2a",
+      "size": 22605,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5a3159b5ba93d04a2e5d41b2f22791de4451ee2a"
+    },
+    {
+      "path": "shaders/lib/projections.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "31e2352b1936ac5c261d55455da0ffd98a050b99",
+      "size": 1848,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/31e2352b1936ac5c261d55455da0ffd98a050b99"
+    },
+    {
+      "path": "shaders/lib/res_params.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d0dccd917b99beb811aac25141593e622e60223a",
+      "size": 973,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d0dccd917b99beb811aac25141593e622e60223a"
+    },
+    {
+      "path": "shaders/lib/settings.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ffc9251cea8ce4a9d360f10248e94e654f9a3e33",
+      "size": 94720,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ffc9251cea8ce4a9d360f10248e94e654f9a3e33"
+    },
+    {
+      "path": "shaders/lib/sky_gradient.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2656274df736567d7f6739e40621226249d13c39",
+      "size": 4665,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2656274df736567d7f6739e40621226249d13c39"
+    },
+    {
+      "path": "shaders/lib/specular.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ee44e96897284b3a869cea420c25ef790bde613b",
+      "size": 10507,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ee44e96897284b3a869cea420c25ef790bde613b"
+    },
+    {
+      "path": "shaders/lib/stars.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e156d690daa23493151a3a8ad288e2f9d460c161",
+      "size": 1822,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e156d690daa23493151a3a8ad288e2f9d460c161"
+    },
+    {
+      "path": "shaders/lib/texFiltering.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7d5867678b44e2f6e817c4a5ac30cba2575e6e3b",
+      "size": 600,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7d5867678b44e2f6e817c4a5ac30cba2575e6e3b"
+    },
+    {
+      "path": "shaders/lib/util.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f701920d4e04baed91a621ed0850b508fc3136bf",
+      "size": 4785,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f701920d4e04baed91a621ed0850b508fc3136bf"
+    },
+    {
+      "path": "shaders/lib/volumetricClouds.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b88a8f4d960e9eec721360d273b9960cd1254b68",
+      "size": 23994,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b88a8f4d960e9eec721360d273b9960cd1254b68"
+    },
+    {
+      "path": "shaders/lib/voxel_common.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4c00eb725b2b258cb1a8c25a40b8e3d9c748ed7d",
+      "size": 247,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4c00eb725b2b258cb1a8c25a40b8e3d9c748ed7d"
+    },
+    {
+      "path": "shaders/lib/voxel_write.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9002eefec0c6fd4f08e8f739763ddcb6b8c0cec8",
+      "size": 2074,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9002eefec0c6fd4f08e8f739763ddcb6b8c0cec8"
+    },
+    {
+      "path": "shaders/lib/waterBump.glsl",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0810877a6a27b3d888850c33cd202312169c0304",
+      "size": 2468,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0810877a6a27b3d888850c33cd202312169c0304"
+    },
+    {
+      "path": "shaders/shaders.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "61e4431becbefd80c7d25437c662a1596cace4ef",
+      "size": 34195,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/61e4431becbefd80c7d25437c662a1596cace4ef"
+    },
+    {
+      "path": "shaders/template",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "95759962e5817cb2e7e4fb88942d4a480634c449",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/95759962e5817cb2e7e4fb88942d4a480634c449"
+    },
+    {
+      "path": "shaders/template/.gitignore",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fa20adc79c8d82027a9f1ec61ccb74e565570f36",
+      "size": 20,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/fa20adc79c8d82027a9f1ec61ccb74e565570f36"
+    },
+    {
+      "path": "shaders/template/block.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "51b6eb1e086eab3e41a724f8364d8da993e33ee3",
+      "size": 64878,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/51b6eb1e086eab3e41a724f8364d8da993e33ee3"
+    },
+    {
+      "path": "shaders/template/entity.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9de93139cb7815dd687ac8bf9ff54cff2ceaa536",
+      "size": 1638,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9de93139cb7815dd687ac8bf9ff54cff2ceaa536"
+    },
+    {
+      "path": "shaders/template/item.properties",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "60c08b5966ca1d7da31654563d159ceaa0a108c4",
+      "size": 2016,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/60c08b5966ca1d7da31654563d159ceaa0a108c4"
+    },
+    {
+      "path": "shaders/template/readme.md",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6256be824ee43b3bd963e726c66fa8f4541ec07a",
+      "size": 874,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6256be824ee43b3bd963e726c66fa8f4541ec07a"
+    },
+    {
+      "path": "shaders/template/update.sh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3ddef620dba3e27c5fca6a0b76be31e86d23ec43",
+      "size": 274,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3ddef620dba3e27c5fca6a0b76be31e86d23ec43"
+    },
+    {
+      "path": "shaders/texture",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "04ffd3afdeeed2359fabe948c67819978b7c0eea",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/04ffd3afdeeed2359fabe948c67819978b7c0eea"
+    },
+    {
+      "path": "shaders/texture/blueNoise.png",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "87bd792f8351e40dea9a5f419ed16c3b5b402e2c",
+      "size": 705573,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/87bd792f8351e40dea9a5f419ed16c3b5b402e2c"
+    },
+    {
+      "path": "shaders/texture/blueNoise.png.mcmeta",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "33f31994b2c18debae6c5a4a5d92bf5ea938e7fb",
+      "size": 61,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/33f31994b2c18debae6c5a4a5d92bf5ea938e7fb"
+    },
+    {
+      "path": "shaders/texture/noises.png",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6236ff19990bb213e4ec6f6a51df1fc13138e582",
+      "size": 695035,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6236ff19990bb213e4ec6f6a51df1fc13138e582"
+    },
+    {
+      "path": "shaders/texture/noises.png.mcmeta",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "33f31994b2c18debae6c5a4a5d92bf5ea938e7fb",
+      "size": 61,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/33f31994b2c18debae6c5a4a5d92bf5ea938e7fb"
+    },
+    {
+      "path": "shaders/world-1",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "3b1fb147a36b1c9bd1f71d10de51f073cf15e8de",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/3b1fb147a36b1c9bd1f71d10de51f073cf15e8de"
+    },
+    {
+      "path": "shaders/world-1/composite.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fe9001617879b9bbeed7d4ac32ba9c00372b93e4",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/fe9001617879b9bbeed7d4ac32ba9c00372b93e4"
+    },
+    {
+      "path": "shaders/world-1/composite.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6c420ef72295b749bd7affdbce415697c24d66eb",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6c420ef72295b749bd7affdbce415697c24d66eb"
+    },
+    {
+      "path": "shaders/world-1/composite1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6f2293a199d579318d31dd3d58532ffcd83915ee",
+      "size": 73,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6f2293a199d579318d31dd3d58532ffcd83915ee"
+    },
+    {
+      "path": "shaders/world-1/composite1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5d659b9189a25ece1c52fc0f1978dc4bf5adeaf5",
+      "size": 73,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5d659b9189a25ece1c52fc0f1978dc4bf5adeaf5"
+    },
+    {
+      "path": "shaders/world-1/composite10.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bad4613a3228b2821907a347d5f032a045dfb696",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/bad4613a3228b2821907a347d5f032a045dfb696"
+    },
+    {
+      "path": "shaders/world-1/composite10.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4260062ce4d12f8e9f45cef530d8b5fbf2ea7751",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4260062ce4d12f8e9f45cef530d8b5fbf2ea7751"
+    },
+    {
+      "path": "shaders/world-1/composite11.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6fdc6a5468e9c4cd4c7027bd58fbc3a2b6657443",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6fdc6a5468e9c4cd4c7027bd58fbc3a2b6657443"
+    },
+    {
+      "path": "shaders/world-1/composite11.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a5a31a4a2d055ad07de49528068b261bdafcf63",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7a5a31a4a2d055ad07de49528068b261bdafcf63"
+    },
+    {
+      "path": "shaders/world-1/composite12.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c8dd09f536dcb55d8786aa6644ec1fc1e8e8be71",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c8dd09f536dcb55d8786aa6644ec1fc1e8e8be71"
+    },
+    {
+      "path": "shaders/world-1/composite12.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ae59f607fe249eba79f0967607f2e9f7f8724216",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ae59f607fe249eba79f0967607f2e9f7f8724216"
+    },
+    {
+      "path": "shaders/world-1/composite13.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5ad196cc7f081800cfd6d1cdd2951db4928e3b0e",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5ad196cc7f081800cfd6d1cdd2951db4928e3b0e"
+    },
+    {
+      "path": "shaders/world-1/composite13.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c0a8171e84c02fe72eb4a634772bb9d14f4b0d19",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c0a8171e84c02fe72eb4a634772bb9d14f4b0d19"
+    },
+    {
+      "path": "shaders/world-1/composite2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "371894213f049d5bdd7449c9b061460b9abe3e4d",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/371894213f049d5bdd7449c9b061460b9abe3e4d"
+    },
+    {
+      "path": "shaders/world-1/composite2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "39aedfd1011e91df115633026920c546d1e8c125",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/39aedfd1011e91df115633026920c546d1e8c125"
+    },
+    {
+      "path": "shaders/world-1/composite3.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "64171b86ec70283eec0c8345ea6608f3550faaee",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/64171b86ec70283eec0c8345ea6608f3550faaee"
+    },
+    {
+      "path": "shaders/world-1/composite3.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e2bee5e3d04ff5d1bdcb8a96c4e684013fd71090",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e2bee5e3d04ff5d1bdcb8a96c4e684013fd71090"
+    },
+    {
+      "path": "shaders/world-1/composite4.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a08fb95ba6dbee84b84a842cdaabb27a4de8a0b7",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a08fb95ba6dbee84b84a842cdaabb27a4de8a0b7"
+    },
+    {
+      "path": "shaders/world-1/composite4.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "45ba6c5bcceb0c720abb5656063d889559271f41",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/45ba6c5bcceb0c720abb5656063d889559271f41"
+    },
+    {
+      "path": "shaders/world-1/composite5.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3acc8007f89d87278c8886b976c3157fb133e165",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3acc8007f89d87278c8886b976c3157fb133e165"
+    },
+    {
+      "path": "shaders/world-1/composite5.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5e9644d79611b36f1f5651d311a60d4a8e7bf94e",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5e9644d79611b36f1f5651d311a60d4a8e7bf94e"
+    },
+    {
+      "path": "shaders/world-1/composite6.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "72d13ae3282822023049884968b2133db26d5fa2",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/72d13ae3282822023049884968b2133db26d5fa2"
+    },
+    {
+      "path": "shaders/world-1/composite6.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "59eb0565abd1193880497cd3eb3541cc26d923af",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/59eb0565abd1193880497cd3eb3541cc26d923af"
+    },
+    {
+      "path": "shaders/world-1/composite7.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c3e1a6bafed6c1edc41a40e686cc082a3d3c2be7",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c3e1a6bafed6c1edc41a40e686cc082a3d3c2be7"
+    },
+    {
+      "path": "shaders/world-1/composite7.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1a6f8def470f8100637d06535383c527760ad94e",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1a6f8def470f8100637d06535383c527760ad94e"
+    },
+    {
+      "path": "shaders/world-1/composite8.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "98dd6424fd01ba4311c2dc06d39ff37f975ab013",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/98dd6424fd01ba4311c2dc06d39ff37f975ab013"
+    },
+    {
+      "path": "shaders/world-1/composite8.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "226fed49c030007662459b61159afaeb8b5d0909",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/226fed49c030007662459b61159afaeb8b5d0909"
+    },
+    {
+      "path": "shaders/world-1/composite9.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f46e843f41afb6242128279e39b66c76960b7b06",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f46e843f41afb6242128279e39b66c76960b7b06"
+    },
+    {
+      "path": "shaders/world-1/composite9.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1424be47240a4ac85e9fb6d7770d013cbf7937b4",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1424be47240a4ac85e9fb6d7770d013cbf7937b4"
+    },
+    {
+      "path": "shaders/world-1/deferred.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2a4b0f61f26a0c1a54221257e68b7776e22e03fb",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2a4b0f61f26a0c1a54221257e68b7776e22e03fb"
+    },
+    {
+      "path": "shaders/world-1/deferred.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f0c470c2e18140f7bb6db8d1dfad50c4b4b1bd65",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f0c470c2e18140f7bb6db8d1dfad50c4b4b1bd65"
+    },
+    {
+      "path": "shaders/world-1/deferred1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "50561d8f9996e176815c6f99afc0c7705514fe04",
+      "size": 73,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/50561d8f9996e176815c6f99afc0c7705514fe04"
+    },
+    {
+      "path": "shaders/world-1/deferred1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7dd0e8574ebf20e6e50f54d8ea935b08679172e8",
+      "size": 73,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7dd0e8574ebf20e6e50f54d8ea935b08679172e8"
+    },
+    {
+      "path": "shaders/world-1/dh_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "728c875eec3e49ea815083a7e77edd731b62f4ab",
+      "size": 86,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/728c875eec3e49ea815083a7e77edd731b62f4ab"
+    },
+    {
+      "path": "shaders/world-1/dh_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ad6ed0f06b13c5a6bec47d322dd9f63088f7e09f",
+      "size": 86,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ad6ed0f06b13c5a6bec47d322dd9f63088f7e09f"
+    },
+    {
+      "path": "shaders/world-1/dh_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d4cdfe7b18191d977fa7abd14f6c1965c4ec5bd4",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d4cdfe7b18191d977fa7abd14f6c1965c4ec5bd4"
+    },
+    {
+      "path": "shaders/world-1/dh_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0ebabb736cf10481b1f58d861fb3c5a3a392b1ca",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0ebabb736cf10481b1f58d861fb3c5a3a392b1ca"
+    },
+    {
+      "path": "shaders/world-1/final.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "140612c2ef6ceed527fe04c386cc171a6c212b59",
+      "size": 69,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/140612c2ef6ceed527fe04c386cc171a6c212b59"
+    },
+    {
+      "path": "shaders/world-1/final.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "60af4d5999e49ed67126bf02c8f2486decf45049",
+      "size": 69,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/60af4d5999e49ed67126bf02c8f2486decf45049"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_armor_glint.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5501d52b028ad5b9fbc8faed78de6a7a8543ba71",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5501d52b028ad5b9fbc8faed78de6a7a8543ba71"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_armor_glint.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "87ad96538e394d2fe016e590dbaa1a9e43519f44",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/87ad96538e394d2fe016e590dbaa1a9e43519f44"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_basic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7783cc75b1dcf5c8f41e048de1d12496fd80fd4e",
+      "size": 91,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7783cc75b1dcf5c8f41e048de1d12496fd80fd4e"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_basic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9237656c63a1f7a1522f9b26700df1372c759ae7",
+      "size": 91,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9237656c63a1f7a1522f9b26700df1372c759ae7"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_beaconbeam.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e666de10dcd2cfed5410a5a3b81a9aa70624082",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3e666de10dcd2cfed5410a5a3b81a9aa70624082"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_beaconbeam.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f285c007b7e8209489db3ff6ae494b9c49a7efd2",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f285c007b7e8209489db3ff6ae494b9c49a7efd2"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_block.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "73877ebcbaec4b389e3488ab24d99da130edadd6",
+      "size": 110,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/73877ebcbaec4b389e3488ab24d99da130edadd6"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_block.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "175b14462c4606d7e63ebdd313c0068bcbc93954",
+      "size": 110,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/175b14462c4606d7e63ebdd313c0068bcbc93954"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_block_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c96420501d5c7583a5103071a799974fd8beb7a9",
+      "size": 101,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c96420501d5c7583a5103071a799974fd8beb7a9"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_block_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b18001aa65054ce870ede7155f071f82120c68d9",
+      "size": 101,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b18001aa65054ce870ede7155f071f82120c68d9"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_damagedblock.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ac2bc0906a9e1e5918c4d7262e27b8811a0d8023",
+      "size": 105,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ac2bc0906a9e1e5918c4d7262e27b8811a0d8023"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_damagedblock.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f09b952f021d96ef683be9e4cf1ed2960984b975",
+      "size": 105,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f09b952f021d96ef683be9e4cf1ed2960984b975"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "432bac42a0fea97549559c139035c37d8bb5d875",
+      "size": 105,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/432bac42a0fea97549559c139035c37d8bb5d875"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "06e81ed22125a8bc4f22f828886bb77ea223b480",
+      "size": 109,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/06e81ed22125a8bc4f22f828886bb77ea223b480"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities_glowing.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2f755072208fb7a08ad79892c49b63c53853c879",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2f755072208fb7a08ad79892c49b63c53853c879"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities_glowing.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a8a4292fa97ba70605327b99750b806cd54226c0",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a8a4292fa97ba70605327b99750b806cd54226c0"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c3b1fa565234f39ebfc9c749611f5e6baed59d9b",
+      "size": 96,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c3b1fa565234f39ebfc9c749611f5e6baed59d9b"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_entities_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f7599fe3d3c742600ce9aba31e75aaa28293715c",
+      "size": 96,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f7599fe3d3c742600ce9aba31e75aaa28293715c"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_hand.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "56f2457ea67d9204cb4bfd24df005ef27113294a",
+      "size": 101,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/56f2457ea67d9204cb4bfd24df005ef27113294a"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_hand.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1aee1c31e4c1cce0726a2385ef7a14376a8b6050",
+      "size": 101,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1aee1c31e4c1cce0726a2385ef7a14376a8b6050"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_hand_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f5f3ea63695801935ee09832c328181b4be9669b",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f5f3ea63695801935ee09832c328181b4be9669b"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_hand_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6bc5096f9ec39e89ea557dc442ef24b2b59cc9ad",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6bc5096f9ec39e89ea557dc442ef24b2b59cc9ad"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_skybasic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "21db34686f774f2e446566184f2a6f44e4407552",
+      "size": 63,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/21db34686f774f2e446566184f2a6f44e4407552"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_skybasic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0a2f94b58287cfd09946ac68bda8dd29de07a12a",
+      "size": 59,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0a2f94b58287cfd09946ac68bda8dd29de07a12a"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_skytextured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "653be9af33e47c0df4388b4f8e892da422850b6c",
+      "size": 998,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/653be9af33e47c0df4388b4f8e892da422850b6c"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_skytextured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "081e29e6c9542d686ebfca9c1804c1d26bdd9266",
+      "size": 987,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/081e29e6c9542d686ebfca9c1804c1d26bdd9266"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_spidereyes.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "538421d40c2114a323f8c51e792d7bb41f94a739",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/538421d40c2114a323f8c51e792d7bb41f94a739"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_spidereyes.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "627709113b76e9ea6a0f4f169533d3f98e64e8d5",
+      "size": 87,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/627709113b76e9ea6a0f4f169533d3f98e64e8d5"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f09d3fed39fde2974db3e8e061348559e5d9c799",
+      "size": 88,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f09d3fed39fde2974db3e8e061348559e5d9c799"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_textured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4c1dc0c6620cdf918135bb4c19aac8f30c57e503",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4c1dc0c6620cdf918135bb4c19aac8f30c57e503"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_textured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "480a2c8f3f91f7d960dad1ce5c40400c29ed038f",
+      "size": 96,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/480a2c8f3f91f7d960dad1ce5c40400c29ed038f"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_textured_lit.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "325656707739a03e1621980f4503d6ebb7193d4d",
+      "size": 108,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/325656707739a03e1621980f4503d6ebb7193d4d"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_textured_lit.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a8f3ebbe96b276f726ddebee9a03771b953a59be",
+      "size": 107,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a8f3ebbe96b276f726ddebee9a03771b953a59be"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "27407c9babdcd65a77a95817d7d290243c431799",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/27407c9babdcd65a77a95817d7d290243c431799"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1aaf6ccc4a0a4ce5e2cb0a476c6facaa45ac3261",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1aaf6ccc4a0a4ce5e2cb0a476c6facaa45ac3261"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_weather.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6202ff022d0722308a9c50121a4e02cf6df57b9b",
+      "size": 93,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6202ff022d0722308a9c50121a4e02cf6df57b9b"
+    },
+    {
+      "path": "shaders/world-1/gbuffers_weather.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4cc6ec676cd46c887aa96b6a2280a68ac75c0eae",
+      "size": 93,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4cc6ec676cd46c887aa96b6a2280a68ac75c0eae"
+    },
+    {
+      "path": "shaders/world-1/setup.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "05c43159a61bf7911a7706cfc00e63787a8f8c60",
+      "size": 114,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/05c43159a61bf7911a7706cfc00e63787a8f8c60"
+    },
+    {
+      "path": "shaders/world-1/shadow.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f0a850347d3bb706345b824af8c93d705c512ad2",
+      "size": 162,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f0a850347d3bb706345b824af8c93d705c512ad2"
+    },
+    {
+      "path": "shaders/world-1/shadow.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3eaf7ac0cfbb7762e6ac86a109b2af666663a37e",
+      "size": 1466,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3eaf7ac0cfbb7762e6ac86a109b2af666663a37e"
+    },
+    {
+      "path": "shaders/world-1/shadowcomp.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "23b38a85258d8638d20f54fa8f1b1089ec8d46a9",
+      "size": 97,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/23b38a85258d8638d20f54fa8f1b1089ec8d46a9"
+    },
+    {
+      "path": "shaders/world0",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "5c890f338f3957a948e2ffb8b898d4cb0b178650",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/5c890f338f3957a948e2ffb8b898d4cb0b178650"
+    },
+    {
+      "path": "shaders/world0/composite.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8a19213bc603ae8b79ecd455ff05564d30457d1f",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8a19213bc603ae8b79ecd455ff05564d30457d1f"
+    },
+    {
+      "path": "shaders/world0/composite.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ac025c8268def3092417184c389ec32cda4f6cee",
+      "size": 92,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ac025c8268def3092417184c389ec32cda4f6cee"
+    },
+    {
+      "path": "shaders/world0/composite1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "43921120ff25e37ae7e32b9adcba4068de1976ed",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/43921120ff25e37ae7e32b9adcba4068de1976ed"
+    },
+    {
+      "path": "shaders/world0/composite1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "481d1c6e6f9a2ae77bd2b43ff3bc0614d5cd5b11",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/481d1c6e6f9a2ae77bd2b43ff3bc0614d5cd5b11"
+    },
+    {
+      "path": "shaders/world0/composite10.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7f12057da3f9c07ac7ec692034cd6c5dc84c162f",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7f12057da3f9c07ac7ec692034cd6c5dc84c162f"
+    },
+    {
+      "path": "shaders/world0/composite10.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "803cf3b420449710c8a4e397d61a6c0b53616d60",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/803cf3b420449710c8a4e397d61a6c0b53616d60"
+    },
+    {
+      "path": "shaders/world0/composite11.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "684023ce6a2904938040d1bda6a661026a843661",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/684023ce6a2904938040d1bda6a661026a843661"
+    },
+    {
+      "path": "shaders/world0/composite11.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "497490c4f2642fc69aa517ea605e935592b84b60",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/497490c4f2642fc69aa517ea605e935592b84b60"
+    },
+    {
+      "path": "shaders/world0/composite12.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "56efeb7f9dafb512d978de4b6edeb83a29d78e96",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/56efeb7f9dafb512d978de4b6edeb83a29d78e96"
+    },
+    {
+      "path": "shaders/world0/composite12.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "03e95e74f002b3de134b4eefcb32c633cb09d5de",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/03e95e74f002b3de134b4eefcb32c633cb09d5de"
+    },
+    {
+      "path": "shaders/world0/composite13.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5ad196cc7f081800cfd6d1cdd2951db4928e3b0e",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5ad196cc7f081800cfd6d1cdd2951db4928e3b0e"
+    },
+    {
+      "path": "shaders/world0/composite13.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c0a8171e84c02fe72eb4a634772bb9d14f4b0d19",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c0a8171e84c02fe72eb4a634772bb9d14f4b0d19"
+    },
+    {
+      "path": "shaders/world0/composite2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "46e557b1b7703338175266147653aafd705bb3fa",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/46e557b1b7703338175266147653aafd705bb3fa"
+    },
+    {
+      "path": "shaders/world0/composite2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "36d76b55f631a2c90851f973dda799b1ae62fb39",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/36d76b55f631a2c90851f973dda799b1ae62fb39"
+    },
+    {
+      "path": "shaders/world0/composite3.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "df6c56dc80ebd0569a4cc7160190c5df2ed00063",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/df6c56dc80ebd0569a4cc7160190c5df2ed00063"
+    },
+    {
+      "path": "shaders/world0/composite3.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a54cc5c657a8181e5f34b7026824d5a25e09a7ee",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a54cc5c657a8181e5f34b7026824d5a25e09a7ee"
+    },
+    {
+      "path": "shaders/world0/composite4.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "704ae817ffd76ccf9bcba23cf2ab294c539baa23",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/704ae817ffd76ccf9bcba23cf2ab294c539baa23"
+    },
+    {
+      "path": "shaders/world0/composite4.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3b5fa078880745009a3fe90804173917051b1e8b",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3b5fa078880745009a3fe90804173917051b1e8b"
+    },
+    {
+      "path": "shaders/world0/composite5.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "16de56b31f8d46a5fb075efe589155e557f51086",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/16de56b31f8d46a5fb075efe589155e557f51086"
+    },
+    {
+      "path": "shaders/world0/composite5.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8fcd849485449fbf191b719d991382bd643e928f",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8fcd849485449fbf191b719d991382bd643e928f"
+    },
+    {
+      "path": "shaders/world0/composite6.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "48ea36aac14fb6325dffe5668d5f62b5ce9d7c7e",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/48ea36aac14fb6325dffe5668d5f62b5ce9d7c7e"
+    },
+    {
+      "path": "shaders/world0/composite6.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "719c1ce9e07335efecf0597a56cb7460387c9f83",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/719c1ce9e07335efecf0597a56cb7460387c9f83"
+    },
+    {
+      "path": "shaders/world0/composite7.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b749c02fba8cdbe296d22063310915e0c0a05de4",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b749c02fba8cdbe296d22063310915e0c0a05de4"
+    },
+    {
+      "path": "shaders/world0/composite7.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8569ecc56ba14efa3ed3a17e2d2b3cdaa5ec8eb0",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8569ecc56ba14efa3ed3a17e2d2b3cdaa5ec8eb0"
+    },
+    {
+      "path": "shaders/world0/composite8.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5847d03b965b290e59399f01f002052088da7409",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5847d03b965b290e59399f01f002052088da7409"
+    },
+    {
+      "path": "shaders/world0/composite8.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d51740933cc24525eab5ac01ddd0da76291f5a2e",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d51740933cc24525eab5ac01ddd0da76291f5a2e"
+    },
+    {
+      "path": "shaders/world0/composite9.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cab88f9894560cd2f8927eac1a749435f800a82b",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cab88f9894560cd2f8927eac1a749435f800a82b"
+    },
+    {
+      "path": "shaders/world0/composite9.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cf1f9944603dccd7e8e66244d5249fab5aa2f660",
+      "size": 77,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cf1f9944603dccd7e8e66244d5249fab5aa2f660"
+    },
+    {
+      "path": "shaders/world0/deferred.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c72bd8a607dc9d106a599c689e87986a6814dbb2",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c72bd8a607dc9d106a599c689e87986a6814dbb2"
+    },
+    {
+      "path": "shaders/world0/deferred.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ef2d3aed28a1927c6f298b6f2eb8b2f8ef182f54",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ef2d3aed28a1927c6f298b6f2eb8b2f8ef182f54"
+    },
+    {
+      "path": "shaders/world0/deferred1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4a8b2dfbfceeacb9deb0f45d69164c4ae7e23e68",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4a8b2dfbfceeacb9deb0f45d69164c4ae7e23e68"
+    },
+    {
+      "path": "shaders/world0/deferred1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c120dd3656a29c57637cedde8d56f60b4a32c2e7",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c120dd3656a29c57637cedde8d56f60b4a32c2e7"
+    },
+    {
+      "path": "shaders/world0/deferred2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0ccb382b5667e507b3466dbd0a4e1334c09576f6",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0ccb382b5667e507b3466dbd0a4e1334c09576f6"
+    },
+    {
+      "path": "shaders/world0/deferred2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "53f7634d5a5265480f41dd7c1dbfa44dcaf560ba",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/53f7634d5a5265480f41dd7c1dbfa44dcaf560ba"
+    },
+    {
+      "path": "shaders/world0/dh_shadow.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "62ec7bfbaf62756ade199a4b26ac8a49fa72733a",
+      "size": 750,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/62ec7bfbaf62756ade199a4b26ac8a49fa72733a"
+    },
+    {
+      "path": "shaders/world0/dh_shadow.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "be4ccbcb1049e19a64164a8671b86fbd791f3219",
+      "size": 1616,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/be4ccbcb1049e19a64164a8671b86fbd791f3219"
+    },
+    {
+      "path": "shaders/world0/dh_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d625392da5de00f8fb255f44051140c37c9109ff",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d625392da5de00f8fb255f44051140c37c9109ff"
+    },
+    {
+      "path": "shaders/world0/dh_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2239998900165e06bc890874f7dd4f4f24e442ff",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2239998900165e06bc890874f7dd4f4f24e442ff"
+    },
+    {
+      "path": "shaders/world0/dh_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6a627c5b31abbcd4a8c41e2fb3a236b636a27bfd",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6a627c5b31abbcd4a8c41e2fb3a236b636a27bfd"
+    },
+    {
+      "path": "shaders/world0/dh_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22acc4e071be68eb6abc7faae890e86b518f2a3c",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/22acc4e071be68eb6abc7faae890e86b518f2a3c"
+    },
+    {
+      "path": "shaders/world0/final.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dac5e7904e0f054a9bad7470684e34f260752ec7",
+      "size": 46,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/dac5e7904e0f054a9bad7470684e34f260752ec7"
+    },
+    {
+      "path": "shaders/world0/final.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6db1835d9f762e53a13e26157551c4e85f444c31",
+      "size": 46,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6db1835d9f762e53a13e26157551c4e85f444c31"
+    },
+    {
+      "path": "shaders/world0/gbuffers_armor_glint.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5501d52b028ad5b9fbc8faed78de6a7a8543ba71",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5501d52b028ad5b9fbc8faed78de6a7a8543ba71"
+    },
+    {
+      "path": "shaders/world0/gbuffers_armor_glint.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "87ad96538e394d2fe016e590dbaa1a9e43519f44",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/87ad96538e394d2fe016e590dbaa1a9e43519f44"
+    },
+    {
+      "path": "shaders/world0/gbuffers_basic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5dc1306798e54204b9e53bc85ba0c5b59a7755d7",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5dc1306798e54204b9e53bc85ba0c5b59a7755d7"
+    },
+    {
+      "path": "shaders/world0/gbuffers_basic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a7735a3bf9f05b766cf4348651244e92cd0e6405",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a7735a3bf9f05b766cf4348651244e92cd0e6405"
+    },
+    {
+      "path": "shaders/world0/gbuffers_beaconbeam.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e666de10dcd2cfed5410a5a3b81a9aa70624082",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3e666de10dcd2cfed5410a5a3b81a9aa70624082"
+    },
+    {
+      "path": "shaders/world0/gbuffers_beaconbeam.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f285c007b7e8209489db3ff6ae494b9c49a7efd2",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f285c007b7e8209489db3ff6ae494b9c49a7efd2"
+    },
+    {
+      "path": "shaders/world0/gbuffers_block.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "348ea124a3195e78e658d850b8e17f16f58ae959",
+      "size": 113,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/348ea124a3195e78e658d850b8e17f16f58ae959"
+    },
+    {
+      "path": "shaders/world0/gbuffers_block.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dba7f49e067c814a128dde6d97d2072a0fef12b3",
+      "size": 113,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/dba7f49e067c814a128dde6d97d2072a0fef12b3"
+    },
+    {
+      "path": "shaders/world0/gbuffers_block_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3b0008b788dd37021592e27238572e375be9b829",
+      "size": 104,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3b0008b788dd37021592e27238572e375be9b829"
+    },
+    {
+      "path": "shaders/world0/gbuffers_block_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7ec193c8260b46de88b5e4844330342e1045b7d7",
+      "size": 104,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7ec193c8260b46de88b5e4844330342e1045b7d7"
+    },
+    {
+      "path": "shaders/world0/gbuffers_damagedblock.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "429a88a3b5aff5a222be22949e15aa6cb776e82b",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/429a88a3b5aff5a222be22949e15aa6cb776e82b"
+    },
+    {
+      "path": "shaders/world0/gbuffers_damagedblock.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4afcdb8cce38e2683147c9df8da32a09f5501fd6",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/4afcdb8cce38e2683147c9df8da32a09f5501fd6"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5952881792c830c8bde786d483286a9576916f4f",
+      "size": 108,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5952881792c830c8bde786d483286a9576916f4f"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b2f5ab4b90cdebec2512f11f05917d0ba5fa36e6",
+      "size": 109,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b2f5ab4b90cdebec2512f11f05917d0ba5fa36e6"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities_glowing.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2f755072208fb7a08ad79892c49b63c53853c879",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2f755072208fb7a08ad79892c49b63c53853c879"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities_glowing.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a8a4292fa97ba70605327b99750b806cd54226c0",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a8a4292fa97ba70605327b99750b806cd54226c0"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "78b1b61fc40fec0dc0c166e6bbde402976df3b41",
+      "size": 99,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/78b1b61fc40fec0dc0c166e6bbde402976df3b41"
+    },
+    {
+      "path": "shaders/world0/gbuffers_entities_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e0489a2a8c963bf83bab56d21c5aff4356e2ae6",
+      "size": 99,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3e0489a2a8c963bf83bab56d21c5aff4356e2ae6"
+    },
+    {
+      "path": "shaders/world0/gbuffers_hand.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3cfa9afe3450f7ad51d2bc89bb49cc139ce35c54",
+      "size": 104,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3cfa9afe3450f7ad51d2bc89bb49cc139ce35c54"
+    },
+    {
+      "path": "shaders/world0/gbuffers_hand.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "06b7be56266593edb3ee06aad37e5021044015f4",
+      "size": 104,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/06b7be56266593edb3ee06aad37e5021044015f4"
+    },
+    {
+      "path": "shaders/world0/gbuffers_hand_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "50e69eb350d86fc41b30beab8795919affd812b1",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/50e69eb350d86fc41b30beab8795919affd812b1"
+    },
+    {
+      "path": "shaders/world0/gbuffers_hand_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e2cb1f3c7b9921ea3aa7fea5398912c71c4f18a2",
+      "size": 95,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/e2cb1f3c7b9921ea3aa7fea5398912c71c4f18a2"
+    },
+    {
+      "path": "shaders/world0/gbuffers_skybasic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9bdb083cfba84da89368473f11415d2faae8808a",
+      "size": 40,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9bdb083cfba84da89368473f11415d2faae8808a"
+    },
+    {
+      "path": "shaders/world0/gbuffers_skybasic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0a2f94b58287cfd09946ac68bda8dd29de07a12a",
+      "size": 59,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0a2f94b58287cfd09946ac68bda8dd29de07a12a"
+    },
+    {
+      "path": "shaders/world0/gbuffers_skytextured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "653be9af33e47c0df4388b4f8e892da422850b6c",
+      "size": 998,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/653be9af33e47c0df4388b4f8e892da422850b6c"
+    },
+    {
+      "path": "shaders/world0/gbuffers_skytextured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "081e29e6c9542d686ebfca9c1804c1d26bdd9266",
+      "size": 987,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/081e29e6c9542d686ebfca9c1804c1d26bdd9266"
+    },
+    {
+      "path": "shaders/world0/gbuffers_spidereyes.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "538421d40c2114a323f8c51e792d7bb41f94a739",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/538421d40c2114a323f8c51e792d7bb41f94a739"
+    },
+    {
+      "path": "shaders/world0/gbuffers_spidereyes.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb"
+    },
+    {
+      "path": "shaders/world0/gbuffers_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c87cd884f630c64c56f790f675c47e1ca076f4c4",
+      "size": 91,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c87cd884f630c64c56f790f675c47e1ca076f4c4"
+    },
+    {
+      "path": "shaders/world0/gbuffers_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "43043a30fa7b07aed035fce7ac31721cceb8696a",
+      "size": 91,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/43043a30fa7b07aed035fce7ac31721cceb8696a"
+    },
+    {
+      "path": "shaders/world0/gbuffers_textured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7b3352f6035f2f67ba1baf10f09ac0cea0ea220c",
+      "size": 99,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7b3352f6035f2f67ba1baf10f09ac0cea0ea220c"
+    },
+    {
+      "path": "shaders/world0/gbuffers_textured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "73e3207aca467b707626c89b8bb003eb8d669191",
+      "size": 99,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/73e3207aca467b707626c89b8bb003eb8d669191"
+    },
+    {
+      "path": "shaders/world0/gbuffers_textured_lit.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f6b24c878d18089b35d871e57f9420440c8e94b2",
+      "size": 110,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f6b24c878d18089b35d871e57f9420440c8e94b2"
+    },
+    {
+      "path": "shaders/world0/gbuffers_textured_lit.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "785116cb65dae1b702c2468977921a104b058bd7",
+      "size": 110,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/785116cb65dae1b702c2468977921a104b058bd7"
+    },
+    {
+      "path": "shaders/world0/gbuffers_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a6005b472f9b522316557a11781ad948c47e80a7",
+      "size": 82,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a6005b472f9b522316557a11781ad948c47e80a7"
+    },
+    {
+      "path": "shaders/world0/gbuffers_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "afb2f142fa1172e313b16bf9969d5ee9c3303955",
+      "size": 82,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/afb2f142fa1172e313b16bf9969d5ee9c3303955"
+    },
+    {
+      "path": "shaders/world0/gbuffers_weather.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dabb41ba9813972a72c1ab28b6b9a67f9be7d41d",
+      "size": 96,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/dabb41ba9813972a72c1ab28b6b9a67f9be7d41d"
+    },
+    {
+      "path": "shaders/world0/gbuffers_weather.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8e24a6c894ddd731cdc40301a71d246a56b44a22",
+      "size": 96,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8e24a6c894ddd731cdc40301a71d246a56b44a22"
+    },
+    {
+      "path": "shaders/world0/setup.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "05c43159a61bf7911a7706cfc00e63787a8f8c60",
+      "size": 114,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/05c43159a61bf7911a7706cfc00e63787a8f8c60"
+    },
+    {
+      "path": "shaders/world0/shadow.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "801129d0fa7e67b7bd0268a17f9e984b4b81b081",
+      "size": 839,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/801129d0fa7e67b7bd0268a17f9e984b4b81b081"
+    },
+    {
+      "path": "shaders/world0/shadow.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7c0970e6566a0b31e09144c102c7720db1df063f",
+      "size": 9404,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/7c0970e6566a0b31e09144c102c7720db1df063f"
+    },
+    {
+      "path": "shaders/world0/shadowcomp.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "23b38a85258d8638d20f54fa8f1b1089ec8d46a9",
+      "size": 97,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/23b38a85258d8638d20f54fa8f1b1089ec8d46a9"
+    },
+    {
+      "path": "shaders/world1",
+      "mode": "040000",
+      "type": "tree",
+      "sha": "1cfb817b38abd8984c3e25e0d9f877ed470e9a5a",
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/trees/1cfb817b38abd8984c3e25e0d9f877ed470e9a5a"
+    },
+    {
+      "path": "shaders/world1/composite.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ca39820f97a4549e45c6ec0974196e9231f675d3",
+      "size": 86,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ca39820f97a4549e45c6ec0974196e9231f675d3"
+    },
+    {
+      "path": "shaders/world1/composite.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "677486b711e18e5621cef5a209de96360cb72746",
+      "size": 86,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/677486b711e18e5621cef5a209de96360cb72746"
+    },
+    {
+      "path": "shaders/world1/composite1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "598bc162d37b0f9940d515c6ede59ad61d38d670",
+      "size": 70,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/598bc162d37b0f9940d515c6ede59ad61d38d670"
+    },
+    {
+      "path": "shaders/world1/composite1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "032f8fa642fa48f17c662553235bc6b164769f1e",
+      "size": 70,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/032f8fa642fa48f17c662553235bc6b164769f1e"
+    },
+    {
+      "path": "shaders/world1/composite10.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c4b6b428ad334e79ba9eace99f6b9f867041674f",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c4b6b428ad334e79ba9eace99f6b9f867041674f"
+    },
+    {
+      "path": "shaders/world1/composite10.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b487c6a3b99bc0b7e118035249a88cf483b0720e",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b487c6a3b99bc0b7e118035249a88cf483b0720e"
+    },
+    {
+      "path": "shaders/world1/composite11.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ee3281f7031f29fd726eeb5dc0af784f7ce7cc79",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ee3281f7031f29fd726eeb5dc0af784f7ce7cc79"
+    },
+    {
+      "path": "shaders/world1/composite11.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f2237a936f6b2e7b30b357363c65893624b6b714",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f2237a936f6b2e7b30b357363c65893624b6b714"
+    },
+    {
+      "path": "shaders/world1/composite12.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cd9deaefd0604e1e5ce5c9d714bd2e1b38c34b0f",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/cd9deaefd0604e1e5ce5c9d714bd2e1b38c34b0f"
+    },
+    {
+      "path": "shaders/world1/composite12.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6d5a44be3e638cb56695783085fe5edbee7c70df",
+      "size": 72,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6d5a44be3e638cb56695783085fe5edbee7c70df"
+    },
+    {
+      "path": "shaders/world1/composite13.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5ad196cc7f081800cfd6d1cdd2951db4928e3b0e",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5ad196cc7f081800cfd6d1cdd2951db4928e3b0e"
+    },
+    {
+      "path": "shaders/world1/composite13.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c0a8171e84c02fe72eb4a634772bb9d14f4b0d19",
+      "size": 78,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c0a8171e84c02fe72eb4a634772bb9d14f4b0d19"
+    },
+    {
+      "path": "shaders/world1/composite2.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "275a6fe7908c8299ae1b7b0862408bc77a9f7e53",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/275a6fe7908c8299ae1b7b0862408bc77a9f7e53"
+    },
+    {
+      "path": "shaders/world1/composite2.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b606182bf277c789ad3606ae7600abb34ada6daa",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b606182bf277c789ad3606ae7600abb34ada6daa"
+    },
+    {
+      "path": "shaders/world1/composite3.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "dcb6e3c194b2713be7fff0607062d200d14cb6eb",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/dcb6e3c194b2713be7fff0607062d200d14cb6eb"
+    },
+    {
+      "path": "shaders/world1/composite3.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "93493b196d991ba53ed2e57a501cc3abfcdc8639",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/93493b196d991ba53ed2e57a501cc3abfcdc8639"
+    },
+    {
+      "path": "shaders/world1/composite4.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "85b347be5326a7c8221547a94e70ac2ccbb635ba",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/85b347be5326a7c8221547a94e70ac2ccbb635ba"
+    },
+    {
+      "path": "shaders/world1/composite4.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "aa0a507b55ae2335f8df25616544bbd2d896dfee",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/aa0a507b55ae2335f8df25616544bbd2d896dfee"
+    },
+    {
+      "path": "shaders/world1/composite5.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ca6df9cb2f6082dccc433573bb4c6e5b84c8594b",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ca6df9cb2f6082dccc433573bb4c6e5b84c8594b"
+    },
+    {
+      "path": "shaders/world1/composite5.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b439e0ecd6adb508484351b353627fbd4520223c",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b439e0ecd6adb508484351b353627fbd4520223c"
+    },
+    {
+      "path": "shaders/world1/composite6.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5d88de63aa92e72166a7fd0aca63bf82864a5541",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5d88de63aa92e72166a7fd0aca63bf82864a5541"
+    },
+    {
+      "path": "shaders/world1/composite6.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0d7fb8ab31c755f32f63c23ea721bd539cf682e4",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0d7fb8ab31c755f32f63c23ea721bd539cf682e4"
+    },
+    {
+      "path": "shaders/world1/composite7.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "766e494f2fe4042e227f8d91867b98608149f8f0",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/766e494f2fe4042e227f8d91867b98608149f8f0"
+    },
+    {
+      "path": "shaders/world1/composite7.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "50c159b4623150511eb9d7bf1c854abce6604ce6",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/50c159b4623150511eb9d7bf1c854abce6604ce6"
+    },
+    {
+      "path": "shaders/world1/composite8.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9af2e0e01768ce49a2c4f164a42f7b8cb28735f9",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9af2e0e01768ce49a2c4f164a42f7b8cb28735f9"
+    },
+    {
+      "path": "shaders/world1/composite8.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b1cd0be05f68b3c30a023e519f5845c8bb2716c0",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b1cd0be05f68b3c30a023e519f5845c8bb2716c0"
+    },
+    {
+      "path": "shaders/world1/composite9.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "eda36774937b669a4522ef544c6316899eb865a2",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/eda36774937b669a4522ef544c6316899eb865a2"
+    },
+    {
+      "path": "shaders/world1/composite9.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "db8cb16c3ef20ebc2bafe5eebb3b4b17341a700d",
+      "size": 71,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/db8cb16c3ef20ebc2bafe5eebb3b4b17341a700d"
+    },
+    {
+      "path": "shaders/world1/deferred.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8738dc1eb3b884f4e1244d6b98c733d8af26b490",
+      "size": 69,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8738dc1eb3b884f4e1244d6b98c733d8af26b490"
+    },
+    {
+      "path": "shaders/world1/deferred.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "32ad331b56db796d12614d73bae57dc4c3b95d76",
+      "size": 69,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/32ad331b56db796d12614d73bae57dc4c3b95d76"
+    },
+    {
+      "path": "shaders/world1/deferred1.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "99b89210676ded9e741e67b1f3c3911b63aa8bc4",
+      "size": 70,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/99b89210676ded9e741e67b1f3c3911b63aa8bc4"
+    },
+    {
+      "path": "shaders/world1/deferred1.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ffe856b23b5c3f6ecfe4cca8fab33c25cf4a63b4",
+      "size": 70,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ffe856b23b5c3f6ecfe4cca8fab33c25cf4a63b4"
+    },
+    {
+      "path": "shaders/world1/dh_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b72a5552fd8cef20073166520c85f68dbd62ab3b",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b72a5552fd8cef20073166520c85f68dbd62ab3b"
+    },
+    {
+      "path": "shaders/world1/dh_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b9be56e4e21c8c09761a01a28582d929b35022c3",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b9be56e4e21c8c09761a01a28582d929b35022c3"
+    },
+    {
+      "path": "shaders/world1/dh_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c754bd292b102dca14ffd1d28db487967c1d630d",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c754bd292b102dca14ffd1d28db487967c1d630d"
+    },
+    {
+      "path": "shaders/world1/dh_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "1fecdf878ed2f3c1e73a8b5a674e5bf0c397f118",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/1fecdf878ed2f3c1e73a8b5a674e5bf0c397f118"
+    },
+    {
+      "path": "shaders/world1/final.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "590696eace6b03861774f3c17d5d02c1b7ead414",
+      "size": 66,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/590696eace6b03861774f3c17d5d02c1b7ead414"
+    },
+    {
+      "path": "shaders/world1/final.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "991e04cea5ece4187e7b89fea5393e9b6b425458",
+      "size": 66,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/991e04cea5ece4187e7b89fea5393e9b6b425458"
+    },
+    {
+      "path": "shaders/world1/gbuffers_armor_glint.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5501d52b028ad5b9fbc8faed78de6a7a8543ba71",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/5501d52b028ad5b9fbc8faed78de6a7a8543ba71"
+    },
+    {
+      "path": "shaders/world1/gbuffers_armor_glint.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "87ad96538e394d2fe016e590dbaa1a9e43519f44",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/87ad96538e394d2fe016e590dbaa1a9e43519f44"
+    },
+    {
+      "path": "shaders/world1/gbuffers_basic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c43da6959ad9972793173b772adff1bc7714967b",
+      "size": 88,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c43da6959ad9972793173b772adff1bc7714967b"
+    },
+    {
+      "path": "shaders/world1/gbuffers_basic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "773a71d8c1f5c24c495725c67119e90d3409b359",
+      "size": 88,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/773a71d8c1f5c24c495725c67119e90d3409b359"
+    },
+    {
+      "path": "shaders/world1/gbuffers_beaconbeam.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3e666de10dcd2cfed5410a5a3b81a9aa70624082",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3e666de10dcd2cfed5410a5a3b81a9aa70624082"
+    },
+    {
+      "path": "shaders/world1/gbuffers_beaconbeam.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f285c007b7e8209489db3ff6ae494b9c49a7efd2",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f285c007b7e8209489db3ff6ae494b9c49a7efd2"
+    },
+    {
+      "path": "shaders/world1/gbuffers_block.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f4c2b0b20521236007f8258a81e8166dfcbf1532",
+      "size": 107,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f4c2b0b20521236007f8258a81e8166dfcbf1532"
+    },
+    {
+      "path": "shaders/world1/gbuffers_block.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "147c84318860896902cce19e8e47745c4005de43",
+      "size": 107,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/147c84318860896902cce19e8e47745c4005de43"
+    },
+    {
+      "path": "shaders/world1/gbuffers_block_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "48cde9b56a274530dd9a1ff1226af2fe28d5d4bc",
+      "size": 98,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/48cde9b56a274530dd9a1ff1226af2fe28d5d4bc"
+    },
+    {
+      "path": "shaders/world1/gbuffers_block_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22be12ba554931c7e1de0d78ce0638d1b97a53e1",
+      "size": 98,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/22be12ba554931c7e1de0d78ce0638d1b97a53e1"
+    },
+    {
+      "path": "shaders/world1/gbuffers_damagedblock.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d72bc9fd6c3f2ff73ba9da7da034bbcb60d06ed9",
+      "size": 102,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/d72bc9fd6c3f2ff73ba9da7da034bbcb60d06ed9"
+    },
+    {
+      "path": "shaders/world1/gbuffers_damagedblock.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "26ab021b65167cd9705a138bed945d759c09bf91",
+      "size": 102,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/26ab021b65167cd9705a138bed945d759c09bf91"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "c23b80982238b90fca70abf76e8f87d31255f64e",
+      "size": 102,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/c23b80982238b90fca70abf76e8f87d31255f64e"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9ea6da19ad78cbdf522336f1dac01b83fb406b33",
+      "size": 106,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9ea6da19ad78cbdf522336f1dac01b83fb406b33"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities_glowing.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2f755072208fb7a08ad79892c49b63c53853c879",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/2f755072208fb7a08ad79892c49b63c53853c879"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities_glowing.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a8a4292fa97ba70605327b99750b806cd54226c0",
+      "size": 79,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/a8a4292fa97ba70605327b99750b806cd54226c0"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities_translucent.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "82168aa94d5fa5929a20218348ce1be9b180c105",
+      "size": 93,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/82168aa94d5fa5929a20218348ce1be9b180c105"
+    },
+    {
+      "path": "shaders/world1/gbuffers_entities_translucent.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6f7c6f0c20ab9338d9f87399dc8a6af7072c0977",
+      "size": 93,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/6f7c6f0c20ab9338d9f87399dc8a6af7072c0977"
+    },
+    {
+      "path": "shaders/world1/gbuffers_hand.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "fdd18e525f822bad8cc276ef58e2749fd149e592",
+      "size": 98,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/fdd18e525f822bad8cc276ef58e2749fd149e592"
+    },
+    {
+      "path": "shaders/world1/gbuffers_hand.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "95a797e329b3f66ac70d9d09e3ae2276a4e1106f",
+      "size": 98,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/95a797e329b3f66ac70d9d09e3ae2276a4e1106f"
+    },
+    {
+      "path": "shaders/world1/gbuffers_hand_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f0eebaf8904f2aee45d4d7b59b38ade197240ccd",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f0eebaf8904f2aee45d4d7b59b38ade197240ccd"
+    },
+    {
+      "path": "shaders/world1/gbuffers_hand_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "37d503df8c2d70718205e5960a6bd6ab0bf51d1d",
+      "size": 89,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/37d503df8c2d70718205e5960a6bd6ab0bf51d1d"
+    },
+    {
+      "path": "shaders/world1/gbuffers_skybasic.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "21db34686f774f2e446566184f2a6f44e4407552",
+      "size": 63,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/21db34686f774f2e446566184f2a6f44e4407552"
+    },
+    {
+      "path": "shaders/world1/gbuffers_skybasic.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0a2f94b58287cfd09946ac68bda8dd29de07a12a",
+      "size": 59,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/0a2f94b58287cfd09946ac68bda8dd29de07a12a"
+    },
+    {
+      "path": "shaders/world1/gbuffers_skytextured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "653be9af33e47c0df4388b4f8e892da422850b6c",
+      "size": 998,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/653be9af33e47c0df4388b4f8e892da422850b6c"
+    },
+    {
+      "path": "shaders/world1/gbuffers_skytextured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "081e29e6c9542d686ebfca9c1804c1d26bdd9266",
+      "size": 987,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/081e29e6c9542d686ebfca9c1804c1d26bdd9266"
+    },
+    {
+      "path": "shaders/world1/gbuffers_spidereyes.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "538421d40c2114a323f8c51e792d7bb41f94a739",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/538421d40c2114a323f8c51e792d7bb41f94a739"
+    },
+    {
+      "path": "shaders/world1/gbuffers_spidereyes.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb",
+      "size": 83,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/ad968cc741e2c7f7be3dc445318a5c8eaf0bdfbb"
+    },
+    {
+      "path": "shaders/world1/gbuffers_terrain.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "78c5b743ca2e5d298ce9b892227615dc7398c1c0",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/78c5b743ca2e5d298ce9b892227615dc7398c1c0"
+    },
+    {
+      "path": "shaders/world1/gbuffers_terrain.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "565cb77d059b725eaad3ddf3ba63b72139c2e666",
+      "size": 85,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/565cb77d059b725eaad3ddf3ba63b72139c2e666"
+    },
+    {
+      "path": "shaders/world1/gbuffers_textured.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8da70194f9d90faa59dab5ccfff9ceda83a69d28",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/8da70194f9d90faa59dab5ccfff9ceda83a69d28"
+    },
+    {
+      "path": "shaders/world1/gbuffers_textured.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b28afd5f84e47edb81051bd71972abe2b2921219",
+      "size": 75,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b28afd5f84e47edb81051bd71972abe2b2921219"
+    },
+    {
+      "path": "shaders/world1/gbuffers_textured_lit.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "738ea0372a1bbb263fb0c6f687f26ad4e341368e",
+      "size": 74,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/738ea0372a1bbb263fb0c6f687f26ad4e341368e"
+    },
+    {
+      "path": "shaders/world1/gbuffers_textured_lit.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bb26d8f3ba29a9231d9aca8daa711d0aee779b07",
+      "size": 112,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/bb26d8f3ba29a9231d9aca8daa711d0aee779b07"
+    },
+    {
+      "path": "shaders/world1/gbuffers_water.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9b0ad7689594822ef58413a37cad2938a7665e32",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9b0ad7689594822ef58413a37cad2938a7665e32"
+    },
+    {
+      "path": "shaders/world1/gbuffers_water.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9a4a86939afd3638be9432e3d9b0cae1ae73da22",
+      "size": 76,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/9a4a86939afd3638be9432e3d9b0cae1ae73da22"
+    },
+    {
+      "path": "shaders/world1/gbuffers_weather.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f169e8b251b42ac3ebbede5a5595b4ad35400358",
+      "size": 1537,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f169e8b251b42ac3ebbede5a5595b4ad35400358"
+    },
+    {
+      "path": "shaders/world1/gbuffers_weather.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b7c44aa5e1dc6b73630067c7294704e1413b7d29",
+      "size": 1148,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/b7c44aa5e1dc6b73630067c7294704e1413b7d29"
+    },
+    {
+      "path": "shaders/world1/setup.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "05c43159a61bf7911a7706cfc00e63787a8f8c60",
+      "size": 114,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/05c43159a61bf7911a7706cfc00e63787a8f8c60"
+    },
+    {
+      "path": "shaders/world1/shadow.fsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f0a850347d3bb706345b824af8c93d705c512ad2",
+      "size": 162,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/f0a850347d3bb706345b824af8c93d705c512ad2"
+    },
+    {
+      "path": "shaders/world1/shadow.vsh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3eaf7ac0cfbb7762e6ac86a109b2af666663a37e",
+      "size": 1466,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/3eaf7ac0cfbb7762e6ac86a109b2af666663a37e"
+    },
+    {
+      "path": "shaders/world1/shadowcomp.csh",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "23b38a85258d8638d20f54fa8f1b1089ec8d46a9",
+      "size": 97,
+      "url": "https://api.github.com/repos/X0nk/Bliss-Shader/git/blobs/23b38a85258d8638d20f54fa8f1b1089ec8d46a9"
+    }
+  ],
+  "truncated": false
+}

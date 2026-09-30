@@ -3161,7 +3161,10 @@ export class Game {
     if (this.world && this.sky) {
       const lb = this.world.getLightForMesh(Math.floor(p.x), Math.floor(p.y + 1.4), Math.floor(p.z));
       const local = Math.max((lb & 15) / 15, ((lb >> 4) / 15) * this.sky.sunLevel);
-      const target = Math.max(0.1, Math.min(1, local / Math.max(this.sky.sunLevel, 0.3)));
+      // v0.48: normalize by the NEW night floor (0.10, was the old 0.30 era
+      // constant) — the held item/arm stays readable in torch pools and dims
+      // to moonlit levels outdoors, without collapsing to black
+      const target = Math.max(0.1, Math.min(1, local / Math.max(this.sky.sunLevel, 0.10)));
       this.playerLightF += (target - this.playerLightF) * Math.min(1, dt * 6);
     }
 
@@ -3464,8 +3467,12 @@ export class Game {
       }
     }
     // entity lights follow sun
-    this.ambient.intensity = 0.25 + this.sky.sunLevel * 0.75;
-    this.sunLight.intensity = 0.15 + this.sky.sunLevel * 0.8;
+    // v0.48: lower ambient/directional floors — scene-lit entities (mobs,
+    // drops, boats) follow the darker night instead of the old "dim day".
+    // Daytime output is unchanged (1.0 / 0.95); midnight drops to 0.20 / 0.13
+    // so silhouettes read at the edge of torch pools — survival fear factor.
+    this.ambient.intensity = 0.12 + this.sky.sunLevel * 0.88;
+    this.sunLight.intensity = 0.05 + this.sky.sunLevel * 0.9;
     const angle = ((this.sky.time / DAY_LENGTH) - 0.25) * Math.PI * 2;
     this.sunLight.position.set(Math.cos(angle), Math.max(0.2, Math.sin(angle)), 0.3).normalize().multiplyScalar(50);
   }

@@ -502,8 +502,10 @@ export class GraphicsSystem {
       0.82 - warmth * 0.55,
     ).multiplyScalar(0.14 + 0.86 * dayAmount * (1 - storm * 0.55));
     if (dayAmount < 0.08) {
-      // moonlight — dim cool directional light from the moon's position
-      sunCol.set(0.35, 0.42, 0.62).multiplyScalar(0.28);
+      // moonlight — Photon's REAL moon tint from source (MOON_R/G/B =
+      // 0.75/0.83/1.00 ≈ #BFD4FF, ~8500K perceptual cold blue). Shader packs
+      // exaggerate the blue because viewers READ "cold blue" as night.
+      sunCol.set(0.75, 0.83, 1.00).multiplyScalar(0.30);
       lightDir.multiplyScalar(-1);
     }
     this.lastSunColor.setRGB(sunCol.x, sunCol.y, sunCol.z);
@@ -595,13 +597,28 @@ export class GraphicsSystem {
 
     // postfx per-frame uniforms
     if (this.postfx) {
-      // ── auto exposure (Unreal eye adaptation): the grade brightens smoothly
-      // toward night/sunset and underwater, so walking into a cave or dusk
-      // doesn't snap — it eases like a real camera iris. User exposure still
-      // multiplies on top.
-      const expoTarget = (1 + (1 - dayAmount) * 0.35 + sunsetAmount * 0.06) * (underwater ? 1.18 : 1);
-      this.expAdapt += (expoTarget - this.expAdapt) * Math.min(1, dt * 1.4);
+      // ── auto exposure (v0.48 — Photon-style exposure discipline) ──
+      // Photon ships auto exposure OFF by default and hand-balances sun=7.0 vs
+      // moon=0.66 instead, because an exposure that "rescues" darkness erases
+      // the night. We now do the same: NO night boost (the old +0.35 lifted
+      // every midnight by ~35%, which is exactly why nights never felt dark),
+      // only a small sunset/underwater lift. Adaptation is asymmetric and
+      // rate-limited like real photoreceptors: dark→bright 2.0/s, bright→dark
+      // 1.0/s (bleach recovery is slower), and the total swing is clamped so
+      // exposure can never compensate the night away.
+      const expoTarget = (1 + sunsetAmount * 0.10) * (underwater ? 1.12 : 1);
+      const rate = expoTarget < this.expAdapt ? 1.0 : 2.0;
+      this.expAdapt += (expoTarget - this.expAdapt) * Math.min(1, dt * rate);
+      this.expAdapt = Math.min(1.22, Math.max(0.92, this.expAdapt));
       this.postfx.setGrade(this.expAdapt * gfx.exposure, gfx.saturation, gfx.contrast, gfx.vignette);
+
+      // ── Purkinje shift (Photon include/misc/purkinje_shift.glsl) ──
+      // In darkness rods take over: deep shadows drift toward blue-steel
+      // (scotopic peak 507nm) while warm torch pools keep their color — the
+      // effect self-gates per pixel in the grade shader via scotopic luminance.
+      // Fades in as the sun drops below ~-0.08 (civil twilight end).
+      const purkNight = CLAMP((0.02 - sunHeight) / 0.10, 0, 1);
+      this.postfx.setPurkinje(0.055 * purkNight * (1 - storm * 0.5));
 
       // ── flare gate: voxel occlusion × camera facing (v0.47) ──
       // Raycast from the eye toward the light through the voxel grid — walls
@@ -645,7 +662,10 @@ export class GraphicsSystem {
       if (gfx.godRays && !underwater) {
         const vlsSteps = gfx.preset === 'ultra' ? 16 : gfx.preset === 'high' ? 12 : gfx.preset === 'medium' ? 8 : 6;
         const vlsStrength = gfx.godRaysStrength * 0.5 * (1 - storm * 0.7) * (1 - cover * 0.4);
-        this.tmpVlsCol.copy(this.lastSunColor).multiplyScalar(0.5 + 0.5 * dayAmount);
+        // v0.48: night gain raised (0.5 → 0.62 floor) — moonlight shafts through
+        // trees/window must READ on the darker night (they're the fear-factor
+        // beauty anchor; Photon keeps visible moon shafts at its 9.4% moon)
+        this.tmpVlsCol.copy(this.lastSunColor).multiplyScalar(0.62 + 0.38 * dayAmount);
         camera.updateMatrixWorld();
         camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
         this.tmpVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);

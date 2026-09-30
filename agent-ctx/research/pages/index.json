@@ -1,0 +1,112 @@
+{
+  "ue_lumen": {
+    "title": "Lumen Global Illumination and Reflections in Unreal Engine | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/lumen-global-illumination-and-reflections-in-unreal-engine",
+    "chars": 243001
+  },
+  "ue_vsm": {
+    "title": "Virtual Shadow Maps in Unreal Engine  | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine",
+    "chars": 440179
+  },
+  "ue_nanite": {
+    "title": "Nanite Virtualized Geometry in Unreal Engine  | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/nanite-virtualized-geometry-in-unreal-engine",
+    "chars": 258030
+  },
+  "ue_autoexposure": {
+    "title": "Auto Exposure in Unreal Engine | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/auto-exposure-in-unreal-engine",
+    "chars": 162557
+  },
+  "ue_volumetricfog": {
+    "title": "Volumetric Fog in Unreal Engine  | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-fog-in-unreal-engine",
+    "chars": 190081
+  },
+  "ue_postprocess": {
+    "title": "Post Process Effects in Unreal Engine  | Unreal Engine 5.8 Documentation | Epic Developer Community",
+    "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/post-process-effects-in-unreal-engine",
+    "chars": 202432
+  },
+  "lux": {
+    "title": "Lux",
+    "url": "https://en.wikipedia.org/wiki/Lux",
+    "chars": 242809
+  },
+  "purkinje": {
+    "title": "Purkinje effect",
+    "url": "https://en.wikipedia.org/wiki/Purkinje_effect",
+    "chars": 318194
+  },
+  "scotopic": {
+    "title": "Scotopic vision",
+    "url": "https://en.wikipedia.org/wiki/Scotopic_vision",
+    "chars": 289596
+  },
+  "rayleigh": {
+    "title": "Rayleigh scattering",
+    "url": "https://en.wikipedia.org/wiki/Rayleigh_scattering",
+    "chars": 266957
+  },
+  "sky": {
+    "title": "Diffuse sky radiation",
+    "url": "https://en.wikipedia.org/wiki/Diffuse_sky_radiation",
+    "chars": 598283
+  },
+  "crepuscular": {
+    "title": "Crepuscular rays",
+    "url": "https://en.wikipedia.org/wiki/Crepuscular_rays",
+    "chars": 309004
+  },
+  "water_absorption": {
+    "title": "Electromagnetic absorption by water",
+    "url": "https://en.wikipedia.org/wiki/Electromagnetic_absorption_by_water",
+    "chars": 250359
+  },
+  "underwater_vision": {
+    "title": "Underwater vision",
+    "url": "https://en.wikipedia.org/wiki/Underwater_vision",
+    "chars": 586987
+  },
+  "moonlight": {
+    "title": "Moonlight",
+    "url": "https://en.wikipedia.org/wiki/Moonlight",
+    "chars": 216984
+  },
+  "color_temp": {
+    "title": "Color temperature",
+    "url": "https://en.wikipedia.org/wiki/Color_temperature",
+    "chars": 407901
+  },
+  "shaders_namu": {
+    "title": "Just a moment...",
+    "url": "https://en.namu.wiki/w/Minecraft%2FMode%2FShader",
+    "chars": 28603
+  },
+  "moonlight_temp_cine": {
+    "title": "reccomended texts for lighting...",
+    "url": "https://cinematography.com/index.php/topic/2235-moonlight-color-temperature/",
+    "chars": 483862
+  },
+  "schneider_natural_light": {
+    "title": "Page Not Found",
+    "url": "https://schneiderkreuznach.com/en/know-how/photo/glossary/natural-light-sunlight-moonlight-color-temperature",
+    "chars": 92448
+  },
+  "gd_contrast": {
+    "title": "Design | Game Developer",
+    "url": "https://www.gamedeveloper.com/design/lighting-design-fundamentals-using-contrast-in-your-game-i",
+    "chars": 363858
+  },
+  "leveldesignbook_lighting": {
+    "title": "Lighting | The Level Design Book",
+    "url": "https://book.leveldesignbook.com/process/lighting",
+    "chars": 991777
+  },
+  "unity_darkness": {
+    "title": "Football Strategy - Upcoming Football Manager Game - Community Showcases - Unity Discussions",
+    "url": "https://discussions.unity.com/t/flashlights-lanterns-and-darkness-oh-my/499293",
+    "chars": 1611457
+  }
+}

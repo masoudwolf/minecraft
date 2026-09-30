@@ -1887,7 +1887,10 @@ export class MobManager {
       {
         const lb = this.world.getLightForMesh(Math.floor(m.x), Math.floor(m.y + m.height * 0.7), Math.floor(m.z));
         const local = Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel);
-        const target = Math.max(0.1, Math.min(1, local / Math.max(sunLevel, 0.3)));
+        // v0.48: normalization floor follows the new night floor (0.10, was a
+        // 0.30-era constant) — mobs stay readable in torch pools and read as
+        // moonlit silhouettes in the open (the scene lights carry the dark)
+        const target = Math.max(0.1, Math.min(1, local / Math.max(sunLevel, 0.10)));
         m.lightF += (target - m.lightF) * Math.min(1, dt * 6);
         if (Math.abs(m.lightF - m.lastAppliedF) > 0.004) {
           const f = m.lightF;

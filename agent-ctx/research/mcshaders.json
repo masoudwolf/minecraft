@@ -1,0 +1,47 @@
+[
+  {
+    "url": "https://www.sonicether.com",
+    "name": "SEUS",
+    "snippet": "The “ PTGI ” in the name stands for “ Path Traced Global Illumination”, which is the main feature of this project. It also includes ray traced reflections. SEUS ... Read more",
+    "host_name": "www.sonicether.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.curseforge.com",
+    "name": "Complementary Shaders - Reimagined",
+    "snippet": "Complementary Shaders is a shader pack for Minecraft Java Edition with exceptional attention to detail, high standards of quality, and top tier optimisation. Read more",
+    "host_name": "www.curseforge.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.complementary.dev",
+    "name": "Complementary Shaders | Official Site",
+    "snippet": "Complementary Shaders comes with two distinct visual style options . You can switch to blocky clouds on the Unbound style, or use realistic water on the ...",
+    "host_name": "www.complementary.dev",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com",
+    "name": "MahoganyTown/Minecraft-PTGI: Path Traced Global",
+    "snippet": "The main feature of this shaderpack is path tracing global illumination which computes lighting in a realistic way by tracing rays through the scene and ... Read more",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://shadersmods.com",
+    "name": "SEUS Shaders 1.19.4 → 1.18.2 (PTGI Ray-Tracing,",
+    "snippet": "Apr 12, 2023 — With this shader pack , the water looks clear and fluid, plants look alive and seem to sway back and forth as if they were breathing, and ... Read more",
+    "host_name": "shadersmods.com",
+    "rank": 4,
+    "date": "Apr 12, 2023",
+    "favicon": ""
+  }
+]

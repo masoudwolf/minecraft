@@ -1267,3 +1267,22 @@ Stage Summary:
 - mesher 不变量守卫首次实战拦截回归（aDepth），证明 v0.45.1 引入的防线有效
 - 遗留：VLS 在中档 8 步下光束偏含蓄（高档 16 步更明显）；水体 SSR/折射未做（需逐帧额外 pass，llvmpipe 代价高，先观察用户反馈）；水的平面反射仍以天空为主（地形反射角度依赖）
 - NEXT QUEUE：向用户收集 v0.47.0 三项反馈的实机感受；之前遗留（创造模式连挖、mob 阳光阴影着色复查、云速调慢、性能 pass）；NEXT QUEUE 功能（brewing/potions、villager restock UI、item frames/armor stands、cake）
+
+---
+Task ID: 50-a
+Agent: research subagent (general-purpose, research-only)
+Task: deep web research — UE5 graphics, Minecraft shader internals (Photon source), real-world lighting physics, night fear design
+
+Work Log:
+- Skimmed worklog 48/49 (v0.46–0.47 stack state). Loaded web-search + web-reader skills; used z-ai CLI (backend) under agent-ctx/research/.
+- GitHub API rate-limited → fell back to jsDelivr file listing (630 files) for sixthsurge/photon@main, then curl'd 12 REAL source files from raw.githubusercontent.com (light_color, blocklight_color, diffuse_lighting, purkinje_shift, tonemap_operators, c4_taa_exposure.fsh/.vsh, water_fog_vl, fog constants, atmosphere, settings.glsl[171KB], global.glsl) — all saved in agent-ctx/research/photon/ for the next agent.
+- Extracted real constants: sun scale 7.0 vs moon 0.66 (moon = 9.4% of sun ≈ 3.4 stops, vs ~17 EV in reality); MOON tint sRGB (0.75,0.83,1.00); torch tint (1.00,0.75,0.63) + blocklight_scale 6.0 + pow8+0.18bl² falloff with -0.2 daylight suppression; water absorption per meter air (0.39,0.14,0.07) / underwater (0.20,0.08,0.04) + scattering 0.01/0.03; Purkinje ON by default (intensity 0.05, tint (0.5,0.7,1.0), scotopic luminance formula, gated by sun_dir.y<-0.06, reduced in blocklight/underground); auto exposure default OFF (hand-balanced values) with histogram mode: 32 bins, EV -1..0, rates 2.0 EV/s brightward vs 1.0 EV/s darkward, K=12.5; ACES fit ×1.6 pre-exposure; skylight falloff sqr(); cave fill 0.15(1-sky²); bounce 0.033(1-shadow)pow1.5(ao)pow4(sky); blue-hour ambient boost 1+0.5sunset+40·bluehour.
+- 5 web searches (2 returned junk for numeric-lux queries, backend flaky): UE auto exposure docs (UE5.1+ Min EV100 -10 / Max EV100 +20, adaptation speed ~3, exposure=exp2(-EV100)), SEUS PTGI = path-traced GI + RT reflections, Complementary = style presets + tight light balancing, Purkinje/mesopic refs. Real-world numbers table built from standard photometry (sun 100k lux EV~15; full moon 0.05–0.3 lux EV≈-2…-3.5; starlight 0.0003–0.001 lux; real moon CCT 4100K vs game 7000–10000K; underwater: red 1/e ≈2.3 m, gone ≤10 m, blue survives 100+ m, euphotic 1% depth 100–200 m ocean / 25–45 m coastal, visibility 40–60 m clear / 5–15 m coastal).
+- Night fear design synthesis: horror/survival nights sit at 1–6% of day luminance, moon as directional pool 5–10%, torch:ambient contrast ≥20:1 with hard pow8 falloff edge, exposure locked (no rescue) at night, desaturate+blue-shift (Purkinje) with warm torch exception.
+- Deliverable written: agent-ctx/graphics-research.md (4 sections + real-numbers table + ACTION LIST: 10 uniform/value-only + 7 new-pass items, ranked).
+
+Stage Summary:
+- ROOT FINDING: VoxelCraft night (sunLevel floor 0.30 = moon ≈30% of day) is ~3–5× brighter than every big shader pack (Photon 9.4% direct + near-zero ambient floor; horror games 1–6%) — fixing VALUES, not passes, is the night-fear rework.
+- Key portable constants: moon 0.07–0.10 direct / 0.03–0.05 ambient; moon tint #BFD4FF (0.75,0.83,1.00); torch (1.0,0.75,0.63) + pow8 tail + −20% daylight; water σa (0.39,0.14,0.07)air / (0.20,0.08,0.04)underwater; Purkinje tint (0.5,0.7,1.0) @5% with exp2(−20·scotopic); exposure asymmetric 1.0/2.0 EV/s, clamp ~3 EV, OFF at night.
+- Top queued new-pass items: underwater fog ray-march (reuses v0.47 DepthTexture+shadow map), torch bounce proxy, sky-SH ambient.
+- Report: /home/z/my-project/agent-ctx/graphics-research.md · raw Photon sources cached: /home/z/my-project/agent-ctx/research/photon/

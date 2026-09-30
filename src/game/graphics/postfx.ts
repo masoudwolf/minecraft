@@ -178,6 +178,7 @@ const GradeShader = {
     uVignette: { value: 0.32 },
     uUnderwater: { value: 0 },
     uTime: { value: 0 },
+    uPurkinje: { value: 0 }, // 0 day → 0.055 deep night (v0.48)
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -194,6 +195,7 @@ const GradeShader = {
     uniform float uVignette;
     uniform float uUnderwater;
     uniform float uTime;
+    uniform float uPurkinje;
     varying vec2 vUv;
     vec3 aces(vec3 x) {
       const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -208,6 +210,27 @@ const GradeShader = {
       vec3 c = texture2D(tDiffuse, uv).rgb;
       c *= uExposure;
       c = mix(c, c * vec3(0.52, 0.80, 1.22) + vec3(0.0, 0.015, 0.05), uUnderwater * 0.75);
+      // ── Purkinje shift (ported from Photon include/misc/purkinje_shift.glsl)
+      // In darkness rods take over (scotopic peak 507 nm vs cone 555 nm):
+      // deep shadows drift blue-steel while reds die first — the real-world
+      // reason night scenes look monochrome-cold. Self-gating per pixel: the
+      // mix factor exp2(-20·scotopic) collapses toward 0 for bright pixels,
+      // so torch pools / the moon disk keep their warm color while everything
+      // in shadow shifts cold (http://diva-portal.org/smash/get/diva2:24136).
+      if (uPurkinje > 0.001) {
+        vec3 xyz = vec3(
+          dot(c, vec3(0.4124, 0.3576, 0.1805)),
+          dot(c, vec3(0.2126, 0.7152, 0.0722)),
+          dot(c, vec3(0.0193, 0.1192, 0.9505)));
+        vec3 scot = xyz * (1.33 * (1.0 + (xyz.y + xyz.z) / max(xyz.x, 1e-5)) - 1.68);
+        // rod response pre-folded with the XYZ→RGB conversion (rec2020 math
+        // from the source collapsed to one dot in rec709 space)
+        float purk = max(dot(vec3(-0.3148, 0.7635, 0.3165), scot), 0.0);
+        // mix factor = exp2(-purk / intensity) — Photon's exact curve; self-
+        // gates to ~0 for bright pixels (torch pools keep their warm color)
+        float amt = clamp(exp2(-purk / max(uPurkinje, 1e-4)), 0.0, 1.0);
+        c = mix(c, purk * vec3(0.5, 0.7, 1.0), amt);
+      }
       c = aces(c);
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       c = mix(vec3(l), c, uSaturation);
@@ -345,6 +368,11 @@ export class PostFX {
   setUnderwater(amount: number, time: number): void {
     this.gradePass.uniforms.uUnderwater.value = amount;
     this.gradePass.uniforms.uTime.value = time;
+  }
+
+  /** Purkinje shift strength (0 day → ~0.055 night, Photon-scaled) */
+  setPurkinje(v: number): void {
+    this.gradePass.uniforms.uPurkinje.value = v;
   }
 
   setBloomEnabled(v: boolean): void {

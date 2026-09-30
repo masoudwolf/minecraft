@@ -87,8 +87,12 @@ const FRAG = /* glsl */ `
         float shade = cloudDensity(p + ld * lstep) * 0.6 + cloudDensity(p + ld * lstep * 2.2) * 0.4;
         float lightT = exp(-shade * 6.5);
         float powder = 1.0 - exp(-d * 1.4);
-        vec3 sunLight = uSunColor * (lightT * (0.5 + hg * 1.7) + powder * 0.15);
-        vec3 ambient = mix(vec3(0.04, 0.045, 0.08), vec3(0.30, 0.37, 0.47), uDay) * (1.0 + uCover * 0.3);
+        vec3 sunLight = uSunColor * (lightT * (0.5 + hg * 1.7) + powder * 0.15)
+          // v0.48: moonlit clouds drop to ~1/3 — at Photon's 9.4% moon the old
+          // unattenuated HG term painted midnight clouds day-gray (user: night
+          // must feel dangerous). Moon-side rims keep a subtle cold glow.
+          * mix(0.32, 1.0, uDay);
+        vec3 ambient = mix(vec3(0.016, 0.020, 0.042), vec3(0.30, 0.37, 0.47), uDay) * (1.0 + uCover * 0.3);
         vec3 lum = sunLight + ambient;
         float a = 1.0 - exp(-d * dt * 0.115);
         scatter += lum * a * transmittance;

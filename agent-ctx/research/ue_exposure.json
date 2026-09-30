@@ -1,0 +1,47 @@
+[
+  {
+    "url": "https://dev.epicgames.com",
+    "name": "Auto Exposure (Eye Adaptation) | Unreal Engine 4.27",
+    "snippet": "The minimum brightness for auto exposure adaptation , expressed in pixel luminance (cd/m2). Value is typically negative and should be less than or equal to Max ... Read more",
+    "host_name": "dev.epicgames.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://forums.unrealengine.com",
+    "name": "How do I disable Eye Adaptation/Auto Exposure? - Rendering",
+    "snippet": "Jun 26, 2014 — To turn this off, find the PostProcessVolume in your Scene Outliner. In the Details panel under Auto Exposure change the Min and Max Brightness ... Read more",
+    "host_name": "forums.unrealengine.com",
+    "rank": 1,
+    "date": "Jun 26, 2014",
+    "favicon": ""
+  },
+  {
+    "url": "https://realtimevfx.com",
+    "name": "Breaking Down EyeAdaptation and EyeAdaptationInverse",
+    "snippet": "Jan 23, 2025 — Use EyeAdaptationInverse or divide an Emissive value by EyeAdaptation , if you want a constant brightness on any level and any auto - exposure ... Read more",
+    "host_name": "realtimevfx.com",
+    "rank": 2,
+    "date": "Jan 23, 2025",
+    "favicon": ""
+  },
+  {
+    "url": "https://community.gamedev.tv",
+    "name": "Unreal 5.1.1 Exposure min and max brightness - Ask",
+    "snippet": "Apr 2, 2023 — It looks like the min and max brightness are not present anymore in this version. It's now called “ Min EV100” and. Auto Exposure can also be ...",
+    "host_name": "community.gamedev.tv",
+    "rank": 3,
+    "date": "Apr 2, 2023",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.worldofleveldesign.com",
+    "name": "UE5: Re-Create Standard Map Template Lighting and",
+    "snippet": "May 4, 2022 — UE5.1+ has introduced an update to how you would adjust Auto - Exposure . Instead of using Min / Max Brightness set to 1, now use Min / ... Read more",
+    "host_name": "www.worldofleveldesign.com",
+    "rank": 4,
+    "date": "May 4, 2022",
+    "favicon": ""
+  }
+]

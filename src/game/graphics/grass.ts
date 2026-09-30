@@ -108,6 +108,10 @@ const FRAG = /* glsl */ `
       torchL *= mix(0.32, 1.0, ts);
       torchL *= uTorchFlicker;
     }
+    // Photon torch-pool reshape — same curve as the voxel shader (world.ts) so
+    // tufts and terrain agree at the pool edge on the darker v0.48 night
+    float bl = clamp(torchL, 0.0, 1.0);
+    torchL = bl * bl * bl * bl * 0.72 + bl * bl * 0.22 + bl * 0.06;
     float light = clamp(max(torchL, sunL), 0.06, 1.0);
     float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
     vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);

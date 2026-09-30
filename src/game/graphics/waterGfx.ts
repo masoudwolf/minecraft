@@ -145,12 +145,19 @@ const FRAG = /* glsl */ `
     float l = pow(light, 1.15);
     vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
 
-    // ── depth-driven absorption (v0.47 — the Unreal-water core) ──
-    // Sandy shallows stay translucent and green-tinted; the color sinks into
-    // a rich deep teal as the floor drops away, exactly like BSL/SEUS.
-    float deepF = clamp(vDepth, 0.0, 1.0);
-    vec3 deepTint = mix(vec3(0.32, 0.55, 0.50), vec3(0.07, 0.30, 0.42), deepF);
-    vec3 baseCol = mix(tex.rgb, deepTint, mix(0.42, 0.88, deepF)) * vTint;
+    // ── Beer–Lambert per-channel absorption (v0.48, Photon source values) ──
+    // Real water optics: red light dies ~5× faster than blue (absorption per
+    // meter ≈ 0.40 R / 0.15 G / 0.08 B — Photon WATER_ABSORPTION_R/G/B).
+    // aDepth is normalized over a 9-block column → meters = aDepth·9, so the
+    // 1/e depth is ~2.5 blocks for red and ~12 for blue: sandy shallows read
+    // translucent, mid water turns green-teal, deep water goes rich blue —
+    // the same physical ordering Unreal water and SEUS render with.
+    float dm = vDepth * 9.0;
+    vec3 transmit = exp(-vec3(0.40, 0.15, 0.08) * dm);
+    float deepF = clamp(vDepth, 0.0, 1.0); // kept for shoreline band + alpha
+    vec3 floorCol = tex.rgb * vTint;
+    vec3 bodyCol = vec3(0.012, 0.16, 0.27) * (0.30 + 0.70 * l); // in-scatter follows light
+    vec3 baseCol = mix(bodyCol, floorCol, transmit);
 
     vec3 col = baseCol * vShade * l * shadowTint;
 
@@ -202,9 +209,10 @@ const FRAG = /* glsl */ `
     // reads as the thin water edge MC shaders paint over their depth fade
     float shore = smoothstep(0.085, 0.0, deepF);
     col += vec3(0.85, 0.94, 1.0) * shore * shore * 0.10 * max(uSunLevel, 0.25);
-    // translucent shallows → near-opaque depths (see the sand through the
-    // first blocks of water; deep water keeps its body)
-    float alpha = under ? 0.92 : mix(0.55, 0.96, deepF);
+    // translucent shallows → near-opaque depths, alpha now follows the real
+    // per-channel attenuation (average transmittance) instead of a raw ramp
+    float att = clamp((transmit.r + transmit.g + transmit.b) / 3.0, 0.0, 1.0);
+    float alpha = under ? 0.92 : mix(0.96, 0.55, att);
     alpha = mix(alpha, clamp(0.4 + fres, 0.0, 1.0), 0.35);
     gl_FragColor = vec4(col, alpha);
   }

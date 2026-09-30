@@ -677,6 +677,13 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         torchL *= mix(0.32, 1.0, ts);
         torchL *= uTorchFlicker; // candle flame flutter
       }
+      // ── Photon torch-pool reshape (blocklight_color.glsl falloff family) ──
+      // steep pow4 tail + quadratic fill: pools end ABRUPTLY a few blocks from
+      // the flame (bl=0.5 reads 0.13, bl=0.25 reads 0.03). Against the darker
+      // v0.48 night this gives the survival-horror contrast — 10:1 pool-to-
+      // dark, danger reads at the edge of the light, not beyond it.
+      float bl = clamp(torchL, 0.0, 1.0);
+      torchL = bl * bl * bl * bl * 0.72 + bl * bl * 0.22 + bl * 0.06;
       float light = max(torchL, sunL);
       light = clamp(light, 0.045, 1.0);
       float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);

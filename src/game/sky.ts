@@ -15,8 +15,9 @@ function mulberry32(seed: number): () => number {
 // day-night color palette
 const DAY_SKY = new THREE.Color(0x87ceeb);
 const DAY_HORIZON = new THREE.Color(0xc4e0f5);
-const NIGHT_SKY = new THREE.Color(0x0a0e1e);
-const NIGHT_HORIZON = new THREE.Color(0x101828);
+// v0.48: darker night sky (survival fear factor — user: night must feel DANGEROUS)
+const NIGHT_SKY = new THREE.Color(0x070b16);
+const NIGHT_HORIZON = new THREE.Color(0x0c1322);
 const SUNSET_SKY = new THREE.Color(0x35507a);
 const SUNSET_HORIZON = new THREE.Color(0xe8873a);
 
@@ -215,16 +216,24 @@ export class SkySystem {
     this.moon.lookAt(camPos);
 
     const sunHeight = Math.sin(angle);
-    // sunLevel: smooth transition; night floor 0.30 = moonlight (MC night sky
-    // light ≈ level 4/15). The old 0.14 floor made terrain AND mobs collapse
-    // to near-black at night (user report: "at night mobs and objects turn
-    // very black"). 0.30 keeps hostiles spawning (15×0.30 = 4.5 < 6 light
-    // threshold) while the night stays readable like vanilla moonlight.
+    // sunLevel: smooth transition; v0.48 night floor 0.09 = moon direct light.
+    // Tuned against the Photon shader's REAL source values (sun base 7.0 vs
+    // moon 0.66 → moon = 9.4% of sun) — the old 0.30 floor read as "dim day",
+    // killing survival fear (user: "night must be dark, few light sources,
+    // scary"). Entity/held-item rendering normalizes by the floor (engine /
+    // mobs.ts), torch pools are unaffected, and hostiles still spawn
+    // (15×0.09 = 1.35 < 6 light threshold — MORE spawns at night, like MC).
+    // The old "mobs turn black" complaint came from entity shading collapsing
+    // below visibility, not from the world being too dark — that fix now lives
+    // in the entity light-normalization (target = local / max(sunLevel, 0.10)).
     const dayAmount = THREE.MathUtils.clamp((sunHeight + 0.12) / 0.32, 0, 1);
-    this.sunLevel = 0.30 + 0.70 * dayAmount;
+    this.sunLevel = 0.09 + 0.91 * dayAmount;
 
     // star opacity + twinkle clock
-    this.starMat.uniforms.uNight.value = THREE.MathUtils.clamp(1 - dayAmount * 1.6, 0, 0.9);
+    // v0.48: cap lifted to 1.0 — stars now reach full brilliance on the darker
+    // night (real starlight is invisible at moon level, but shader packs keep
+    // them bright as the night's secondary light source / beauty anchor)
+    this.starMat.uniforms.uNight.value = THREE.MathUtils.clamp(1 - dayAmount * 1.6, 0, 1);
     this.starMat.uniforms.uTime.value = performance.now() / 1000;
     this.stars.position.copy(camPos);
     this.stars.rotation.y = dayFrac * Math.PI * 2;

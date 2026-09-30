@@ -1,0 +1,3989 @@
+{
+	"type": "gh",
+	"name": "sixthsurge/photon",
+	"version": "main",
+	"default": null,
+	"files": [
+		{
+			"type": "directory",
+			"name": ".github",
+			"files": [
+				{
+					"type": "directory",
+					"name": "ISSUE_TEMPLATE",
+					"files": [
+						{
+							"type": "file",
+							"name": "bug.yml",
+							"hash": "f0Fj60WbnzJj+MfKm/0ngEy+82zq7/gAGl28PFTVVGc=",
+							"size": 2186
+						},
+						{
+							"type": "file",
+							"name": "feature.yml",
+							"hash": "dw9XNqWapSBXjG0BIuImCZr2HM6m7kBxzItkLSN34+k=",
+							"size": 296
+						},
+						{
+							"type": "file",
+							"name": "question.yml",
+							"hash": "pgy8o3kbdsN76Nl863JFnLP9QJFJXRTeA+/fT1hNyYI=",
+							"size": 276
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "directory",
+			"name": "docs",
+			"files": [
+				{
+					"type": "directory",
+					"name": "images",
+					"files": [
+						{
+							"type": "file",
+							"name": "rainbow.png",
+							"hash": "TeKRU2CEao7P1/eseKAyVRtcbcTjiwM/E0rvj3ML5fE=",
+							"size": 5316024
+						}
+					]
+				},
+				{
+					"type": "file",
+					"name": "style_guide.md",
+					"hash": "SW/sWNmAmquDP4sqqbz2Zb1838XvCqSPl/Hi6OYPYc8=",
+					"size": 633
+				},
+				{
+					"type": "file",
+					"name": "voxy_fragment_parameters.txt",
+					"hash": "FxboeYicrUvFCMI81qxyS213EPwxBLaqpKF1wn/pgTo=",
+					"size": 202
+				}
+			]
+		},
+		{
+			"type": "directory",
+			"name": "scripts",
+			"files": [
+				{
+					"type": "file",
+					"name": "find_replace.py",
+					"hash": "Udl9TemPnKl2sjP+eWOkSMPKg82TOhhwFokT36NAgGc=",
+					"size": 784
+				},
+				{
+					"type": "file",
+					"name": "gen_include_guard.py",
+					"hash": "XCeyAOn1B+MfecM6RYlLO3iQWYXIOerBJz1XMK6RKYw=",
+					"size": 798
+				},
+				{
+					"type": "file",
+					"name": "gen_slider_values.py",
+					"hash": "1gaA3b8sR2gaHWVfChHxQc9ylPN/VP3uHfFUvs+8nnw=",
+					"size": 333
+				},
+				{
+					"type": "file",
+					"name": "rename_include.py",
+					"hash": "PNcWi9yRmpDe6Gkh86xhPn44cFL9PhwgKUt5m/WSU4Q=",
+					"size": 1063
+				}
+			]
+		},
+		{
+			"type": "directory",
+			"name": "shaders",
+			"files": [
+				{
+					"type": "directory",
+					"name": "image",
+					"files": [
+						{
+							"type": "directory",
+							"name": "atmosphere",
+							"files": [
+								{
+									"type": "file",
+									"name": "scattering.dat",
+									"hash": "1INO87q8E3b5I/OdSV1p3Z1wmfVv60AzWhhK+Ka5j8Y=",
+									"size": 393216
+								},
+								{
+									"type": "file",
+									"name": "scattering.dat.mcmeta",
+									"hash": "lbpswf5nRjdqaV2VJ05Pey3sMO1b38nBOqR6+A83o8Y=",
+									"size": 53
+								}
+							]
+						},
+						{
+							"type": "file",
+							"name": "galaxy.png",
+							"hash": "wLfg3uSFKs6pjtDn1qRuw0HCHnso8x7RCc9yB7n12WU=",
+							"size": 1926668
+						},
+						{
+							"type": "file",
+							"name": "galaxy.png.mcmeta",
+							"hash": "p02eDSGsZrMU32JUKhuHUMwWQS2mFICJ+wwAerbpaF0=",
+							"size": 54
+						},
+						{
+							"type": "file",
+							"name": "noise.png",
+							"hash": "mXKuLK0FzPAPvi2BIJJE4mXjwInoQIYvPPCFlEP3fDQ=",
+							"size": 758477
+						},
+						{
+							"type": "file",
+							"name": "noise.png.mcmeta",
+							"hash": "p02eDSGsZrMU32JUKhuHUMwWQS2mFICJ+wwAerbpaF0=",
+							"size": 54
+						},
+						{
+							"type": "file",
+							"name": "worley_bubbly.dat",
+							"hash": "OfLSfP4Nu7IiLMni98N/O5Ogx90lZ+b2aFtg3BbO/fk=",
+							"size": 262144
+						},
+						{
+							"type": "file",
+							"name": "worley_bubbly.dat.mcmeta",
+							"hash": "p02eDSGsZrMU32JUKhuHUMwWQS2mFICJ+wwAerbpaF0=",
+							"size": 54
+						},
+						{
+							"type": "file",
+							"name": "worley_swirley.dat",
+							"hash": "bhPwUwQoeuKO+89zpEkDod6ncQRheo5ZHkYXpLsbDY0=",
+							"size": 262144
+						},
+						{
+							"type": "file",
+							"name": "worley_swirley.dat.mcmeta",
+							"hash": "p02eDSGsZrMU32JUKhuHUMwWQS2mFICJ+wwAerbpaF0=",
+							"size": 54
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "include",
+					"files": [
+						{
+							"type": "directory",
+							"name": "fog",
+							"files": [
+								{
+									"type": "directory",
+									"name": "overworld",
+									"files": [
+										{
+											"type": "file",
+											"name": "analytic.glsl",
+											"hash": "35I/JttdfMmgFGD7qY2AEfk+csda5BNySI4RF8OTicM=",
+											"size": 3409
+										},
+										{
+											"type": "file",
+											"name": "constants.glsl",
+											"hash": "9jwSiNgP+qsL51UZXVQBdWA9A+1Uvc3OGxv4osnYOHI=",
+											"size": 583
+										},
+										{
+											"type": "file",
+											"name": "parameters.glsl",
+											"hash": "ypL+tRDwx5h93e1tWHw9H4GTglvlbSbLATULuCzYXvI=",
+											"size": 265
+										},
+										{
+											"type": "file",
+											"name": "raymarched.glsl",
+											"hash": "qSv0M8Y+IAW4R0D2/mapCtJ3oS3wbN+4e57Se+qH0uk=",
+											"size": 7497
+										}
+									]
+								},
+								{
+									"type": "file",
+									"name": "end_fog_vl.glsl",
+									"hash": "6pyIShMFlPG6DufJkpUViFuppYG/MBTVcs/f8maZXhI=",
+									"size": 6639
+								},
+								{
+									"type": "file",
+									"name": "lpv_fog.glsl",
+									"hash": "0Jw1bCuDdNHr1kL5V4BTM4DLVyVlk4uUpV7nGoZGSNA=",
+									"size": 5794
+								},
+								{
+									"type": "file",
+									"name": "simple_fog.glsl",
+									"hash": "RLpubrgjz1wA9kaYb5vxvDbvCwKdp118cN/ZWtGncKg=",
+									"size": 6873
+								},
+								{
+									"type": "file",
+									"name": "water_fog_vl.glsl",
+									"hash": "JmhUueq8r5MFkPgKVg47btHaXW4G6b7mRhczfwbfSjA=",
+									"size": 5415
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "lighting",
+							"files": [
+								{
+									"type": "directory",
+									"name": "ao",
+									"files": [
+										{
+											"type": "file",
+											"name": "gtao.glsl",
+											"hash": "LZ0qlrEW3He0yn1KocQnT0tP7kbQq4j2NoZ5RRyyTqE=",
+											"size": 5043
+										},
+										{
+											"type": "file",
+											"name": "ssao.glsl",
+											"hash": "T0K815e4ML6KjCeOniJprsYSyEQbU2Cp7krSdRUwk4M=",
+											"size": 2505
+										}
+									]
+								},
+								{
+									"type": "directory",
+									"name": "colors",
+									"files": [
+										{
+											"type": "file",
+											"name": "blocklight_color.glsl",
+											"hash": "px6Sl/FAEy6VO9bFp3Oh+D3ArZuSV2Y57ifY9dHVmFY=",
+											"size": 395
+										},
+										{
+											"type": "file",
+											"name": "end_color.glsl",
+											"hash": "7K0enTOTCV0uE5CneHDI//c+24O+x1NCn8K1Nuh/rbc=",
+											"size": 373
+										},
+										{
+											"type": "file",
+											"name": "light_color.glsl",
+											"hash": "ll+PLkv9sM6XD3gNmaR+15ef7g5z3c0OrEdP5Xj/JjI=",
+											"size": 2500
+										},
+										{
+											"type": "file",
+											"name": "nether_color.glsl",
+											"hash": "FkduUXzwC4p4ktYSHC7NbZmYP8Vvwh0W7Ykudc9qG1w=",
+											"size": 665
+										},
+										{
+											"type": "file",
+											"name": "weather_color.glsl",
+											"hash": "Fv8VshSKAaKgrZxXO+/F+/BtPCQWHkyalmnepmeM00Y=",
+											"size": 1039
+										}
+									]
+								},
+								{
+									"type": "directory",
+									"name": "lpv",
+									"files": [
+										{
+											"type": "file",
+											"name": "blocklight.glsl",
+											"hash": "0iJPZah68IHKclabR7CDhs37KsvI3GzZoI/394C6gE8=",
+											"size": 2225
+										},
+										{
+											"type": "file",
+											"name": "floodfill.glsl",
+											"hash": "jgk6m1cVnQqae88soR3+Fp3c5UMM1h4GP8GntfNEyUg=",
+											"size": 3411
+										},
+										{
+											"type": "file",
+											"name": "light_colors.glsl",
+											"hash": "nlxWyf+xzJOVxD8MJB1sPKX6SJg5hNgO7ux7tbtdJZA=",
+											"size": 3566
+										},
+										{
+											"type": "file",
+											"name": "voxelization.glsl",
+											"hash": "y2KvPVQ2LB0CcUP2a41i8BZSGBp2qcB8CTbzw0dPIQc=",
+											"size": 4464
+										}
+									]
+								},
+								{
+									"type": "directory",
+									"name": "shadows",
+									"files": [
+										{
+											"type": "file",
+											"name": "common.glsl",
+											"hash": "0OBxXi7eyviFLN6tnJjf2adW9o+0901OHXJ+oOeZ46Y=",
+											"size": 946
+										},
+										{
+											"type": "file",
+											"name": "distortion.glsl",
+											"hash": "fTONXP7lOICyBA3+PcYY71Pg7LXHAfTOkiHyWMVjuoo=",
+											"size": 1602
+										},
+										{
+											"type": "file",
+											"name": "pcss.glsl",
+											"hash": "E+qJNXcCaQ07UbyHbYaH+wIXL1wbrKevsi3tBhQ2AAo=",
+											"size": 9015
+										},
+										{
+											"type": "file",
+											"name": "ssrt.glsl",
+											"hash": "MT7J6J//eoDp59s/nAHjodUZeXIi/Y4XVu/Uf5XscE8=",
+											"size": 5600
+										}
+									]
+								},
+								{
+									"type": "file",
+									"name": "bsdf.glsl",
+									"hash": "rsYiGwNdyzN8NUjHCG+Fu+bAYcF6WY76J42HNChEkgY=",
+									"size": 2616
+								},
+								{
+									"type": "file",
+									"name": "cloud_shadows.glsl",
+									"hash": "YgcFwT6l4E51B5q8k8/db40DplN8zBGh7fU8CbBbMhA=",
+									"size": 4602
+								},
+								{
+									"type": "file",
+									"name": "diffuse_lighting.glsl",
+									"hash": "3sMX2FHfoi09RCde/QgX+64lKR9470Eild+POA/XXu0=",
+									"size": 10551
+								},
+								{
+									"type": "file",
+									"name": "directional_lightmaps.glsl",
+									"hash": "kNt9e9nfrXoitfv4Ny8oOlMrnywE7qy1skMdp2Txqa4=",
+									"size": 1418
+								},
+								{
+									"type": "file",
+									"name": "handheld_lighting.glsl",
+									"hash": "66qZZc8VUkZ0l/mWO0sWFO4r/drsW1yFC8VY+cu9LF0=",
+									"size": 1553
+								},
+								{
+									"type": "file",
+									"name": "specular_lighting.glsl",
+									"hash": "3VWoVuokHW0yu0Xc0fxumEJ/8DUoiw6b6Rq+BBjtkWc=",
+									"size": 13981
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "misc",
+							"files": [
+								{
+									"type": "file",
+									"name": "debug_weather.glsl",
+									"hash": "Lp9xoIHOE/4SsiVujiNIpiuoCtrhVFH0977Xzqj3dVs=",
+									"size": 6413
+								},
+								{
+									"type": "file",
+									"name": "distant_water.glsl",
+									"hash": "AZiKiox4OJqA9pOdBJ3O0cJs2DvgPR2sMGOQr0bqWiI=",
+									"size": 3659
+								},
+								{
+									"type": "file",
+									"name": "end_lighting_fix.glsl",
+									"hash": "dCnHST6KEhhNMt6pCiu/EigNMdsXDTeqV/8/Z7n9KkM=",
+									"size": 499
+								},
+								{
+									"type": "file",
+									"name": "lightning_flash.glsl",
+									"hash": "C2Rk73ClUWjSC/EVEh93a817THUhxXYHmLxY6uaAzkk=",
+									"size": 445
+								},
+								{
+									"type": "file",
+									"name": "lod_mod_support.glsl",
+									"hash": "kGCTkXMsiJM+c9SwHdW+lX0i8QvYSFCFssYMMqRSUjk=",
+									"size": 3865
+								},
+								{
+									"type": "file",
+									"name": "material_fix.glsl",
+									"hash": "cg6xSDPKpqBufI9F3aK5cppuvBOXVuCSXoShT4Ijhvw=",
+									"size": 1091
+								},
+								{
+									"type": "file",
+									"name": "material_masks.glsl",
+									"hash": "rFFFTexLj+PQWmuqMObPpQNlywtauU5OiuiuwO9u4y4=",
+									"size": 625
+								},
+								{
+									"type": "file",
+									"name": "purkinje_shift.glsl",
+									"hash": "pWT/PTUeqkjLkTfhrbGARDQfnb0pDUgab08zVa2UD3U=",
+									"size": 1398
+								},
+								{
+									"type": "file",
+									"name": "raytracer.glsl",
+									"hash": "/nNbSh+XH+Rd2GPYTOH/J7PvVANovGHw6wGjhUxZ3iA=",
+									"size": 2967
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "post_processing",
+							"files": [
+								{
+									"type": "directory",
+									"name": "aces",
+									"files": [
+										{
+											"type": "file",
+											"name": "aces.glsl",
+											"hash": "n6JEIgNR/edemzd0kYegqYjCZQF7rWbuCu8smZO4itQ=",
+											"size": 6048
+										},
+										{
+											"type": "file",
+											"name": "license.md",
+											"hash": "ZlCnBmrspFGfVQafXzJ1EKqQ0/GXeMi/NXag4g5MYzI=",
+											"size": 3182
+										},
+										{
+											"type": "file",
+											"name": "matrices.glsl",
+											"hash": "DHFRS2/l1PaZoYwE2KRDWmD86Zon6A/9En2bXuhiBi4=",
+											"size": 2333
+										},
+										{
+											"type": "file",
+											"name": "tonescales.glsl",
+											"hash": "ALwcfMdKL0NOfKjAMs2FOCYu1lIZLRSHYJTsb3Lsvko=",
+											"size": 6836
+										},
+										{
+											"type": "file",
+											"name": "utility.glsl",
+											"hash": "or4BIs5Id6Uwhy2lm5Pf7csfd+Lm1xOPABMuY/nN24I=",
+											"size": 2551
+										}
+									]
+								},
+								{
+									"type": "file",
+									"name": "tonemap_operators.glsl",
+									"hash": "0/PjN4H8Rt2aTy8YYQqH+3NXIW6c2cCEdkYQrkXkly8=",
+									"size": 3827
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "sky",
+							"files": [
+								{
+									"type": "directory",
+									"name": "clouds",
+									"files": [
+										{
+											"type": "file",
+											"name": "altocumulus.glsl",
+											"hash": "kEg5PHc2KxrzrLu+8NOJChGUMtdocMSLQbRovfPuBMA=",
+											"size": 12505
+										},
+										{
+											"type": "file",
+											"name": "cirrus.glsl",
+											"hash": "Q7VYTN7jZxc1R3Zf1M6fvFf7PVLnieaRoEF4COrONwU=",
+											"size": 9831
+										},
+										{
+											"type": "file",
+											"name": "common.glsl",
+											"hash": "54WnX7I5ifxco6cGob7GSzMPos4HCENFqHONg2U1jOQ=",
+											"size": 4492
+										},
+										{
+											"type": "file",
+											"name": "constants.glsl",
+											"hash": "+hdDStU7pumdzWPUC2i/n8Qj04U/yQIC+DnsodSCgPI=",
+											"size": 1263
+										},
+										{
+											"type": "file",
+											"name": "coverage_map.glsl",
+											"hash": "BZiNJem+Js+Lb59hqg5Ttd1L94c5XNqRh82Qy8uiumE=",
+											"size": 2578
+										},
+										{
+											"type": "file",
+											"name": "cumulus.glsl",
+											"hash": "sb3kcedFap3MvhFTogGT0eAtg1qZpk4taYdjp5tEblo=",
+											"size": 12064
+										},
+										{
+											"type": "file",
+											"name": "cumulus_congestus.glsl",
+											"hash": "u7PpdZodq+Z1A7f6G/ualSjNWiAhf8H440JRTbgLBJg=",
+											"size": 12582
+										},
+										{
+											"type": "file",
+											"name": "noctilucent.glsl",
+											"hash": "ZDmbElSiNFTeG5HAvMnNxQuFHdE0FIBF11Ky7h77XCg=",
+											"size": 2904
+										},
+										{
+											"type": "file",
+											"name": "parameters.glsl",
+											"hash": "Tm2SVU4uOBwjLY8i5qPxcgM8nWEjy9Navq5AL2TkEaY=",
+											"size": 799
+										},
+										{
+											"type": "file",
+											"name": "sampling.glsl",
+											"hash": "eD3TZR9EjFIiQQBPMToZkkYpUCHSP9H5VAe+whVnuKI=",
+											"size": 984
+										}
+									]
+								},
+								{
+									"type": "file",
+									"name": "atmosphere.glsl",
+									"hash": "UNfCmy0Fvx6oJqfKwjOqwCntfLlWrv8LZzZiv/2zxDI=",
+									"size": 18180
+								},
+								{
+									"type": "file",
+									"name": "aurora.glsl",
+									"hash": "BP5Q2kqAmReT2kIK55iVdCxdwgRdiC519pSbwo/nj9g=",
+									"size": 2852
+								},
+								{
+									"type": "file",
+									"name": "aurora_colors.glsl",
+									"hash": "JuFYwbao5LTqZPJxvbmla4uhg+wBRhNyW+P6XSQm6Fg=",
+									"size": 2607
+								},
+								{
+									"type": "file",
+									"name": "blocky_clouds.glsl",
+									"hash": "KLQgxj5DlEH/PhC5Ex+p0WhGCV0n1ZJ/D2h3Isrw15Q=",
+									"size": 10714
+								},
+								{
+									"type": "file",
+									"name": "clouds.glsl",
+									"hash": "JVLF5c31oC6BvE+M6ieLlUtv+fYm5ytPzY9+MpxFVH8=",
+									"size": 3042
+								},
+								{
+									"type": "file",
+									"name": "crepuscular_rays.glsl",
+									"hash": "nvc3ljwcVYYOE4FnYFbylHrAbo6RXgq/W6TRSrAwFSQ=",
+									"size": 4913
+								},
+								{
+									"type": "file",
+									"name": "projection.glsl",
+									"hash": "pPGk3tCHqhc2Fh2bMRShcE5HFWzc89Wvv0L9up05b0o=",
+									"size": 1874
+								},
+								{
+									"type": "file",
+									"name": "rainbow.glsl",
+									"hash": "OsuTIQCBeHfiTFA3yMivfo17otLq8bqhDeNGUGkgvKY=",
+									"size": 3237
+								},
+								{
+									"type": "file",
+									"name": "sky.glsl",
+									"hash": "jM7QTnLZTMrhHRHRwVaQWD0U7MS9QuHB0eOO923TA4w=",
+									"size": 10599
+								},
+								{
+									"type": "file",
+									"name": "stars.glsl",
+									"hash": "5Dcder3OvhTULFwTl8SxpG6HA/x4Vgl2aEPwywa/A74=",
+									"size": 2019
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "surface",
+							"files": [
+								{
+									"type": "file",
+									"name": "edge_highlight.glsl",
+									"hash": "CRtHTNZSZXJNj1rqqxxga/LI2DuLodya4cnsTJ4s7z8=",
+									"size": 3332
+								},
+								{
+									"type": "file",
+									"name": "material.glsl",
+									"hash": "p4AXDMtpdgfu2LknvB7CfyC3/OOzCUbPtCEQMDybzAs=",
+									"size": 32918
+								},
+								{
+									"type": "file",
+									"name": "parallax.glsl",
+									"hash": "suP0rk7sWUhflk5Z7BeOSAuWUPUMLhwfMNmdg0J4ca8=",
+									"size": 2742
+								},
+								{
+									"type": "file",
+									"name": "rain_puddles.glsl",
+									"hash": "WdcplDLT7UyOrFME70L7Os5hPxVHDhkXgX7eIT1sfNg=",
+									"size": 3191
+								},
+								{
+									"type": "file",
+									"name": "water_normal.glsl",
+									"hash": "/AJIXXIqvm35GuaIL1MKBkDFo1BbVbVU3ANm1TSKgPM=",
+									"size": 5748
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "utility",
+							"files": [
+								{
+									"type": "file",
+									"name": "bicubic.glsl",
+									"hash": "1ry1azw5yuiCbQSHtdqyMw0ah3IvRio/kgAhc95Ztp0=",
+									"size": 7407
+								},
+								{
+									"type": "file",
+									"name": "checkerboard.glsl",
+									"hash": "jataWFTfWKgWep+NQHkeblYRw7FlUkGDh3X8fINLyUM=",
+									"size": 1427
+								},
+								{
+									"type": "file",
+									"name": "color.glsl",
+									"hash": "fN4ULfz4/VgKR/XvOyoHeay+kBUQ1Sekw65upRZs/PQ=",
+									"size": 5450
+								},
+								{
+									"type": "file",
+									"name": "dithering.glsl",
+									"hash": "PnpDGLNEzObvme3zhkWMx5uQBMxGUbDXOHs3TefPEac=",
+									"size": 1200
+								},
+								{
+									"type": "file",
+									"name": "encoding.glsl",
+									"hash": "NxuUU7yRnCzVuUGHZ5qJnnp60+ypgnZf4nOQbOOJecc=",
+									"size": 3391
+								},
+								{
+									"type": "file",
+									"name": "fast_math.glsl",
+									"hash": "xwydrGhw0lWR4R4hHefjWoRwLxjuyoTBmIZfw5HKcT4=",
+									"size": 3302
+								},
+								{
+									"type": "file",
+									"name": "geometry.glsl",
+									"hash": "EVTrfNpVscJ7F1zDqGYx22+cXwV6Typ17z0lVfg/IBo=",
+									"size": 3128
+								},
+								{
+									"type": "file",
+									"name": "phase_functions.glsl",
+									"hash": "n96t7MButYGJeJQ4/ZOnftVqovMPQC2k0+NhQO8O0b0=",
+									"size": 2719
+								},
+								{
+									"type": "file",
+									"name": "random.glsl",
+									"hash": "sH0WLmB8bLC0m38PaL3dDX2uHFogCmONYssf33Yz+kw=",
+									"size": 4755
+								},
+								{
+									"type": "file",
+									"name": "rotation.glsl",
+									"hash": "nS/De2IBZe3mtYqOXqHZU1QZneKG+GoKA09cJy5oGIA=",
+									"size": 1825
+								},
+								{
+									"type": "file",
+									"name": "sampling.glsl",
+									"hash": "+MGQKd5Pm9hE98Qv3B4qoT49OrEiHS9AMXNCRGhGJJA=",
+									"size": 967
+								},
+								{
+									"type": "file",
+									"name": "slerp.glsl",
+									"hash": "qJ2nqQnNAcukWS0ncWeCebIdPc+iVUnHGHvFUS6T43A=",
+									"size": 546
+								},
+								{
+									"type": "file",
+									"name": "space_conversion.glsl",
+									"hash": "hJsEyQNWitARn4rxi2HsdTSB4b70rlrxoUL6FqrI5os=",
+									"size": 5424
+								},
+								{
+									"type": "file",
+									"name": "spherical_harmonics.glsl",
+									"hash": "gD6bWid0+5Jq+cIZXLbXE7dPwoJ5WM6V5EA1au9lFbE=",
+									"size": 2950
+								},
+								{
+									"type": "file",
+									"name": "spherical_harmonics_fallback.glsl",
+									"hash": "xUv7A1mFv/2R9nWJjqLX0qx2XaxB3WXFWw8j3CzR7PY=",
+									"size": 3214
+								},
+								{
+									"type": "file",
+									"name": "text_rendering.glsl",
+									"hash": "bvtaY8NgAxzk1BHd0wzQO1WOJS3kVxpjq30py4KnuPk=",
+									"size": 10712
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "vertex",
+							"files": [
+								{
+									"type": "file",
+									"name": "displacement.glsl",
+									"hash": "RsdQRJ33WoEXPtZ5XkZDhUlIc4H7Ge30GLamBeYn/kQ=",
+									"size": 5133
+								},
+								{
+									"type": "file",
+									"name": "utility.glsl",
+									"hash": "cMIDxBzi/w1lNB9J4cb3IxeY9bUtaYdszyHNotV35dU=",
+									"size": 1380
+								}
+							]
+						},
+						{
+							"type": "directory",
+							"name": "weather",
+							"files": [
+								{
+									"type": "file",
+									"name": "clouds.glsl",
+									"hash": "LRBBVjzJmpncklp47JwFIbbE4APQBVcpBU2btAN6Gmg=",
+									"size": 6843
+								},
+								{
+									"type": "file",
+									"name": "core.glsl",
+									"hash": "YWkqwXsDolMS0V/o+DmeLYPzuXhHO2OsUcg7eFrqS3w=",
+									"size": 2787
+								},
+								{
+									"type": "file",
+									"name": "fog.glsl",
+									"hash": "7MiDrkRLlssNpgZpYBm2I+gLO6hkKEKKavGyTYXSvSo=",
+									"size": 4159
+								},
+								{
+									"type": "file",
+									"name": "rainbow.glsl",
+									"hash": "IEcUtK5lpqYlgKT2aRIwIDSQvf3Ww6vaJVZCEG7e0Kc=",
+									"size": 298
+								}
+							]
+						},
+						{
+							"type": "file",
+							"name": "buffers.glsl",
+							"hash": "IDzQWyWt7JQrzlqzb9C3qXGaT3eQ4/5pg7WahkQST58=",
+							"size": 2966
+						},
+						{
+							"type": "file",
+							"name": "global.glsl",
+							"hash": "VWI1IndXqNzx4/3oiVYNcjBsfu/PKUSvW/M1ldbfG2Y=",
+							"size": 7084
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "lang",
+					"files": [
+						{
+							"type": "file",
+							"name": "en_US.lang",
+							"hash": "5H6bx2tBp6sBXo1wy+FAGTCpNnSshmgaA8uxrZ3FiQw=",
+							"size": 50816
+						},
+						{
+							"type": "file",
+							"name": "es_MX.lang",
+							"hash": "Fh9DfBpiUVPexa8xy9K23h8d67h7LToV/vJQIiOgVZI=",
+							"size": 48754
+						},
+						{
+							"type": "file",
+							"name": "et_EE.lang",
+							"hash": "N3uHADnDlnJTzTvvIcZSNDk1u1nV9DW2WnJaG/nuChw=",
+							"size": 45156
+						},
+						{
+							"type": "file",
+							"name": "it_IT.lang",
+							"hash": "uv0qoXeAfdcd0H0X9OGS2cyT9GlX/eAnMble1HldYkI=",
+							"size": 46419
+						},
+						{
+							"type": "file",
+							"name": "ko_KR.lang",
+							"hash": "M09WSiGHt07zegsmrEHmKIgM9HBa3W15OfO3w7eYWg0=",
+							"size": 49628
+						},
+						{
+							"type": "file",
+							"name": "nl_NL.lang",
+							"hash": "IjS+AxryILSoC8aW/vknyORcMv/ta7G9CXsJIpf6XGU=",
+							"size": 47521
+						},
+						{
+							"type": "file",
+							"name": "ru_RU.lang",
+							"hash": "JCGlcUymzytG9b98lWO1FbDoG0ETF6snEq3j8/kUuMg=",
+							"size": 64298
+						},
+						{
+							"type": "file",
+							"name": "zh_CN.lang",
+							"hash": "Wt3qsPmxwR8qGkQ49cEyykOm7qcLnEr/dmFtRqNPUmQ=",
+							"size": 44929
+						},
+						{
+							"type": "file",
+							"name": "zh_TW.lang",
+							"hash": "qXknZZkBqxFheRu4ISfjPUW/YiFRAb9PssmLykgLAts=",
+							"size": 40997
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "photonics",
+					"files": [
+						{
+							"type": "directory",
+							"name": "modifiers",
+							"files": [
+								{
+									"type": "file",
+									"name": "is_hand_modifier.glsl",
+									"hash": "1DtiL7dx38to1pgAJt3nQeTkfrfUOEfuomMtzVwUAd0=",
+									"size": 155
+								},
+								{
+									"type": "file",
+									"name": "light_modifier.glsl",
+									"hash": "Pihylt6gl+ubr3NpMxbd5lbq7t6tFlEg7WwzTlzEWX8=",
+									"size": 191
+								},
+								{
+									"type": "file",
+									"name": "restir_gi_modifier.glsl",
+									"hash": "h6MQSxc9A8APl6hPRuXz52iuNJYzSoEtSwe3kWIL9pk=",
+									"size": 183
+								}
+							]
+						},
+						{
+							"type": "file",
+							"name": "ph_samplers.glsl",
+							"hash": "aAYqZu/6f3gfCFYvcMfyVjT4ZIGNe01wwkc8IpZQun4=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "photonics.glsl",
+							"hash": "aAYqZu/6f3gfCFYvcMfyVjT4ZIGNe01wwkc8IpZQun4=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "shader_interface.glsl",
+							"hash": "WPwKHa+o0hN57/rFW75qLIohzKbTx/yUfqWv88mxnx8=",
+							"size": 2454
+						},
+						{
+							"type": "file",
+							"name": "write_indirect.glsl",
+							"hash": "Gzak6VBWCIgrJCdD3eHI0pauMRMU80PUV2bTAHzKVF0=",
+							"size": 173
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "program",
+					"files": [
+						{
+							"type": "directory",
+							"name": "lpv",
+							"files": [
+								{
+									"type": "file",
+									"name": "floodfill.csh",
+									"hash": "lGKweOLa3DVLZn8SwGX/Wz9K1DuHHzbYJpEwsBPPqWU=",
+									"size": 1423
+								},
+								{
+									"type": "file",
+									"name": "setup.csh",
+									"hash": "FJspQ2CRIW0nCPK/3MlRBv29zfHTakiR+WlHQCXXf9k=",
+									"size": 888
+								}
+							]
+						},
+						{
+							"type": "file",
+							"name": "c0_vl.fsh",
+							"hash": "sDHTnBz60GO4Zn1Jr9HrZ24oNeX0YQhl4emgaVX0Ry8=",
+							"size": 5891
+						},
+						{
+							"type": "file",
+							"name": "c0_vl.vsh",
+							"hash": "cA+1w/Dqk8foF7Lug+GkjxLLx2k7PBCKabhGr9cKgqI=",
+							"size": 1835
+						},
+						{
+							"type": "file",
+							"name": "c1_blend_layers.fsh",
+							"hash": "1buIoTnZoKvCC+y5UZxn3GGrktgsuOmqNiFKhkii9J4=",
+							"size": 13952
+						},
+						{
+							"type": "file",
+							"name": "c1_blend_layers.vsh",
+							"hash": "DS08N6X3vxlQki561cdf9VYLGfQ6x6HzLE4DfyeN12E=",
+							"size": 1816
+						},
+						{
+							"type": "file",
+							"name": "c2_dof.fsh",
+							"hash": "Ag0Y8jjqGMDLsplpT1rbIz1fJXePdj0esy9ybz/tKik=",
+							"size": 2669
+						},
+						{
+							"type": "file",
+							"name": "c2_dof.vsh",
+							"hash": "1LrKe8bqRINvTGTSiuQwuCmdc6JSgIyHUYwJCNzkJcs=",
+							"size": 455
+						},
+						{
+							"type": "file",
+							"name": "c3_taau_prep.fsh",
+							"hash": "6dajvplgIZaEeNDOLm/5NnP/w9xhE80olcNVo8JOjpo=",
+							"size": 2492
+						},
+						{
+							"type": "file",
+							"name": "c3_taau_prep.vsh",
+							"hash": "nMYUygJRTigICPfCtUVWQTSERk3pT4iB2ZxzQ0gNPK0=",
+							"size": 476
+						},
+						{
+							"type": "file",
+							"name": "c4_taa_exposure.fsh",
+							"hash": "VJoQV3giiJCGRMQArD48TSJzf9JoXy1ayfYtYhSx8Yg=",
+							"size": 12947
+						},
+						{
+							"type": "file",
+							"name": "c4_taa_exposure.vsh",
+							"hash": "vqPXpqi0BkzPN5ITzUSxLfdXxKtdx1VqD7Fi0yywBRE=",
+							"size": 5268
+						},
+						{
+							"type": "file",
+							"name": "c5_c10_bloom_downsample.fsh",
+							"hash": "P78lXBKHn+/9RH6qG7ZOhb49gKotlYqvYfW7d0KbIx0=",
+							"size": 3989
+						},
+						{
+							"type": "file",
+							"name": "c5_c10_bloom_downsample.vsh",
+							"hash": "YE8I8fSKRxgqqP2RjuBdWJgR56slFKQppe2gt7S9Qlo=",
+							"size": 856
+						},
+						{
+							"type": "file",
+							"name": "c11_bloom_merge_buffers.fsh",
+							"hash": "GH82Wm5SAzWUQF6+l0F9zdQm5UUPXDEzttv7/juG4ok=",
+							"size": 664
+						},
+						{
+							"type": "file",
+							"name": "c11_bloom_merge_buffers.vsh",
+							"hash": "Q2bfpxq+L6yolSt+2nC/QMF2l/PJxHGpoBe2UdMwuoM=",
+							"size": 444
+						},
+						{
+							"type": "file",
+							"name": "c12_bloom_gaussian_0.fsh",
+							"hash": "kYJuERpO35n8y1PSR7R/CwdtFKgupGR87SovlR8BjcE=",
+							"size": 1736
+						},
+						{
+							"type": "file",
+							"name": "c12_bloom_gaussian_0.vsh",
+							"hash": "CP7wU8Xg7g8OmWbdYFoaZSULNPVV06+xEw6YcwFmjN8=",
+							"size": 590
+						},
+						{
+							"type": "file",
+							"name": "c13_bloom_gaussian_1.fsh",
+							"hash": "sErLCW6xuHqWKL68oLLf4E4cn/wtvGR0ilNA0IAs8ks=",
+							"size": 2469
+						},
+						{
+							"type": "file",
+							"name": "c13_bloom_gaussian_1.vsh",
+							"hash": "QPx+/mt07xdHkB3qCs/EQtjE3Vai8dKjY82WUBZffWk=",
+							"size": 588
+						},
+						{
+							"type": "file",
+							"name": "c14_c18_bloom_upsample.fsh",
+							"hash": "OlTKW16dSpr2fo4cUt4ERYvulSvD0ziMmAERfJsWPYs=",
+							"size": 1482
+						},
+						{
+							"type": "file",
+							"name": "c14_c18_bloom_upsample.vsh",
+							"hash": "wjG9s4W4phBsZVMcHqWuha/62PIgLEINlL96vQijjcM=",
+							"size": 858
+						},
+						{
+							"type": "file",
+							"name": "c19_color_grading.fsh",
+							"hash": "f1bLlDOSyXZu122ehlXwtYTEvIXKynDsMksg1j8e/xM=",
+							"size": 5066
+						},
+						{
+							"type": "file",
+							"name": "c19_color_grading.vsh",
+							"hash": "1CDqnvvYcpGFNwFRStc5qaRllaGx78JPxl08/MFoKpQ=",
+							"size": 875
+						},
+						{
+							"type": "file",
+							"name": "c20_motion_blur.fsh",
+							"hash": "nKe55LbJpqyOMLGIZ6jJZ48hKfpqls2ghhTsX3FwE2M=",
+							"size": 2072
+						},
+						{
+							"type": "file",
+							"name": "c20_motion_blur.vsh",
+							"hash": "NlwseZ/FLjQzPG2+I7V5tJ1C4S20h1JnIUNuHKRjB8s=",
+							"size": 404
+						},
+						{
+							"type": "file",
+							"name": "c21_fxaa.fsh",
+							"hash": "dGLmJZTUmDwp4AHqOwxQDJmNNcl6tA6E2zBrs8nChHY=",
+							"size": 10072
+						},
+						{
+							"type": "file",
+							"name": "c21_fxaa.vsh",
+							"hash": "EuYk5n5p4zasdcmSMGll4xAJaf/qwFdi25bWA/YJh7g=",
+							"size": 469
+						},
+						{
+							"type": "file",
+							"name": "c22_copy_ao.fsh",
+							"hash": "YUeCTlXIKzHtemiCWhKlyeneIOUzYOjg93khvxxzREE=",
+							"size": 533
+						},
+						{
+							"type": "file",
+							"name": "c22_copy_ao.vsh",
+							"hash": "5T/FZaOiDgJI6TPAMLbGxl7bQ2HHVqKPPwos70ZIpHE=",
+							"size": 400
+						},
+						{
+							"type": "file",
+							"name": "d0_sky_map.fsh",
+							"hash": "AR5L18wtOAhQzE6HZ90U4rTwN9qalp92PkIZNrugIxk=",
+							"size": 3566
+						},
+						{
+							"type": "file",
+							"name": "d0_sky_map.vsh",
+							"hash": "NS5d27TSoMj7dMC3A0l6lRt5MNzXOe9hYar/aGYphrA=",
+							"size": 3715
+						},
+						{
+							"type": "file",
+							"name": "d1_clouds.fsh",
+							"hash": "CP72qeVeJvkCOdZ7x34qKUxUHEiipewl18yU0EALQ2A=",
+							"size": 6306
+						},
+						{
+							"type": "file",
+							"name": "d1_clouds.vsh",
+							"hash": "KgBTyrvdVwLwGRzON8lA3BoS4AMS+dmGaE41V+CwWJI=",
+							"size": 2864
+						},
+						{
+							"type": "file",
+							"name": "d2_clouds_upscaling.fsh",
+							"hash": "kNmvQxiKapqz8c0kb7RSNZdCk4SOT7NGGNtEFMLPly8=",
+							"size": 12623
+						},
+						{
+							"type": "file",
+							"name": "d2_clouds_upscaling.vsh",
+							"hash": "R+oyw1CAdvVJr8vb0juPXEmJsonsF8gGBmjUVwBps04=",
+							"size": 510
+						},
+						{
+							"type": "file",
+							"name": "d3_ao.fsh",
+							"hash": "isQ5lkvybV/GnrQHab0mnPpYnHiusyB2OVrTdUj2/KA=",
+							"size": 7014
+						},
+						{
+							"type": "file",
+							"name": "d3_ao.vsh",
+							"hash": "FGngRt5FOhPFUh+bJ44MT3C2nKKsv5vYMoDRZa0nnhw=",
+							"size": 403
+						},
+						{
+							"type": "file",
+							"name": "d4_deferred_shading.fsh",
+							"hash": "ZnC9lfNvCeur7PWaC2O9M3PM2rE+S5px28HayoweFuA=",
+							"size": 18990
+						},
+						{
+							"type": "file",
+							"name": "d4_deferred_shading.vsh",
+							"hash": "eH8DrXILhK9kL9R3Lirjl7bO0UJWUL5l+GDgpB3MjUA=",
+							"size": 3442
+						},
+						{
+							"type": "file",
+							"name": "d4a_generate_sky_sh.csh",
+							"hash": "pC3XRJQXVgkpwnE5OkP0DTcx12VzMhkMx0JDuFG1B/E=",
+							"size": 4381
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.fsh",
+							"hash": "eqif5UiCodOhaN5VQAkGQE4/5AY2CAAIV2AbTpRF1TY=",
+							"size": 2506
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.vsh",
+							"hash": "Z5S2D4KVnn3xnksNUsxcAIcZmx64wfFd5mcozc+CN9c=",
+							"size": 2638
+						},
+						{
+							"type": "file",
+							"name": "dh_water.fsh",
+							"hash": "LS+X5mWBXoqJej/CkrLcwTcMnY8cBwtadqrNdNPDxVA=",
+							"size": 7364
+						},
+						{
+							"type": "file",
+							"name": "dh_water.vsh",
+							"hash": "HqAA2GqE/1krwgUCA5HcZy0qzST9OI0yO6wuq+mKnwA=",
+							"size": 3105
+						},
+						{
+							"type": "file",
+							"name": "final.fsh",
+							"hash": "KWPINXiflAUWnIHy1obj2x1an6TuGts2oEqsFUlCfOA=",
+							"size": 7644
+						},
+						{
+							"type": "file",
+							"name": "final.vsh",
+							"hash": "v+lXYWlW43wFoRn3TJReiDzgBWXhvhrZ+dxY0ni/lGo=",
+							"size": 417
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_all_solid.fsh",
+							"hash": "n5+JQ2hve16EOQd6RD63mMSoh6Fq6nQfQCGn+M4BoLs=",
+							"size": 13865
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_all_solid.vsh",
+							"hash": "38aopzmhmSw0sdLSeJIc8ibYUsDOYYzYiFlui3LGMig=",
+							"size": 4497
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_all_translucent.fsh",
+							"hash": "OcMibs9QBUic92S9xlQGjuy1JS13j7VJDX9QYOxqF+4=",
+							"size": 19168
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_all_translucent.vsh",
+							"hash": "kuqYhe/v7oHxwKr3iQGC1Mkh9ZYUVeEP6ul/F7mI91U=",
+							"size": 5821
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.fsh",
+							"hash": "KmOxbH1TFfZ/bdJexgNipXlzqkDUnD6nnjaQh5cEFc4=",
+							"size": 1536
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.vsh",
+							"hash": "pgUmH5ZTL5q536ZR9BStGgZFgRr5sqaUBwkpEB6JVDE=",
+							"size": 1489
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.fsh",
+							"hash": "oBP5cX95XQ8DV39b+/rxaCugpMqUGo7NyUFgOqoTSSU=",
+							"size": 3142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.vsh",
+							"hash": "s/tuuaTUCrLJhO4PpfLUp4HkKBdZWLAYNOoRO1I3Oa8=",
+							"size": 2914
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.fsh",
+							"hash": "Hj4UPR+l1qmA/kLGDIXTx2iTVavFRVuJMem3tHUxn28=",
+							"size": 1503
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.vsh",
+							"hash": "cyiifdrw66EaqZ8YYRQgw/m8F+9qPVB+zH4+lYvhoJU=",
+							"size": 890
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.fsh",
+							"hash": "pIlQcdvc7nrtX5llorWux7WnZfi7UbmEeJm3GD0E1JY=",
+							"size": 2216
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.vsh",
+							"hash": "FQxIKXK0QT0zCLCAuu/j0RDiY82t1c7vC7N1jk4+xyw=",
+							"size": 1670
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.fsh",
+							"hash": "Dc5Brmi6imCOnKemIWXEEbhJrtg16WqI031ios1BpX4=",
+							"size": 1342
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.vsh",
+							"hash": "CCUuxNL+/7d7Sjg9Sj1L3n/yCuXrSIrhm0ZKthqzgik=",
+							"size": 1637
+						},
+						{
+							"type": "file",
+							"name": "p0_clouds_prep.fsh",
+							"hash": "fQcG9Rw6I9H8ky+4YtYYGXR+JZnS2gUrexFvz7ZY05U=",
+							"size": 2381
+						},
+						{
+							"type": "file",
+							"name": "p0_clouds_prep.vsh",
+							"hash": "xM7tTiKFqcdrQRFdI/qlTB2IxJdm0QLwQ85DzRkkA5I=",
+							"size": 2389
+						},
+						{
+							"type": "file",
+							"name": "shadow.fsh",
+							"hash": "78gCSqdE5GttObIxsgiyJR1WpgkhRemV1seiubx3IbY=",
+							"size": 5193
+						},
+						{
+							"type": "file",
+							"name": "shadow.vsh",
+							"hash": "XSMgO7yXeOmG0mfWjRMKxq2N3FNAA6bHzYujewtzokE=",
+							"size": 2638
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.fsh",
+							"hash": "qy0Z2FhftOrQ6p51kbDJ3LqBGKlOx79XAI8WSi0Ka50=",
+							"size": 1373
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.vsh",
+							"hash": "4BGPNnz1DgTN5hPDJ6ZJPvd54bqIRLvhHIN29tBXnog=",
+							"size": 894
+						},
+						{
+							"type": "file",
+							"name": "voxy.json",
+							"hash": "bo7WOp7qkTn6y60ZtHlq5rcmwXn0m+JvcU3hn03p1io=",
+							"size": 2235
+						},
+						{
+							"type": "file",
+							"name": "voxy_opaque.glsl",
+							"hash": "n6yBIcBvS95QEpWrA0pvuvHfVm2TCY6rG5LbqJm1I44=",
+							"size": 974
+						},
+						{
+							"type": "file",
+							"name": "voxy_translucent.glsl",
+							"hash": "YpssQqLjvAFlEb5sU1bMR/3OyOH1zjf3VNoqXPaP4D4=",
+							"size": 7342
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "world-1",
+					"files": [
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.fsh",
+							"hash": "LaHdIfqvdDJntE/ywrfxrgPtNzjrsnL/bQoZ+ORyIQs=",
+							"size": 220
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.vsh",
+							"hash": "KF1OJrf1mrHHe5KAmpW6QhfzoLoce2HR9FcdZn9BPZU=",
+							"size": 220
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.fsh",
+							"hash": "CZK+N5t/4FquFKI5srH21nQG8pH5HgMdkWmUPFRRcCo=",
+							"size": 163
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.vsh",
+							"hash": "oLidfbmsxgy1fRbM55OE143gOHKLni8yVIHDdYtQqWQ=",
+							"size": 163
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.fsh",
+							"hash": "e0cC11JbmmdQlCA1mkLKHgKz8jj6VAj/fcx8lKK65SI=",
+							"size": 161
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.vsh",
+							"hash": "gDhmIPAlEKhbEztl0SnIizFuuW2HvJIWuqEbAtisLZY=",
+							"size": 161
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.fsh",
+							"hash": "5gpbq+VIwNG2p4p+CahdWndbaKyNkibs8v6zyNzo00U=",
+							"size": 159
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.vsh",
+							"hash": "9vU6ilzGhjsWjNuVI8XhVcNtjaJj5nA1alL/q0Aee+c=",
+							"size": 159
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.fsh",
+							"hash": "g7BVVtQwyGreL/QwOzUzbBOjC7HYzX1P4O9/EZlol6g=",
+							"size": 191
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.vsh",
+							"hash": "t8c2/vTL/tlehWvmLM08fz7lAnBgrgA3flgnFqZ81o0=",
+							"size": 242
+						},
+						{
+							"type": "file",
+							"name": "composite.fsh",
+							"hash": "JvD6yyH9dkBreoasyN/ctUznoJwZqynlN7mTkIfMSCA=",
+							"size": 117
+						},
+						{
+							"type": "file",
+							"name": "composite.vsh",
+							"hash": "i23+qTaxMv8/L716Hos2EVOkIk1+/LV8Hm2S7LSXamo=",
+							"size": 117
+						},
+						{
+							"type": "file",
+							"name": "composite1.fsh",
+							"hash": "LHFxqGJMu6fyBqjKlprUEeGyOskhIVGPiPEeLApOQ+E=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "composite1.vsh",
+							"hash": "QW3+TrNaxM3mBvHiE4ktMMcBhCE2RN9XFIdze8T1wfQ=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "composite2.fsh",
+							"hash": "DuW0lnXJm2+dPnxs5FyK5UD0kGQEo8P9R5putSm/IzM=",
+							"size": 91
+						},
+						{
+							"type": "file",
+							"name": "composite2.vsh",
+							"hash": "4KBKwh2CGmbCxSQpE0kfLml9JGzsSzVKvlHDHuX1QGI=",
+							"size": 91
+						},
+						{
+							"type": "file",
+							"name": "composite3.fsh",
+							"hash": "4yEwkH4ATG5obeCnatCf9R13A332dM92CRCIcK1o05E=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite3.vsh",
+							"hash": "ctDEifWZPhnLl0k1Q9EQ5RmTi7s1//2HGnyNRiyubKM=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite4.fsh",
+							"hash": "DJ92LVemcxItXufMndCT8s2JuOI+9QltnXr68lziSow=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite4.vsh",
+							"hash": "rphtgeQs5kgNdgbFSClnpRO2Ea9mMUIgfTQ0Npm2z2Y=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite5.fsh",
+							"hash": "ZCUVPYyZzqma4z5QgM/yxzVwanT6u+ZEsvn3K+Kcgoo=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite5.vsh",
+							"hash": "itAEr6OX5ehyea8db5pfYJPZaEQqyvv3IoCbDY1VjNY=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite6.fsh",
+							"hash": "Y91DQ2LMn3F4T9FhIt3XcjZVsrsx13XzfHR3wRzUDPo=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite6.vsh",
+							"hash": "DHPyxVQVh9s4WRIoIOjgkRUTBcgS5hO/x4EKM/USHqU=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite7.fsh",
+							"hash": "4laEK9KYlclR/txrTcfYyMiBd66dYfLTWdK42MZXnSw=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite7.vsh",
+							"hash": "gfTbvHHk8g1+Ra1PKT3MQMTshUSRlkL/9VxVXKEXEl8=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite8.fsh",
+							"hash": "7RRipu24Y+i2YU7QneUjoNFa6TjRNIF6W6F4Lf2y+wY=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite8.vsh",
+							"hash": "h40LIz9zH6bFABZsuzL9Y6gswdBcnTbrrb4DTbaJTR0=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite9.fsh",
+							"hash": "+TmNFLtMvZsKig9xR6PN36v98npYvCkNLsIGKrjDgBs=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite9.vsh",
+							"hash": "A24SMHbwDnD2Fix7YOUeLjXDPA/sJsdoxpYET42IOdI=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite10.fsh",
+							"hash": "Vcw8Rcnf915uACR9DOTPl3lmf7lO2iFfdaF9Txm/vsw=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite10.vsh",
+							"hash": "3mI7ECJ54QKzMSHXQu1sNvKJaiu3iEFiVwHbCQln1Xs=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite11.fsh",
+							"hash": "ebHxMefjuf2HSwFAwGnYtcrLYem7Iitu6Xz55OSFt+8=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite11.vsh",
+							"hash": "Ansiz5Sg4eZNFJm4xi01ejNnOoylBV/oL5hziGIAqmA=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite12.fsh",
+							"hash": "x662BkzM0QITnTvev2kiGbrvwCU/ZM0+2vTbU1pfczg=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite12.vsh",
+							"hash": "zACAL1nNWY7SXPZ/EzCqhaBkERb2hhpp4YOlduySDhs=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite13.fsh",
+							"hash": "IM3IGe+SUgYNz/d2IEckfRS4NZBmhLRaEFNg9UltiEI=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite13.vsh",
+							"hash": "UVKrxuxNNcL5JL9XK0wEWCOGvELgtL+RTTaIig7Sljg=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite15.fsh",
+							"hash": "aWzk14zEFA7wL8HaU73Vi6Tj4f1UIAHZUShYAl9+YsU=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite15.vsh",
+							"hash": "CnSBrgaPRxUX4mKByyRpG3BvgLUH2YTlQNxCWI4ss14=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "composite16.fsh",
+							"hash": "HTy8IImr32th4+lFvdl2czS2vqDwRpT3Dy+XbFmH1uI=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite16.vsh",
+							"hash": "L/66isd4DV5jlhgLz6HmmDkkLqHhHKesVQWwT7F6vKI=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "composite17.fsh",
+							"hash": "kpeofhUWmN8bnxVf3IBmSXdA0c2jYBWHpPKMZPg8Ai4=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite17.vsh",
+							"hash": "RglowogSBZQ7CtoTrzcdZtWp56EG6wIQXCc2oZScwqY=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "composite18.fsh",
+							"hash": "/bcWrzXGtM6zWyBWO/bdtDsyacr9uRCDrFAyV9kEAQs=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "composite18.vsh",
+							"hash": "3XYyeRAVemBFM9H4IXAu0NIHYb3xJRkIz1VnHvLa/Q0=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "composite19.fsh",
+							"hash": "YxyffXvdKQY4lxyEUwD1vhGF7iJ5qgu//WsGkXlOlao=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite19.vsh",
+							"hash": "q4gXuLmBLrUCyjAnq+9pQq4AkdWRLOAYgqiDBL3i5g4=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite20.fsh",
+							"hash": "yhy4TKIX0f6yYSZCdz8X0R3ubaU81j/Tih/2XWPuPK4=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite20.vsh",
+							"hash": "LCMoyleSgZeE9PxJqc5wVgBQgFXEBUMD/Cm+tASJTrU=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite21.fsh",
+							"hash": "KwM4d6+hbMpuudK61uXWsbo+WnPOigfKVzrh5qH9GUA=",
+							"size": 93
+						},
+						{
+							"type": "file",
+							"name": "composite21.vsh",
+							"hash": "/E0mcHbrHP0vltqf1DQvwc9eJ5kx1PAY2fg9YybHfqs=",
+							"size": 93
+						},
+						{
+							"type": "file",
+							"name": "composite22.fsh",
+							"hash": "FIJ/XJtVG6/zI/S+Tt9kTu1VWv8cfhS+Xw/I8Bj+0cQ=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "composite22.vsh",
+							"hash": "cnomZQHUcfTvWEvgoAJPT+id2SDF7A+/VMntyR9q6cw=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "deferred.fsh",
+							"hash": "33Wt7jWxkI1ulhp23lEHPh7F+Uz1ZVQYwBu98GRAnk8=",
+							"size": 121
+						},
+						{
+							"type": "file",
+							"name": "deferred.vsh",
+							"hash": "gPx9t9VslebKIM7O/brOimg0qZK3yaoFy15B2fLUjp8=",
+							"size": 121
+						},
+						{
+							"type": "file",
+							"name": "deferred1.fsh",
+							"hash": "DnAcgg4CbLWQj7VB7ttpi5H7PDC0AV9DSxPTzLYZkqc=",
+							"size": 120
+						},
+						{
+							"type": "file",
+							"name": "deferred1.vsh",
+							"hash": "QssfO8z85OvsELgE0NqwQUnZUJOE+2Lg5ZMCX1bNhn0=",
+							"size": 120
+						},
+						{
+							"type": "file",
+							"name": "deferred2.fsh",
+							"hash": "4/zg3D9Allo2aedgg34DLN32j9MFMv5bozXosot+wYc=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "deferred2.vsh",
+							"hash": "l60MKSkqF0O6yc8gJ/rf3jtx7pRWT4tgXzUcFAmPXCA=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "deferred3.fsh",
+							"hash": "WJX0eL1a0q1F0sEiSDjeLLpv9D4IRTtU23/13DE3MNU=",
+							"size": 116
+						},
+						{
+							"type": "file",
+							"name": "deferred3.vsh",
+							"hash": "7X6PI78qC8jnnQBJWN/r8/VKqdAMuMUb+UqosvRdIRI=",
+							"size": 116
+						},
+						{
+							"type": "file",
+							"name": "deferred4.fsh",
+							"hash": "kaXFhdh1bRrQheH69tVBnpKfHgAzbaQ2pb93MjtsjFY=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "deferred4.vsh",
+							"hash": "wHZACkEKmArx9QXsb5v4Y1GBQQFKMCtVyRkhV3MRMJc=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.fsh",
+							"hash": "/aXL/PKHxbudXgJmic5dHVJzQdjd/69xEgpQ3KdqWMk=",
+							"size": 122
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.vsh",
+							"hash": "6dP6KaTodgcjiC6sYowWlMVF78N8fXpU+NNg0zrahxQ=",
+							"size": 122
+						},
+						{
+							"type": "file",
+							"name": "dh_water.fsh",
+							"hash": "nd9oWbOc9w44onFClcNjy5AzK1c4r2S0k1HZZpEWBiQ=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "dh_water.vsh",
+							"hash": "fgI3NYLwSpsRoiXqd9aVkPeDX/aqZOhePKFWKu0Hte8=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "final.fsh",
+							"hash": "SQpFw5g9xAeqrf7NhwJdJVKHKgn7NqMTBLDmZVQrNfU=",
+							"size": 112
+						},
+						{
+							"type": "file",
+							"name": "final.vsh",
+							"hash": "7qGCacNZDDHXIrmVdGFoEG3AY27urGmqE1x3Re1hjqU=",
+							"size": 112
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.fsh",
+							"hash": "mPOdEIazKJqsLQcF9m5r2LewUb8mMbS8xrQJ6AWbd10=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.vsh",
+							"hash": "HOCTccCKsKCm5OcbChoFCPTNDCPXQjwkDs+JdQnas5U=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.fsh",
+							"hash": "exjXrstyJ1B8SM+YHCoIAz+kGczO7NZcgdWEU3mI108=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.vsh",
+							"hash": "QkLvfQULF9n+/kBq/PUjH7ljiMnNJ1AqN1em+RSFl0w=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.fsh",
+							"hash": "cNoQzeGMeU6jFrpmEHpcGhZwY8Kdq+AWLzCSKx4362g=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.vsh",
+							"hash": "UGU4ubq4np9ccWOId3cQt21MZwXbp+ON2Y4vh6iMAJk=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.fsh",
+							"hash": "yIqwTHHihZMwYL+RTXgJ1ZWt5wfkXWGVpQYkewQjjho=",
+							"size": 134
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.vsh",
+							"hash": "+vMf4CxgPUfe08s1eclwI4tcUkAxkr5J17tEcl5ZRjs=",
+							"size": 134
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.fsh",
+							"hash": "O+L2z7Fj4HVbHSJirDFkAhZrQ3g0hEq9coVvD9YMgJM=",
+							"size": 152
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.vsh",
+							"hash": "mSAUJ/w0vCYJCQJxTH1/PA6bbbMa2YICKhjW/kFPp9k=",
+							"size": 152
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.fsh",
+							"hash": "bso4KZsR4fFMxlN8kkgxblqwCRViWtVRQB8UAL+0sb4=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.vsh",
+							"hash": "L8MXlSt9Gnoai/m+j0xorNKKvjsV4xEUdCp7OToK4mU=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.fsh",
+							"hash": "UHUkC3ubAqZWq1ar1rju3eKFygfGqikKPHq9m8dkZbY=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.vsh",
+							"hash": "jZ/cQ7pQNVMaKQbHIjkCqfk9CZw/lz02KMo7srUzF5c=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.fsh",
+							"hash": "Mao7RcxkYg1llUXSgDhq/DVHe9JczYitTUaf7GRLJrA=",
+							"size": 155
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.vsh",
+							"hash": "uU29dxka8PIVpiuWSIiMj54F0wpEclQYE3VdlkwCxyU=",
+							"size": 155
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.fsh",
+							"hash": "nWvIGbJM8/iCxGqyBlEziACdRQzxZB9BR5is208Eb34=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.vsh",
+							"hash": "U1g+/ixUkGbt63K4WP8RYmmsuxRxW7HGhQol0/iVI14=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.fsh",
+							"hash": "EtW6vXS86y6Dy8MHPwY42B2O6yxk9wjQ3hId642hwhM=",
+							"size": 145
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.vsh",
+							"hash": "LFCHSpZzPY5iPsLClIdXvCl15c68DgLFvrmFbpZGBto=",
+							"size": 145
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.fsh",
+							"hash": "llNX1dFa8Auanl6nVWY+SZjDBPcYjZ9GnzN1xhMK0Bk=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.vsh",
+							"hash": "NX++xwEvabBOMHUVUEBaEQWglU4SYiM1KZJpa46mNbI=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.fsh",
+							"hash": "pYW4AV0oBxdtWWEQltNehob1hllVhx9NnUvzQ8EowdM=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.vsh",
+							"hash": "bimS1Hf7PSyLtdlcz3w3P90qAXYSN3IcLWKkK62pKcg=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.fsh",
+							"hash": "beU8PjGtaqTwMb61HEVS7CxrLkib6x+HjbuvjMXAuNk=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.vsh",
+							"hash": "AMfWtppGEI6vfECbcGa1ikPj4HowIDjfyb6OWIO67u0=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.fsh",
+							"hash": "RDCp9yILcyRMLKUTvuayeRVOK/Y+INrg0sUMfUIr4VM=",
+							"size": 156
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.vsh",
+							"hash": "Ok6xIoe6zHs1iSiAcHfaBn3Nm92mG64qa8PnHrLX7X8=",
+							"size": 156
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.fsh",
+							"hash": "L8oq2Ontwg78QdeXSpKDJoLEz1UI7OkL1Z+1X9vTZ20=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.vsh",
+							"hash": "XeQSI2l0jsPh/zee3ZpQ0F4YTmU+uXZdMFJzh3hmwEw=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.fsh",
+							"hash": "H1+D2nlMbvOAY2YP62lUBF2bE6Kom15cuoYKeaOxgQA=",
+							"size": 286
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.vsh",
+							"hash": "lp8NLl5ENW9E/5A87vMErWjEba2ojFinCaFEF18bFac=",
+							"size": 286
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.fsh",
+							"hash": "9BFPClwzWUByie12ade5HAS1/PN/w2QisWz3PfIwixc=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.vsh",
+							"hash": "tSh/It3rLp8xWyrDhfca39BpuLsZ0XqsmpEW1MqrcO8=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.fsh",
+							"hash": "Cbadxbk0rUdVFrOkptJySkhC93T9c4QUJ0QGBaaZ934=",
+							"size": 175
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.vsh",
+							"hash": "7HZEJ3ekgV6KIb/OHBCaOEcilFL/JlRAMKkTidD5AKI=",
+							"size": 175
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.fsh",
+							"hash": "PCW7tc7zJwV5PwhKka0bkKFtbWeTbN+GTbAJWGXKYS4=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.vsh",
+							"hash": "HM56V+5m1GgKmWwung57SCN5upDnuCn4CSwc21RuYFQ=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.fsh",
+							"hash": "zA/p3vtA9vQ85MX0o98revMEjMQNcZ3WzqGhIBx62Vg=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.vsh",
+							"hash": "iQWumIarqkxd01OQaXuQcJ+P3E2x/qX3IFuSxqS+7sY=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.fsh",
+							"hash": "GuaV73UszV7zmuk7AeKdLhLz9k4zKsA10I6aGIOHa9k=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.vsh",
+							"hash": "86k7q+7utmpDlCGUMas7ofwEGEY/c1xs78z7G/HGKcs=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.fsh",
+							"hash": "a9vEfyhno1Lt5ygHwX29LrUlxPeUWNa3VwsLsPsN8mQ=",
+							"size": 125
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.vsh",
+							"hash": "pHou0eeWQ8ydsDPw7nqTbtFecaFGTsQaDgfW6CyGoVc=",
+							"size": 125
+						},
+						{
+							"type": "file",
+							"name": "setup.csh",
+							"hash": "NesNmh9VFlkVCIP+ftOG9i8HNC5gVxQstk6PlK3JG1g=",
+							"size": 90
+						},
+						{
+							"type": "file",
+							"name": "shadow.fsh",
+							"hash": "OoxxvWy+nKTkSpXZaD3tbA4mVk8xJlnK8DpGves0/+0=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "shadow.vsh",
+							"hash": "01fnhED44UWPyYfBYULrBIEZd5V0HEJCbB626lmrKoE=",
+							"size": 197
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.fsh",
+							"hash": "LGmEnH5nqKI29a9Hh4zAk9u7rEKHd/1G/r+IC2m8868=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.vsh",
+							"hash": "wgMukL0BVLQva7o/o+/k0qtUKw9aQvv8GELnypUhn88=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.fsh",
+							"hash": "ZgzYg+b2F684xyHlHeH6AvS+pfK26e/PlKIyjp4+Sto=",
+							"size": 144
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.vsh",
+							"hash": "tIc3gI2lu9ulyr267YssM7F5LSceUn1sbcth61N0/w8=",
+							"size": 195
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.fsh",
+							"hash": "oH4iJB12ZJq59/YwCW13xk2pa8bS75ssY3Vgm6AZkEw=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.vsh",
+							"hash": "BPO0BEsJeW6bS5KxsDAH8CuxQv0zXVi5I7kJXqBNaKQ=",
+							"size": 197
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.fsh",
+							"hash": "lo55Nqcq1/9BRlNuRXiRK15qSKcz73qpQmk8NK8GHc0=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.vsh",
+							"hash": "hMRII/MKaRjR8WDNAZS3TaNpSf6XOmvwUDwKMdIJjlk=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.fsh",
+							"hash": "v8NjCaqYhMrYVtbaWXSaQAEXY4VcDzXYk04hj7yIaXM=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.vsh",
+							"hash": "k/IY5YIgwFVrcJtNcECjiUFqPEGUgdjOthC5JkNY14o=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.fsh",
+							"hash": "w65nm5PXdP+1/lKsTEFH1n8HAdFZkw+mbuRoZFFw3Es=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.vsh",
+							"hash": "/kC+EDiESa0KLgjSG0BoYVCbePkTKyDQdyj4YjDYcXk=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "shadowcomp.csh",
+							"hash": "08cj4u0cBSOah6PxtEhNvD3TT3eQmy1dSWXu7JyPZjQ=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "voxy.json",
+							"hash": "Z8965sg3s8q5U7YKoCimQVig9QxCOgersMwJ1wSkahY=",
+							"size": 30
+						},
+						{
+							"type": "file",
+							"name": "voxy_opaque.glsl",
+							"hash": "HilzXSbM4e6AGUNHwXV+eU01RrUjyvfoCKEvZA2TiU0=",
+							"size": 58
+						},
+						{
+							"type": "file",
+							"name": "voxy_translucent.glsl",
+							"hash": "vcuYGNJogJBlQaLfJEG32Jy9hB/gxREBh7PCAA/a/Zo=",
+							"size": 63
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "world0",
+					"files": [
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.fsh",
+							"hash": "2jSXZ6LLQXDVzQjFU1s9/Pols49F27P0v35tlKoPAaA=",
+							"size": 223
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.vsh",
+							"hash": "hUcbtxafWhbngHK+rPBS9Izj1SSFTOjgA4lWCoWqkiE=",
+							"size": 223
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.fsh",
+							"hash": "9na1RzyY7a1R5UPrZxDPLuJuaem5mscuUeMDVv2TUTo=",
+							"size": 166
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.vsh",
+							"hash": "0SRLgXscAOMJp9U5sKeHDsvPtT5l6vCL6Fkw/2PYofI=",
+							"size": 166
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.fsh",
+							"hash": "S2VhIcyy/55iRGRqBmJU10sOJUmLayGfKe7i/PVQ8YQ=",
+							"size": 164
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.vsh",
+							"hash": "nfa9oCGBYVOlavcSNTnQJp3fdQmg2e/32+GlWSqiq5c=",
+							"size": 164
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.fsh",
+							"hash": "t9CVocx0OWUn7MMqgzTYOw2FV/7JD1NDS6x2tH6wmiQ=",
+							"size": 162
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.vsh",
+							"hash": "at5dPGCeWjP6bXYi+kgZXJQbzbyw3/infIlJm1QkyJM=",
+							"size": 162
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.fsh",
+							"hash": "CfHhMSBUdD4nbqE4shK+FithziAX1H82Sl9OouWJtdc=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.vsh",
+							"hash": "ALYM0RfKH6DHSM8b0lvsAv0DU0LV4HkZjRk98tA5iFc=",
+							"size": 245
+						},
+						{
+							"type": "file",
+							"name": "composite.fsh",
+							"hash": "y42kMv6mzTvxcO5ImdX2jo/+J035KDU1STZxOl1sVdg=",
+							"size": 120
+						},
+						{
+							"type": "file",
+							"name": "composite.vsh",
+							"hash": "Fjxur6pRTfd4VNOA9CGFDpLQg2SjqGIFy9MB57J/3Kg=",
+							"size": 120
+						},
+						{
+							"type": "file",
+							"name": "composite1.fsh",
+							"hash": "KUPIl+rB5feI86SOMlmceMUiOuLBH0D9FjaqmuatmBU=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "composite1.vsh",
+							"hash": "20g0Ac+Kmno9S0aPBudcB/8Qh+69V4KLbi6SOD3lCKQ=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "composite2.fsh",
+							"hash": "e3KQxUsBthYSpjuZ7cihXaXZYWynNKFYdPNlBLigkow=",
+							"size": 94
+						},
+						{
+							"type": "file",
+							"name": "composite2.vsh",
+							"hash": "UGyL5JQse+va/TcWxCEwhzpbZjkwTh8GkEruhLyZxa4=",
+							"size": 94
+						},
+						{
+							"type": "file",
+							"name": "composite3.fsh",
+							"hash": "Tcdw8A1bXqI5xGUYHuySr2nsraQmK6QMqUVqklfwUMI=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite3.vsh",
+							"hash": "j/A5FskhUhL/YpwLeszX4/2y0N/HUIsmTlet3Y9knTw=",
+							"size": 100
+						},
+						{
+							"type": "file",
+							"name": "composite4.fsh",
+							"hash": "qA7Aa4D412olmeNzShTudtHaCOj+UcIWsOMxemATtFo=",
+							"size": 103
+						},
+						{
+							"type": "file",
+							"name": "composite4.vsh",
+							"hash": "eVvek4X5pCpDxhjRBLlKzViRxqa8QVYWmcER0C676UU=",
+							"size": 103
+						},
+						{
+							"type": "file",
+							"name": "composite5.fsh",
+							"hash": "r5wTW5AADxFQXl0V9DLIkf//kFMtIjdkx40K9otC1Qc=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite5.vsh",
+							"hash": "6XB+VIvaBThHuoJ/KjVjVp/bbx/BTXpm0c+Mjgz8QSA=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite6.fsh",
+							"hash": "yAl4JPwgB3Z/KGXZ4a7VdolAMLveUZKc3/pDl9DR3Qs=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite6.vsh",
+							"hash": "P7TX/tI2Dr7l1lNEPmCrAKloZHmhQHPE/f4O5KyJQX0=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite7.fsh",
+							"hash": "5cb1igB6FvD+hheVGTC3bBNZ4QWQtzQX/2WCMqCGv3Y=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite7.vsh",
+							"hash": "sX1qStZiPeoKHnTOCcFCxoCE8CQGNHo55uH0CMZ4kZw=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite8.fsh",
+							"hash": "ES0/IZr22/I2iamD06khB4044YsPkiKZbKTkGdbmfgA=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite8.vsh",
+							"hash": "s+5+BJwcWVatG1ghGgk4mCbmPL3zBdg5Jox7WxIAKxQ=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite9.fsh",
+							"hash": "GlpD6JGza9Kqp6MMKK/KzNv75+kV6x6AooSjpxIWfYE=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite9.vsh",
+							"hash": "ovzR7K3HtIuWt/T8xAfCrVX6z+xiHzcp5FF0fN0MNTI=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite10.fsh",
+							"hash": "Ad9XMFtFk7aCDGMeKEoiRs07TXDjLBhRxq4hx8Jky10=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite10.vsh",
+							"hash": "B9ntT5ZykD5DpD4oWz2H7CX9s/5+ZtLFDTp8yaqAAIk=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite11.fsh",
+							"hash": "aBCA3vXBf/UOaDXwJX8TEahz3lZdUAmGukQF7awNinw=",
+							"size": 111
+						},
+						{
+							"type": "file",
+							"name": "composite11.vsh",
+							"hash": "JDuqiY/QwPr06u6PmRZG22NW7/NOj7WyNyupzxYNOv0=",
+							"size": 111
+						},
+						{
+							"type": "file",
+							"name": "composite12.fsh",
+							"hash": "Atwn9Vco7yxCTgP8G/cyApsSLAeEp3eMptjTHqSazU8=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite12.vsh",
+							"hash": "igK00pP39VHkE9aFuf7E5PRGYfmooQvyUJfL6RzbioA=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite13.fsh",
+							"hash": "ube7BIOUiImAs5uXIk6sHN6ychpdY8FGxF8UAU2x/Cg=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite13.vsh",
+							"hash": "13zdRMgDSLOzUjCGLmIZ7HiBZJaX51NVxIKenePpaA4=",
+							"size": 108
+						},
+						{
+							"type": "file",
+							"name": "composite14.fsh",
+							"hash": "23FxXsD2PTCohrCMRvzzwf/bYkiJ8QlwnGVuNx7EXuk=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite14.vsh",
+							"hash": "Dcp93dy4FhNEfXmkbuRdc9JiMhomh5nPDhiGFpc0jhw=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "composite15.fsh",
+							"hash": "77IDn43NbAbYC0Hpqv8KYUXIPcMvOwYypetoXf4bVYU=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite15.vsh",
+							"hash": "PB1SiEifm5BDCNK1VLmZHuZDTf0T2ENJ7AS5fXIAx5I=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "composite16.fsh",
+							"hash": "+Lyjx3G8/3vMsAns12I0mwpW/ZlWYrtNmq0tZpC8Y5s=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite16.vsh",
+							"hash": "2NsZANUHYMEjd2eU3Fnkcqvg89KnIvy+FWUh+qcs8uw=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "composite17.fsh",
+							"hash": "l+UFllQCBBKRYBN8jALDWsP53b/SOG4iyxPg5yiXSLo=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite17.vsh",
+							"hash": "K/pZiCCu81+k4zrMJ3mPD4SMKxLy/mWhpl8HIa9D40s=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "composite18.fsh",
+							"hash": "HTcjwHncq+D8PvBpF0bmJbR/9hSu3dubmb9c7mNq8Pc=",
+							"size": 138
+						},
+						{
+							"type": "file",
+							"name": "composite18.vsh",
+							"hash": "F1fKzLqKC6Iu/Gk3rfK2gDZWz3P0hGzdObcwtjXajJA=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "composite19.fsh",
+							"hash": "rBzio6oKsJ0NoG5QUjXFq8Cld0GfkkADugn5BBPRqCc=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite19.vsh",
+							"hash": "9gAOGDR/qSnMFZ/AVgg3zBw0r6HBZv1nDdKhMS3qR88=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite20.fsh",
+							"hash": "zWD17PnQd42isD3FULQQeq+kmsCNLFDVZmjq485bt1I=",
+							"size": 103
+						},
+						{
+							"type": "file",
+							"name": "composite20.vsh",
+							"hash": "wtLgI0FAttIrXSyuaii5AqVGE7EyGRLFayByQC6X4H0=",
+							"size": 103
+						},
+						{
+							"type": "file",
+							"name": "composite21.fsh",
+							"hash": "8Ara4mavX3I7TQ5u0ETNFk+wyVCdbLZTH7Ka4ROaafE=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "composite21.vsh",
+							"hash": "GiHYk5LeMhRL9FToAyOnJlPiBaZWWUhgftMFz9jrH+4=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "composite22.fsh",
+							"hash": "63EcOIrnEbLAaZwKVwSimYld+zrw0619GHwsEzCPegQ=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "composite22.vsh",
+							"hash": "YEJf4hQ6jn1Zep5NLS5wP55ZkRR8OW8FOucPOpc7ew0=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "deferred.fsh",
+							"hash": "3BJcM2xfYpNGhONVEt6/T2zsLBue5IWf0uYh6vA1E1I=",
+							"size": 124
+						},
+						{
+							"type": "file",
+							"name": "deferred.vsh",
+							"hash": "Iq65N4J9dcVPetSrftcoued5KOH1IZ/Z5JTdZ+Pfan0=",
+							"size": 124
+						},
+						{
+							"type": "file",
+							"name": "deferred1.fsh",
+							"hash": "I/yOHEo7rZvxG2i51z/7cduSK58EOMWZHwSOUWNe3ug=",
+							"size": 123
+						},
+						{
+							"type": "file",
+							"name": "deferred1.vsh",
+							"hash": "XLIhaks+47LdyzveS2TbDTP5QffJ8hNM3DzkRK2VKK8=",
+							"size": 123
+						},
+						{
+							"type": "file",
+							"name": "deferred2.fsh",
+							"hash": "dzr8Z6PV96DSeKVfiq7rI30Po+1i4muNIRkqSFoNh0g=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "deferred2.vsh",
+							"hash": "hGQcJM9RSQUzMtYXPvQ63Ljw5ZuwHeYYJY4A+N5ax9Y=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "deferred3.fsh",
+							"hash": "Y44fiABU694CdbEE6+10JZHuBzXH6IvpoDkh7QraxCs=",
+							"size": 119
+						},
+						{
+							"type": "file",
+							"name": "deferred3.vsh",
+							"hash": "+5HpWWpBMKIW9iaz0v8nuInIlGIfawCrUsblap2ZARU=",
+							"size": 119
+						},
+						{
+							"type": "file",
+							"name": "deferred4.fsh",
+							"hash": "firV4CVZt0C2YffV/dkv4y5U9A7YSrD32tDmJiNuW5U=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "deferred4.vsh",
+							"hash": "cOGnpGV3Zc/yTlCqkr5K5IHqSZTpYUFs9/5DSsBmAYc=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "deferred4_a.csh",
+							"hash": "R1PifZ1fKyUML9ptZ9dVyEv5RE/iRMQrG/uPX7C6YtU=",
+							"size": 95
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.fsh",
+							"hash": "WTacBUhwNejMsU8xJvhlyIOlYW2uMNT5awlrQmn/Je4=",
+							"size": 125
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.vsh",
+							"hash": "ZZtWhQtVFsUNhKCM7fF1vBPk1/wz2r6lFZON95DBY/Y=",
+							"size": 125
+						},
+						{
+							"type": "file",
+							"name": "dh_water.fsh",
+							"hash": "W3+D0LITaowdDlkSUzpDzPkvysaj3+/dxEoOv86sY7I=",
+							"size": 121
+						},
+						{
+							"type": "file",
+							"name": "dh_water.vsh",
+							"hash": "cIbjYhhXdEPbdPKRXglD62gllZjzt9xBV/ib+XvDX8E=",
+							"size": 121
+						},
+						{
+							"type": "file",
+							"name": "final.fsh",
+							"hash": "9C1vi8ZdRHKrEVp6luDe0tkzYXMbpu+vyEZ1rGJo1PI=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "final.vsh",
+							"hash": "nVRDX3keh7uz866vjjPPNf+0kiF3H/wpEBtPPHYNEr8=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.fsh",
+							"hash": "hdb7SuZKt3k0Qjc402b3y5dBWoi4nkI+kLiYKEmaFiI=",
+							"size": 145
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.vsh",
+							"hash": "yPnJJlSiREd1KptKuWTRVNz2OA9x4pGRyAqZ2XBZ3mc=",
+							"size": 145
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.fsh",
+							"hash": "Thajgfs3z8SkFl/kA04umNPbMLLEZeTJ54othmUD1hw=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.vsh",
+							"hash": "JaYxgPv5n4f4TrVXHTKLrdpXc0khyrjqBmW9oOSf6u8=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.fsh",
+							"hash": "OWoTlhPoadW6ih0AaQpw9A73ZNq1katlbtCw/g6JtFM=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.vsh",
+							"hash": "hkbBEBogAJPFgrM+e9MpfsMQKNK+dUw1mJagcSiKdRM=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.fsh",
+							"hash": "IgYkXvgll2qIiLrKNRwg0gVzG9Z30a5J57Y4rylqyNQ=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.vsh",
+							"hash": "AOrBrhaxaIE/SI7vU0k+6eQkpJmzicwVQqaBZ+yBf68=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.fsh",
+							"hash": "5P/FLsmi3icYWpxhFmwTjGknR3hsOPJ2475vPYVzx3k=",
+							"size": 155
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.vsh",
+							"hash": "fxpGDyUzdMXWf0wb792t+H524/UGd4AcfdDqf2ODk+c=",
+							"size": 155
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.fsh",
+							"hash": "Q9IVE+3X1I1p7O4ZaC+URXp595TN0VdGuL1OrnVCHXM=",
+							"size": 147
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.vsh",
+							"hash": "sj4fWT4j7cqDG4/ZLiaZrBOfVMvaIXpRQwgvY8Y79TU=",
+							"size": 147
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.fsh",
+							"hash": "Apuy+p/6FyP9AoCdq5oV4zDoc6REUYxUU9ypk34qWwo=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.vsh",
+							"hash": "JsZ1fFV23zo7LNkXHRqI0oj7ABbEMyaT+NjU1qN2l98=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.fsh",
+							"hash": "nuqh+tJK+Cpa4pEoF82ViARxpmLVjSjc9wMkso8dAgQ=",
+							"size": 158
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.vsh",
+							"hash": "Bq6mAX/H2+NyDiIApg5Kgnc/N4SfEWC2fPWVv198o/8=",
+							"size": 158
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.fsh",
+							"hash": "lYWlysfpx28Ft4Nf2KkYxMmFBmzPf3nq7sRPKzPW21w=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.vsh",
+							"hash": "ypAveedcU+fgL615lmzSUPnTwIZ0k6DNGOpB58gLqvI=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.fsh",
+							"hash": "KplXh/sxMEworm6qFYRvLhIlkG4f+2P/HtbmZux3yuE=",
+							"size": 148
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.vsh",
+							"hash": "V0Z6SRr3vP+dC1yYvb4A169hu1pZMn/SlKN28sx0/5s=",
+							"size": 148
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.fsh",
+							"hash": "47kuwRRu9m3f8oOL5RnoewGSOSVb/qtgaCbV9nI5gQE=",
+							"size": 147
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.vsh",
+							"hash": "gHSyhlHdR3V2vyZZWegppcZ9+QZRAl920QHhqqsHtjg=",
+							"size": 147
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.fsh",
+							"hash": "whKLyIGhh5EBMJ29Ss3xMNGnCCyPSdPNPlF64pjiSBU=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.vsh",
+							"hash": "og4e5Lb8hFg8ZynwLF3al5Ncm36lwBfKuRaka2jLUOE=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.fsh",
+							"hash": "JZdRiCMm2PpSwjvU9fpaymqE108SrsYa3aBBe3a4LEc=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.vsh",
+							"hash": "Zg6XDsBKTzrW4GkFWAuAXzgs9bEoygaotvWm+MekWwQ=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.fsh",
+							"hash": "1wLCH8DDu764sqxtOSgT22UXGeoliVbhiBcCwi6Al38=",
+							"size": 159
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.vsh",
+							"hash": "3Kql+6sEXwxVSW/wiYN+SXyKvjHJ1Qs4TODqwBvrQYY=",
+							"size": 159
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.fsh",
+							"hash": "L8oq2Ontwg78QdeXSpKDJoLEz1UI7OkL1Z+1X9vTZ20=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.vsh",
+							"hash": "XeQSI2l0jsPh/zee3ZpQ0F4YTmU+uXZdMFJzh3hmwEw=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.fsh",
+							"hash": "ktkon8LBLa45wxwaGBRz8bhTnn+mLc1TCv+0L9ZQiKk=",
+							"size": 289
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.vsh",
+							"hash": "2b198tBWyMVENd5OJk6C4uqUXaD5+hI26MHd+b4JBVk=",
+							"size": 289
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.fsh",
+							"hash": "p6mM7w3A6RSh5AJEn1dEP/owTw7iZPRKzvg3XvtKYyE=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.vsh",
+							"hash": "H/Vpo83x+iJoHR8lhguYVJcp6SRbVaYHq//9xWm9xdM=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.fsh",
+							"hash": "PFmBRMvNt7zkholoCAr+koG5HmD8te/DqnUt38Anqr0=",
+							"size": 178
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.vsh",
+							"hash": "8eflfbv84+Nb+XvuD81XDjtho4rjcghkjjyvhGSk0uQ=",
+							"size": 178
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.fsh",
+							"hash": "BkcCZaJl+nwuoy9D2BoePQhGyEPZyt+ALmXlEE3NIR8=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.vsh",
+							"hash": "kur0nGKum5kp8rYY32P6gCJV/bLJOhw3bbC2q+75HAc=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.fsh",
+							"hash": "9zYVXBmcC2t+XN90SbPBoxhXnhLFcZydu2B7suO594w=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.vsh",
+							"hash": "ssUZ9dQo8Mo92ayXWZ/sP8E4imCYdxJP5yVCxOp4RlY=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.fsh",
+							"hash": "R7Q0MEDU6+qbBaOrjDpldIpzCPHYY+4px4i8U8HY9YE=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.vsh",
+							"hash": "ZGjd3VcFHKWDTSMSENrOWxAP1ZuhoaO5o+LWhi97d04=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.fsh",
+							"hash": "f6PPbcPiwTm1dsOxScduRAlS2hBkVmb7uOlyWNiCmZQ=",
+							"size": 128
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.vsh",
+							"hash": "mwkhZG11Kw+6hwpj3AfHLGPjNnwkpKrjY/4W58XfPCk=",
+							"size": 128
+						},
+						{
+							"type": "file",
+							"name": "prepare.fsh",
+							"hash": "//s/dD0uUdC4CtfvPBarAvtGFkMSV90t205ltqZBEsM=",
+							"size": 128
+						},
+						{
+							"type": "file",
+							"name": "prepare.vsh",
+							"hash": "yNe3LAfd+LZUY3wKWC8zKz7KdGfzDAY+kgmRcEpXpjs=",
+							"size": 128
+						},
+						{
+							"type": "file",
+							"name": "setup.csh",
+							"hash": "NesNmh9VFlkVCIP+ftOG9i8HNC5gVxQstk6PlK3JG1g=",
+							"size": 90
+						},
+						{
+							"type": "file",
+							"name": "shadow.fsh",
+							"hash": "Snv+KGEHVaPDDOr2IeQsDlBOtPorONr9CmwCRW7hiAs=",
+							"size": 149
+						},
+						{
+							"type": "file",
+							"name": "shadow.vsh",
+							"hash": "MScxfz1VQKPeghpwK8NCxPjX2l1UpG88lQTmZ4Cb6pc=",
+							"size": 200
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.fsh",
+							"hash": "LkC0NWHLY14ZWEvdQQvvp++5A9tUG5Kiyg7LGRnAU50=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.vsh",
+							"hash": "n70yjxfe1wzrqFl2a7BEta9t9SXg5HqiCdj5igMu8qw=",
+							"size": 197
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.fsh",
+							"hash": "46pmjxEBux7zbURzISBGJ2V6loRoRjhNtLFcUsEfPyg=",
+							"size": 147
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.vsh",
+							"hash": "vEubv5w+BtmfvN2T2LfGna/6Gd4q4VBVweEWrZFBnnM=",
+							"size": 198
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.fsh",
+							"hash": "mueIbb8bh0AGxmLWo2LakS5QaYnL6qdzX6SQyKAi68c=",
+							"size": 149
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.vsh",
+							"hash": "OALsivC+D+4UsbwryeH34BkKbPezGETlmty+Ra7wwiU=",
+							"size": 200
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.fsh",
+							"hash": "/lyeC5VIRRXbHeQVY6vDyVmUPVAVtxcLS3O9pUyhtLM=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.vsh",
+							"hash": "/eMBW8vMtaRwHMibKO4rAiBSO5ucCFA7ysB2kGSH1hw=",
+							"size": 197
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.fsh",
+							"hash": "CIyxoDbkZQJWHvNO6CBe4oGQfSM2M/kebPbGopSQ+PA=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.vsh",
+							"hash": "pl+8yCZlDsrurtxBxskt28Q8vpfTfDcHKPYqyFGb1sM=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.fsh",
+							"hash": "/b/d7+19rbSeUemc2frciAG861D6j3fJW5kBGLrN0Qg=",
+							"size": 146
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.vsh",
+							"hash": "qt7J+CA6cH9omXeZrRElsqyDSYD1/eJFYcCcBrcj6Ws=",
+							"size": 197
+						},
+						{
+							"type": "file",
+							"name": "shadowcomp.csh",
+							"hash": "08cj4u0cBSOah6PxtEhNvD3TT3eQmy1dSWXu7JyPZjQ=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "voxy.json",
+							"hash": "Z8965sg3s8q5U7YKoCimQVig9QxCOgersMwJ1wSkahY=",
+							"size": 30
+						},
+						{
+							"type": "file",
+							"name": "voxy_opaque.glsl",
+							"hash": "4WMj74w10Cd25VHXPNsuwSLK0lv5MCF8INb3btaXr/M=",
+							"size": 61
+						},
+						{
+							"type": "file",
+							"name": "voxy_translucent.glsl",
+							"hash": "ZaZOoK6f3F4X6kzIWy6FmE17bN20WcWMmVDJXLXj600=",
+							"size": 66
+						}
+					]
+				},
+				{
+					"type": "directory",
+					"name": "world1",
+					"files": [
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.fsh",
+							"hash": "4nW0v1zst0bk6l69s6P2MBsLmJf8+o1EHtzRdUjq4ds=",
+							"size": 217
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers.vsh",
+							"hash": "gMEES4C6fSurhMKgaesEKodObqjd//PSkVvWHZjVEjA=",
+							"size": 217
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.fsh",
+							"hash": "EZBxVmGDHhOgrP8EvhvXGrX7Vjuoa83dWiDeXefGEZE=",
+							"size": 160
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_damagedblock.vsh",
+							"hash": "wajH8w0cNFArqKs6HuwSb8DoFrrcTtwBbtRnOh4rhEg=",
+							"size": 160
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.fsh",
+							"hash": "CBa59GSs5om+mEsfQQq+OJKFMK/SvE5jqVbMPf2zJnI=",
+							"size": 158
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_glint.vsh",
+							"hash": "051kJ9Ul6JnEfis8hjrZiJoR2YhfJs1ih6rxu2BJqDI=",
+							"size": 158
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.fsh",
+							"hash": "ney5PzuzAhAa5pRQbjNjN1tSqVv5F33oNxerfuXgX24=",
+							"size": 156
+						},
+						{
+							"type": "file",
+							"name": "clrwl_gbuffers_translucent.vsh",
+							"hash": "idVAvmt2+HZe3CsqBLQ5hDznYlGXTFzwPZpkP1Q0aAY=",
+							"size": 156
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.fsh",
+							"hash": "MwdLo/TrkxW4vwgLwiTMhdJ3wUdFswE+D/iLQ0bm3HQ=",
+							"size": 188
+						},
+						{
+							"type": "file",
+							"name": "clrwl_shadow.vsh",
+							"hash": "1fHO7pDZeEJKzx3b4QeE14b0jTtj5I6tH1HO9euOmQw=",
+							"size": 239
+						},
+						{
+							"type": "file",
+							"name": "composite.fsh",
+							"hash": "JnimXtweWIslH6QY6/M6lVBEW39uMKYFvPQrKJySl9Q=",
+							"size": 114
+						},
+						{
+							"type": "file",
+							"name": "composite.vsh",
+							"hash": "XOEE+VIMvz3F0aqC6Zr8wJlB1Z5oIqWySX5scQUxii0=",
+							"size": 114
+						},
+						{
+							"type": "file",
+							"name": "composite1.fsh",
+							"hash": "EyFu8YUMDsxRLPWP4bp17nU16GlzhXoEoWHSiNavNXU=",
+							"size": 124
+						},
+						{
+							"type": "file",
+							"name": "composite1.vsh",
+							"hash": "Oy7QrHXTYbXjsY5kuLduTzdCgodx5cWFMJmyYflv+ps=",
+							"size": 124
+						},
+						{
+							"type": "file",
+							"name": "composite2.fsh",
+							"hash": "+bRPi3FH+/QGcGhIzHr/GDqWyRvbxC96puZzSkkuIng=",
+							"size": 88
+						},
+						{
+							"type": "file",
+							"name": "composite2.vsh",
+							"hash": "BUG6cupy57N1/QIO6a4WHMR6iejIo4uYsTy3UZ9oeDU=",
+							"size": 88
+						},
+						{
+							"type": "file",
+							"name": "composite3.fsh",
+							"hash": "aIhloiFsOrKQUQ+fa86CXsC1Llzft0zpKORFfiIxoNc=",
+							"size": 94
+						},
+						{
+							"type": "file",
+							"name": "composite3.vsh",
+							"hash": "JLd4NwQEnnnSYSCVN/Wthf/7tWKCVQg22rRfmO0wiZQ=",
+							"size": 94
+						},
+						{
+							"type": "file",
+							"name": "composite4.fsh",
+							"hash": "IEUAe2YyoJM49jS+MoEIZRq0LrPpxEOoWPoTBVA8+3U=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite4.vsh",
+							"hash": "SCyUgLHrbq7THCDrb9yxpQf5WBmUGgn+Eh6G2vLYaPk=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite5.fsh",
+							"hash": "AYGKGtyKaloECFCsgUL6gOuph4KsJoxbDZU+U3HB84s=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite5.vsh",
+							"hash": "MQ8WotMNgUsDmGtnZTOfD19FiHjmKbREE/JT2oRkF5w=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite6.fsh",
+							"hash": "BDXUsctar1NJaSz+sZHscmPGuxIC9t/bdzYggotLJ+w=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite6.vsh",
+							"hash": "sZY0JMxbxfBjCqrAaXHYeb2O4dtWkO4rAIDENzv42/A=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite7.fsh",
+							"hash": "6OplHYAfwWk6GAZGn7sAKe4mAWBq1iubylfw/J461QU=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite7.vsh",
+							"hash": "TZ2Vekb/s+ZEnUk1Om7IG/PNKyq8QJAwqtvENUzxbmA=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite8.fsh",
+							"hash": "5OXi4e/1OnERIFgZYP+FNzybiSsOCGAk8Qi2FhtAQNg=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite8.vsh",
+							"hash": "hbrVU/94/r8Aprz6WoTT1zblCXgB2e85fmpbAR20Zb8=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite9.fsh",
+							"hash": "j1GdV7fpSyIVRmIDS8O0gJN9/H320M3sRSKZ8pEFSes=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite9.vsh",
+							"hash": "TGE8djkzFJ1rGeLx4B70MkeyZmxKFR7Qtf3+ftPrwX0=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite10.fsh",
+							"hash": "6Wr1lOYMo2pM/AIJJ40LWIHeFRnqMfjkhaVy8YCtPMM=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite10.vsh",
+							"hash": "SuJ/OCdya+Fp4cz+093Ouab5hwsfhy7SJhB/3eYjiJ0=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite11.fsh",
+							"hash": "MqPALHvDbJa12nhM/khJGohMZM026QZZ7k9tb/Ea9PQ=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite11.vsh",
+							"hash": "kcuGi3EmLVNfvd9FMw3fter2U8CRj7/Lu93ednvxo5w=",
+							"size": 105
+						},
+						{
+							"type": "file",
+							"name": "composite12.fsh",
+							"hash": "kQAdMhdA8ipOKvF8rb1yfwPfSKCA6BYtLe5xGbqa09o=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite12.vsh",
+							"hash": "gzOMK6owCTazTYQe3XsTd5pOK8lDmRLKLnm1esv8jkU=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite13.fsh",
+							"hash": "McvAPxkmq/JGc0DE7GXbilFFRw/xR6o3+xsxjnOO5Es=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite13.vsh",
+							"hash": "TxrvcwJC2OQtKYci4erns3zv4LS1eGmq/6R/Qxq0dsI=",
+							"size": 102
+						},
+						{
+							"type": "file",
+							"name": "composite14.fsh",
+							"hash": "bBDYAyN3R6ltO2Ibhvz5diTMMcRLFpD3mVmeSJgd1zI=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "composite14.vsh",
+							"hash": "Gz+eN1ojyWbKEvrmO6wa+ycvoE8MQ6c5sdyoS0W4yfs=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "composite15.fsh",
+							"hash": "pVtjNF5HU6HpBVPq3KkmhN256AgRL3xWeiJNi7E+c+M=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite15.vsh",
+							"hash": "/bMA9kI8vUvsyREYOmgNt9tOEamfhj84tg3Sf7ipQz8=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "composite16.fsh",
+							"hash": "By7p8fipyLcddP+5YB3x827Bhdo3a69MRx8Vjs7d6Ak=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite16.vsh",
+							"hash": "pJdhC1Hv9VtDlJd1kuzqUn9e9swtg0xkjFZpPkO6nTk=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "composite17.fsh",
+							"hash": "GlXidI+cMd2m1dAEtKbsG7sbVQFLFgq8ZfsWbUpfzM4=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite17.vsh",
+							"hash": "3CRidS8yOKhQWpi0vAiyN7dELi+bdRkROmpfqY6nxTs=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "composite18.fsh",
+							"hash": "WMA1l8z99SLjMfQ4li3pevHwDGJIVKMgtmgrPpC8Pog=",
+							"size": 132
+						},
+						{
+							"type": "file",
+							"name": "composite18.vsh",
+							"hash": "1sDjN4oBgD3G/FQUBqqesrcwsgR3qhCqPkxR47F8pFw=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "composite19.fsh",
+							"hash": "bBDYAyN3R6ltO2Ibhvz5diTMMcRLFpD3mVmeSJgd1zI=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "composite19.vsh",
+							"hash": "Gz+eN1ojyWbKEvrmO6wa+ycvoE8MQ6c5sdyoS0W4yfs=",
+							"size": 99
+						},
+						{
+							"type": "file",
+							"name": "composite20.fsh",
+							"hash": "jOA1YxFr5/0taNLU2373C5ZG7i90LbBiANnIUic0zQU=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite20.vsh",
+							"hash": "kKVed7+4ZGjycFB1YeYt82iRK+keFgMEub0masQAurE=",
+							"size": 97
+						},
+						{
+							"type": "file",
+							"name": "composite21.fsh",
+							"hash": "MlKASujA38Rt5crbAcEeZU/aclYj2Ao8HP/S5OQ6xF0=",
+							"size": 90
+						},
+						{
+							"type": "file",
+							"name": "composite21.vsh",
+							"hash": "Sn6qLXyMZZFtKkNAhYw+i3HtrCray7c1KTPQeCLbhLg=",
+							"size": 90
+						},
+						{
+							"type": "file",
+							"name": "composite22.fsh",
+							"hash": "rK0jYzLfOt5KsNfSdT6fUtu+zAF3BvxkDDFwtrivyGQ=",
+							"size": 93
+						},
+						{
+							"type": "file",
+							"name": "composite22.vsh",
+							"hash": "YViG9ITPINEzMc8KW21ehDMHWU4Gcc4KOv8z77AkEEo=",
+							"size": 93
+						},
+						{
+							"type": "file",
+							"name": "deferred.fsh",
+							"hash": "AjtRsdr1zPC220HRffQ/AI1Qo1kKkz61nz9A2+ZZ2kE=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "deferred.vsh",
+							"hash": "jjVS2pVLYxkmPpWdXhmsP/x6g4sLccc+A5DR3+pXP8w=",
+							"size": 118
+						},
+						{
+							"type": "file",
+							"name": "deferred1.fsh",
+							"hash": "u//wNpp/X1jej2GGR9Njj0DmYg4lCOXkjrVmNCwCT1c=",
+							"size": 117
+						},
+						{
+							"type": "file",
+							"name": "deferred1.vsh",
+							"hash": "ZMmReKrjtK9fs7CCpwkiq66Ze2f58oHFfVkkZPQ2jmc=",
+							"size": 117
+						},
+						{
+							"type": "file",
+							"name": "deferred2.fsh",
+							"hash": "AEFwrPz6qnCT1TpCdnysv4o3YOFs5wzb1CT9ne+nK34=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "deferred2.vsh",
+							"hash": "lt0xlSh6hP3qJ16ZDwkksK2xh3o/m47tPkiNZkrCYOQ=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "deferred3.fsh",
+							"hash": "PytCZ2ZORid8Jv7GKeCdUpKKjykg96K16tfklScd/Jo=",
+							"size": 113
+						},
+						{
+							"type": "file",
+							"name": "deferred3.vsh",
+							"hash": "hqObgwFrqAOjT3YELmD1RE6Rcz7gSfLmfhaJ026oNAs=",
+							"size": 113
+						},
+						{
+							"type": "file",
+							"name": "deferred4.fsh",
+							"hash": "QSRq7asaMCDIK/s0ewpu++rKKowrLvoZn8oMjzMcTNA=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "deferred4.vsh",
+							"hash": "3V2b7Paq58zkI3+ir80znTCXZFf/j2UAp7hE/cfNOXU=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.fsh",
+							"hash": "bOL45zSRGPwB0F/6Cm/HoZ9Di0J5AyETrBQvPNE4nCk=",
+							"size": 119
+						},
+						{
+							"type": "file",
+							"name": "dh_terrain.vsh",
+							"hash": "fMWERdNwskk/Q4kc5KL1yLamHXP+hZifLXTNjWSX6Sk=",
+							"size": 119
+						},
+						{
+							"type": "file",
+							"name": "dh_water.fsh",
+							"hash": "8gm/3pnysS2bn7t1p8c93IyzkNDCgfyZMup6KBlvbkg=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "dh_water.vsh",
+							"hash": "PR6djv+kQSNypNtvLYsn8OoC1Xf1/NTmhCKAjx/yQKA=",
+							"size": 115
+						},
+						{
+							"type": "file",
+							"name": "final.fsh",
+							"hash": "Ej25jdCdw3adRxRGNOiIaySjdZVznnikse98Q/xY8Sg=",
+							"size": 109
+						},
+						{
+							"type": "file",
+							"name": "final.vsh",
+							"hash": "HxLjnwGiKbvKGczgW+rj6oLZeMKqKF0gD9qa2tGL0eo=",
+							"size": 109
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.fsh",
+							"hash": "fYTZ5Ik5e1ozjJJ+ZhtV7b5et2LYYr0FZKFfbxB/WL8=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_armor_glint.vsh",
+							"hash": "E+6E4URxUdYmu6V0UDJQgGCre5dbCQG3LUjvBWQeIGU=",
+							"size": 139
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.fsh",
+							"hash": "U4BFkRETDQqBkXWYdRvyALpdX9K/5+70kZDXqXKGdGQ=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_basic.vsh",
+							"hash": "52vRxBcdzwi+HYDpeViVFvxKlx3ZIWERHUI+maUJIog=",
+							"size": 127
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.fsh",
+							"hash": "dN1BpXX8w4lEZDSWuxUh5tZEAgN7zqwkS5RQmQ99Pkk=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_beaconbeam.vsh",
+							"hash": "WVA9nWGafFsoc/2cuimOz8m2TZ0xOyCLq9WtE6e/a+Y=",
+							"size": 136
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.fsh",
+							"hash": "N/nTDvPShSv5wvdoW1jCRbVDjzR2C0tlWqLnkhL8f3Y=",
+							"size": 131
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block.vsh",
+							"hash": "ONulYAxADx8qzvFcntKwmWjbryQOPIal6LSxU/g7mj8=",
+							"size": 131
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.fsh",
+							"hash": "Z4woYJgrzZQNDIjvRM1JDlhkFKg77B4yMvKAqFFItcM=",
+							"size": 149
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_block_translucent.vsh",
+							"hash": "nO2fdHMdFlHTh8+hMiG0meLtOz6caiqUubBrXez2+FM=",
+							"size": 149
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_clouds.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.fsh",
+							"hash": "/x72vlEO1aIW3Wrp36gVOIEHKu3QHoUrFXMHrAdQ3y4=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_damagedblock.vsh",
+							"hash": "wBCvLBO+8rRgwGcGhexEYt5p8IFP4HOzPRHaRZvKKJw=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.fsh",
+							"hash": "X5Tpna98KY2q/kiibUZabViXna1efMn0Kk8L3o8nqHw=",
+							"size": 134
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities.vsh",
+							"hash": "m5gNzWJFdAOBibcF14hSlyIi21kAKWRK8nezTMOajfU=",
+							"size": 134
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.fsh",
+							"hash": "0VlVblRPmN6bY9QcJtHVcfjqr0mQmhSU+V7yAzLHnbk=",
+							"size": 152
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_entities_translucent.vsh",
+							"hash": "G3S9z317/qbpiHlufcdx+H6XcH28FUS3mcJfRaQynu4=",
+							"size": 152
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.fsh",
+							"hash": "075ptdJYYSDQ+0rSNn0Ofoeuq8Gn0Z+d6xSykJXtLbY=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand.vsh",
+							"hash": "/fc6g0n6FyjhmqXFU3/durgjMqiDENzS2VaWgT3x1C8=",
+							"size": 130
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.fsh",
+							"hash": "91Gbmf0Vce5TQ3u9AxRsqz35zPHegdifK77mfGum8Vw=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_hand_water.vsh",
+							"hash": "KhxMVuFrHPTM5fnOFpF1tG0W2e6vfMdm3zCZFkwozYk=",
+							"size": 142
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.fsh",
+							"hash": "kfRGDN4i5jbypW3Ux8I1TumijL0ORK0kIaK+2yKT31k=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_lightning.vsh",
+							"hash": "5/WggDOAageur50bZJObQM80dS6GYde69ilszXZS44E=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.fsh",
+							"hash": "c1t2EdBpZ5So2aEK8rDLcCSIiLA1dN69xxFHF5C0qeQ=",
+							"size": 112
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_line.vsh",
+							"hash": "y4nst0IFV84goPZwDWkOBNI3mWndCeEPT0bDKquw/3o=",
+							"size": 112
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.fsh",
+							"hash": "LwOByJ56pv0d/gHoQd6NYFqK5GIcAgIERm8qm42sU88=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles.vsh",
+							"hash": "9VKbBFyfZvxyorP+FhDvyZoWc43AXU77zz6xg3TKWSc=",
+							"size": 135
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.fsh",
+							"hash": "pwS1EK/od+Jv5Q/ZcJsa4sx5+wd3YUms/uI3/K57BgE=",
+							"size": 153
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_particles_translucent.vsh",
+							"hash": "ut7IAme7VC7Ro6sWA4Fv4S4qq2uehKVqfesLxSd//tg=",
+							"size": 153
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.fsh",
+							"hash": "bE/Ka91dYOZES++VO8cxe7XLYXttGhlNzNAoDMXEciQ=",
+							"size": 53
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skybasic.vsh",
+							"hash": "oEvxe76mBoWZkIrFOARdbYWOZFR5Ud+DoSWy+nhAH+A=",
+							"size": 70
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.fsh",
+							"hash": "L8oq2Ontwg78QdeXSpKDJoLEz1UI7OkL1Z+1X9vTZ20=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_skytextured.vsh",
+							"hash": "XeQSI2l0jsPh/zee3ZpQ0F4YTmU+uXZdMFJzh3hmwEw=",
+							"size": 84
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.fsh",
+							"hash": "M1KBIINJQrhwp1jE8c8Va7vnXRb2PGBe9mQQtDRL5eU=",
+							"size": 283
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_spidereyes.vsh",
+							"hash": "XUfo4dULDUMPVHN20vo4uyRK/UH2gtcyQ4eFxpf1QnQ=",
+							"size": 283
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.fsh",
+							"hash": "JUQFgcnZmf9OuFljE6RmfCvEnQPtZWq0OVaf7JbQ4KI=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain.vsh",
+							"hash": "92a6OQRsXqxd+nJtP2XxR4bRXnlN5gK93OQZ3wFSfZQ=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.fsh",
+							"hash": "esO6TGGOnswFb4GtotEJMfMdFIQDAebwW8bCwKVA4uE=",
+							"size": 172
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_terrain_solid.vsh",
+							"hash": "9uljy/ihSydRpWiysdXfqMCGcg5T+LMPItn9ZeCTXYY=",
+							"size": 172
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.fsh",
+							"hash": "2mzc7wqRduBW3zssvn63U2WuKoNpjDqgk8PSn/h2bnY=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_textured.vsh",
+							"hash": "sFIsoCKnkQdmYXO2IZuH7uYYJnRew1M9lC5RT9Wp0z4=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.fsh",
+							"hash": "D+OhmLue0VZAXXtYDstXXXf61KRC5ddcwUp5I/gPGig=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_voxels.vsh",
+							"hash": "Sxn3fslpa1LD1TtHh+usqs5owS8CmombCoZEhCq7XBk=",
+							"size": 133
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.fsh",
+							"hash": "iugAuYh/au3kmP6d/FKogqAVzcFq1bpxQdAIgsiHAFQ=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_water.vsh",
+							"hash": "5UuXSchiZVMb/DS3STkyBsu3VJRGwLKJF6YiZ/5q3Lk=",
+							"size": 137
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.fsh",
+							"hash": "uAiQ1MtNvev3uyYtq2/Hxa9FPpL+uD4kj1vA1hTjP4c=",
+							"size": 122
+						},
+						{
+							"type": "file",
+							"name": "gbuffers_weather.vsh",
+							"hash": "quzOw7xCUzkHsguK9vMSavAs6mxBn1oP/T+UpLmbgxU=",
+							"size": 122
+						},
+						{
+							"type": "file",
+							"name": "setup.csh",
+							"hash": "CeUnGz5G+HhJAcDX5famP3PcpJiGA6QWI3CbXo5DnOk=",
+							"size": 87
+						},
+						{
+							"type": "file",
+							"name": "shadow.fsh",
+							"hash": "FX8nSpmthEHcOkYxIeESNicS7c1cxtZpUF/UaqbNuM8=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "shadow.vsh",
+							"hash": "L46se7idx7HwbMytlUGy30qoHYnJMSPEmnqOS+2JEj4=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.fsh",
+							"hash": "I2iKExGYnsbT2qA++uKmnGNYL1Ll30JgiUXLwnXEGGw=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "shadow_block.vsh",
+							"hash": "goMFtEd/P0vtT5uj5d5LX9l3mvtVhLdtDo9iK4Gdqlo=",
+							"size": 191
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.fsh",
+							"hash": "VdwxYZsn1iRFOSSD5JB9cO86WMK97hATKdsoKUuaN44=",
+							"size": 141
+						},
+						{
+							"type": "file",
+							"name": "shadow_cutout.vsh",
+							"hash": "hszed0U5Jz6rDLj0VRlcSCX/xN49PFLk+TBqAZpkXgk=",
+							"size": 192
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.fsh",
+							"hash": "s0on5991psPjY2nyWHubrWHDaQL8gh6aycAxgFs0yko=",
+							"size": 143
+						},
+						{
+							"type": "file",
+							"name": "shadow_entities.vsh",
+							"hash": "ZZ3bkbXZTd49arD6zjK1s3K+nlj7s1XQZO8PsLLB6FU=",
+							"size": 194
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.fsh",
+							"hash": "yk497qbJsMDdis3IC0ke7/iBwAF9/CWY1ORMJfyLxls=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "shadow_solid.vsh",
+							"hash": "nBK9QTK0uax9VN0PQ/Jiyy6HWMbpN+rAga/OM1XDAmg=",
+							"size": 191
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.fsh",
+							"hash": "lCZgPCUto4OMEFdLIlFWfcsTshquqiTRT73+ZGoKmv8=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "shadow_voxels.vsh",
+							"hash": "/r7fDPyH117SyTFX8wwqNF6UWWElzSNffXAhjiYGYsg=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.fsh",
+							"hash": "Ik0ZHt8rtr+UzNBWqWRYxYUacRJ5ObLHFmzAxcVN5FU=",
+							"size": 140
+						},
+						{
+							"type": "file",
+							"name": "shadow_water.vsh",
+							"hash": "vKTVEIu3SMLTOvHWJllPex+xolIczjSlLvymjzT9o04=",
+							"size": 191
+						},
+						{
+							"type": "file",
+							"name": "shadowcomp.csh",
+							"hash": "kJ28DCcqAv+B6al390zfMf0sVWC86KN7ZWktp5/Lb40=",
+							"size": 96
+						},
+						{
+							"type": "file",
+							"name": "voxy.json",
+							"hash": "Z8965sg3s8q5U7YKoCimQVig9QxCOgersMwJ1wSkahY=",
+							"size": 30
+						},
+						{
+							"type": "file",
+							"name": "voxy_opaque.glsl",
+							"hash": "Qab8cbAd+Z21UwFH9wAHC6hXIU3lu34McHeSCah8H4U=",
+							"size": 55
+						},
+						{
+							"type": "file",
+							"name": "voxy_translucent.glsl",
+							"hash": "BVj+M6jgiH+6pPpZLMc5kAlatr+9fBVkspQoUlkhTfs=",
+							"size": 60
+						}
+					]
+				},
+				{
+					"type": "file",
+					"name": "block.properties",
+					"hash": "x7khAJYW7+V7s5YBfvrRZ5PubTkn2HkMW7u2Lu76UI8=",
+					"size": 44579
+				},
+				{
+					"type": "file",
+					"name": "colorwheel.properties",
+					"hash": "u7dYv2O4EhIKUXF/caKLv5aobv1uDT5AmF2uBg9tMGY=",
+					"size": 503
+				},
+				{
+					"type": "file",
+					"name": "entity.properties",
+					"hash": "wuTh2gs2BKONYL0gf2/zZMFFEeMeMQlYU4RzH2AasOo=",
+					"size": 940
+				},
+				{
+					"type": "file",
+					"name": "item.properties",
+					"hash": "WEFFETAfM073KwS5lMt8IJSZGjZE8vQKn/IaaSGe8tk=",
+					"size": 7664
+				},
+				{
+					"type": "file",
+					"name": "ph_lights.json",
+					"hash": "4F26A0lU7Pa/3DoqEyLyN52gNtu+zZUE9sunmjvs+So=",
+					"size": 9903
+				},
+				{
+					"type": "file",
+					"name": "settings.glsl",
+					"hash": "qoOPOCSBAsEwY9lZvuY6jlzfSV0AnAT0ncwbCZ9vS/w=",
+					"size": 170207
+				},
+				{
+					"type": "file",
+					"name": "shaders.properties",
+					"hash": "fugNePo5KJetcNMutkXF7+lBUBLpiud9O8MBdbhuEaQ=",
+					"size": 41036
+				}
+			]
+		},
+		{
+			"type": "file",
+			"name": ".clang-format",
+			"hash": "UZojT1DdCravPCcRoFULF61IY9aEGpFYPDUT5nrSNa8=",
+			"size": 2555
+		},
+		{
+			"type": "file",
+			"name": ".clang-format-ignore",
+			"hash": "fQvfZK/+fVgAk77ELrvs0o9rNdS9Iuhz893NFYhT4fc=",
+			"size": 77
+		},
+		{
+			"type": "file",
+			"name": ".gitattributes",
+			"hash": "IjvJZ5PDcZQxW5jRifXGwSou+iLbvHHCCiZ654d4p0g=",
+			"size": 82
+		},
+		{
+			"type": "file",
+			"name": "contributing.md",
+			"hash": "MnrsPFCu9L85UQOW4A9Z0oGJtJ8OHSQg5p37MOc7BJs=",
+			"size": 1242
+		},
+		{
+			"type": "file",
+			"name": "LICENSE",
+			"hash": "UUQC0Y7tsK/jdDRMqfD+h7c5l3lRgYS4/GTjFnRVX8U=",
+			"size": 1468
+		},
+		{
+			"type": "file",
+			"name": "README.md",
+			"hash": "R7uA4KuXcdgg5S2Gl2Kx+H6rIUiVfwf512jM54KkPVE=",
+			"size": 4233
+		}
+	],
+	"links": {
+		"stats": "https://data.jsdelivr.com/v1/stats/packages/gh/sixthsurge/photon@main"
+	}
+}
