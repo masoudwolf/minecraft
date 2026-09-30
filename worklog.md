@@ -1176,3 +1176,17 @@ Work Log:
 Stage Summary:
 - origin/main = VoxelCraft v0.45.0 (3ed52bb). Backup of the stray gallery app: archive/mob-gallery-126cb1e.
 - Future cron rounds carry an explicit identity check + restore protocol to prevent recurrence.
+
+---
+Task ID: 46-c (correction to 46-b: two repos clarified)
+Agent: Z.ai Code (main)
+Task: correct the 46-b incident record — there are TWO GitHub repos.
+
+Work Log:
+- origin = masoudwolf/minecraft.git = THE VoxelCraft source of truth (what restore-from-github.sh checks). Was NEVER hijacked; it sat at 2300fb0 (v0.44.1) until this round's clean fast-forward.
+- masoudwolf/Mobs-Project.git = the user's OTHER project (the original "Voxel Mob Lab" mob gallery — Knight/Creeper/Waxling/Gearling/Chameleo/BoneKing). It was never hijacked either — a first-round push mistake sent VoxelCraft there with --force.
+- Repaired: Mobs-Project main restored to 126cb1e byte-for-byte (its original head) and the temporary archive branch deleted — the repo is exactly as it was found. VoxelCraft v0.45.0 pushed ONLY to origin (minecraft): main = 0a3290e.
+- Lesson recorded: pushes must ALWAYS use `git push origin main` (origin = minecraft), never a hardcoded Mobs-Project URL.
+
+Stage Summary:
+- origin (masoudwolf/minecraft) main = 0a3290e = VoxelCraft v0.45.0. Mobs-Project untouched at its own 126cb1e.
