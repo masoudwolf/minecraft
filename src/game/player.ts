@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from './physics';
 import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPEED, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_EYE } from './constants';
 import { getArmorDef } from './items';
+import { featherFallingFactor } from './enchanting';
 import { audio } from './audio';
 import type { GameMode } from './state';
 
@@ -197,13 +198,17 @@ export class Player {
       }
     }
 
-    // fall damage (creative immune)
+    // fall damage (creative immune); Feather Falling boots soften it
     if (!e.inWater && !this.isCreative) {
       if (!wasOnGround && e.onGround) {
         const fallDist = this.fallStartY - e.y;
         if (fallDist > 3.5) {
-          const dmg = Math.floor(fallDist - 3);
-          if (dmg > 0) this.damage(dmg);
+          const raw = Math.floor(fallDist - 3);
+          if (raw > 0) {
+            const ff = this.armor[3]?.ench?.featherFalling ?? 0;
+            const dmg = Math.max(0, Math.round(raw * featherFallingFactor(ff)));
+            if (dmg > 0) this.damage(dmg);
+          }
         }
         this.fallStartY = e.y;
       } else if (e.onGround) {

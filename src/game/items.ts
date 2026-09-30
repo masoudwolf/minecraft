@@ -138,6 +138,10 @@ export const ITEM = {
   PAPER: 338,
   BOOK: 339,
   LAPIS_LAZULI: 340,
+  // ── phase 12: buckets ──
+  BUCKET: 341,
+  WATER_BUCKET: 342,
+  MILK_BUCKET: 343,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -870,6 +874,59 @@ export const ITEMS: Record<number, ItemDef> = {
       px(ctx, 6, 3, '#6a92ec', 1, 1);
     },
   },
+  [ITEM.BUCKET]: {
+    id: ITEM.BUCKET, name: 'Bucket',
+    icon: (ctx) => {
+      // gray metal pail (MC style)
+      px(ctx, 4, 6, '#8c8c8c', 1, 2);
+      px(ctx, 11, 6, '#8c8c8c', 1, 2);
+      px(ctx, 3, 8, '#a8a8a8', 10, 5);
+      px(ctx, 4, 13, '#7a7a7a', 8, 1);
+      px(ctx, 3, 8, '#c8c8c8', 10, 1);
+      px(ctx, 4, 9, '#8c8c8c', 1, 4);
+      px(ctx, 11, 9, '#8c8c8c', 1, 4);
+      // handle arc
+      px(ctx, 5, 4, '#9c9c9c', 1, 2);
+      px(ctx, 6, 3, '#9c9c9c', 4, 1);
+      px(ctx, 10, 4, '#9c9c9c', 1, 2);
+    },
+  },
+  [ITEM.WATER_BUCKET]: {
+    id: ITEM.WATER_BUCKET, name: 'Water Bucket',
+    icon: (ctx) => {
+      // pail with water surface
+      px(ctx, 4, 6, '#8c8c8c', 1, 2);
+      px(ctx, 11, 6, '#8c8c8c', 1, 2);
+      px(ctx, 3, 8, '#a8a8a8', 10, 5);
+      px(ctx, 4, 13, '#7a7a7a', 8, 1);
+      // water filling
+      px(ctx, 4, 9, '#3059c4', 8, 3);
+      px(ctx, 4, 9, '#3a68d8', 8, 1);
+      px(ctx, 6, 10, '#4577e0', 3, 1);
+      // handle arc
+      px(ctx, 5, 4, '#9c9c9c', 1, 2);
+      px(ctx, 6, 3, '#9c9c9c', 4, 1);
+      px(ctx, 10, 4, '#9c9c9c', 1, 2);
+    },
+  },
+  [ITEM.MILK_BUCKET]: {
+    id: ITEM.MILK_BUCKET, name: 'Milk Bucket',
+    icon: (ctx) => {
+      // pail with milk surface
+      px(ctx, 4, 6, '#8c8c8c', 1, 2);
+      px(ctx, 11, 6, '#8c8c8c', 1, 2);
+      px(ctx, 3, 8, '#a8a8a8', 10, 5);
+      px(ctx, 4, 13, '#7a7a7a', 8, 1);
+      // milk filling
+      px(ctx, 4, 9, '#f4f4f4', 8, 3);
+      px(ctx, 5, 10, '#ffffff', 4, 1);
+      px(ctx, 10, 11, '#e0e0e0', 1, 1);
+      // handle arc
+      px(ctx, 5, 4, '#9c9c9c', 1, 2);
+      px(ctx, 6, 3, '#9c9c9c', 4, 1);
+      px(ctx, 10, 4, '#9c9c9c', 1, 2);
+    },
+  },
 };
 
 // register bow
@@ -980,6 +1037,8 @@ export function isShearsItem(id: number): boolean {
 }
 /** max stack size for an item or block id */
 export function maxStack(id: number): number {
+  if (id === ITEM.MILK_BUCKET) return 1; // filled buckets never stack (MC)
+  if (id === ITEM.BUCKET || id === ITEM.WATER_BUCKET) return 16; // MC bucket stack size
   return isToolItem(id) || isArmorItem(id) || isBowItem(id) || isRodItem(id) || isShearsItem(id) ? 1 : 64;
 }
 

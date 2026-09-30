@@ -332,6 +332,26 @@ class AudioManager {
     setTimeout(() => this.noiseBurst(2000, 0.08, 0.2, 'highpass', 2), 120);
   }
 
+  // ─── buckets ────────────────────────────────────────────────────────────────
+  /** scoop water into a bucket */
+  bucketFill(): void {
+    this.noiseBurst(1100, 0.18, 0.24, 'lowpass', 0.9, 0.5);
+    setTimeout(() => this.tone(300, 0.12, 0.14, 'sine', 420), 110);
+  }
+
+  /** pour a water bucket out */
+  bucketPour(): void {
+    this.noiseBurst(800, 0.3, 0.26, 'lowpass', 0.8, 0.35);
+  }
+
+  /** drink milk: three quick glugs */
+  milkDrink(): void {
+    this.tone(260, 0.1, 0.2, 'sine', 180);
+    setTimeout(() => this.tone(230, 0.1, 0.2, 'sine', 160), 150);
+    setTimeout(() => this.tone(200, 0.12, 0.18, 'sine', 140), 300);
+    setTimeout(() => this.burp(), 520);
+  }
+
   // ─── enchanting ──────────────────────────────────────────────────────────────
   /** enchant apply: mystical rising arpeggio + shimmer */
   enchant(): void {

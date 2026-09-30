@@ -16,7 +16,7 @@ import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isAr
 import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
 import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
-import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
+import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, hasInfinity, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
@@ -804,6 +804,10 @@ export class Game {
       this.rodInteract();
       return;
     }
+    // buckets: scoop water / milk a cow / pour water / drink milk
+    if (held && held.count > 0 && this.bucketInteract(held.blockId)) {
+      return;
+    }
     // mount a nearby boat (before placing a new one)
     if (!this.player.sneaking && !this.ridingBoat) {
       const p = this.player;
@@ -1300,6 +1304,111 @@ export class Game {
     this.updateHandMesh();
   }
 
+  // ── buckets: scoop / milk / pour / drink ─────────────────────────────────────
+  /** RMB with any bucket. Returns true when the click was consumed. */
+  private bucketInteract(id: number): boolean {
+    // milk: drink it (clears poison like MC); the empty bucket comes back
+    if (id === ITEM.MILK_BUCKET) {
+      this.player.poisonT = 0;
+      this.player.poisonTickT = 0;
+      audio.milkDrink();
+      this.replaceHeld(ITEM.BUCKET);
+      this.showToast('Poison cleared');
+      this.placeCooldown = 0.35;
+      this.startSwing();
+      this.syncInventory();
+      return true;
+    }
+    // milk a cow in reach
+    if (id === ITEM.BUCKET && this.mobs) {
+      const p = this.player;
+      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+      const dir = p.forwardVector();
+      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      if (hit && hit.mob.type === 'cow') {
+        this.replaceHeld(ITEM.MILK_BUCKET);
+        audio.milkDrink();
+        this.showToast('Fresh milk!');
+        this.placeCooldown = 0.35;
+        this.startSwing();
+        this.syncInventory();
+        return true;
+      }
+    }
+    // scoop a water source cell along the look ray (the world raycast skips
+    // liquids, so buckets need their own water scan)
+    if (id === ITEM.BUCKET) {
+      const w = this.waterTarget(4.2);
+      if (w) {
+        this.world.setBlock(w.x, w.y, w.z, BLOCK.AIR);
+        this.replaceHeld(ITEM.WATER_BUCKET);
+        audio.bucketFill();
+        this.particles.burstLand(w.x + 0.5, w.y + 0.9, w.z + 0.5, [0.55, 0.7, 0.95], 6);
+        this.placeCooldown = 0.3;
+        this.startSwing();
+        this.syncInventory();
+        return true;
+      }
+      return false;
+    }
+    // pour water: place a source at the target's adjacent cell
+    if (id === ITEM.WATER_BUCKET && this.target && !this.player.sneaking) {
+      const t = this.target;
+      const px2 = t.x + t.nx, py2 = t.y + t.ny, pz2 = t.z + t.nz;
+      if (py2 < 0 || py2 >= WORLD_HEIGHT) return false;
+      const there = this.world.getBlock(px2, py2, pz2);
+      const def = getBlockDef(there);
+      const replaceable = there === BLOCK.AIR || (def && !def.solid && !isWaterId(there));
+      if (!replaceable) return false;
+      this.world.setBlock(px2, py2, pz2, BLOCK.WATER);
+      this.world.scheduleFluidTick(px2, py2, pz2, 0.4);
+      this.replaceHeld(ITEM.BUCKET);
+      audio.bucketPour();
+      this.particles.burstLand(px2 + 0.5, py2 + 0.9, pz2 + 0.5, [0.55, 0.7, 0.95], 8);
+      this.placeCooldown = 0.3;
+      this.startSwing();
+      this.syncInventory();
+      return true;
+    }
+    return false;
+  }
+
+  /** swap one of the held stack for a new item id (bucket flows: full ↔ empty);
+   *  the produced item drops on the ground when the inventory is full (MC) */
+  private replaceHeld(newId: number): void {
+    const slot = this.player.hotbar[this.player.selected];
+    if (slot.count > 1) {
+      slot.count--;
+      // try to stack into an existing pile, else a free slot, else drop it
+      const left = addToSlots(this.player.hotbar, newId, 1);
+      const rest = left > 0 ? addToSlots(this.player.main, newId, left) : 0;
+      if (rest > 0) {
+        this.drops.spawn(newId, this.player.x, this.player.y + 1, this.player.z, rest);
+        this.showToast('Inventory full — item dropped');
+      }
+    } else {
+      this.player.hotbar[this.player.selected] = { blockId: newId, count: 1 };
+    }
+    this.syncHUD();
+    this.updateHandMesh();
+  }
+
+  /** first WATER SOURCE cell along the look ray; null when a solid block blocks the path first */
+  private waterTarget(maxDist: number): { x: number; y: number; z: number } | null {
+    const p = this.player;
+    const dir = p.forwardVector();
+    const step = 0.1;
+    for (let d = 0.3; d <= maxDist; d += step) {
+      const x = Math.floor(p.x + dir.x * d);
+      const y = Math.floor(p.eyeY() + dir.y * d);
+      const z = Math.floor(p.z + dir.z * d);
+      const id = this.world.getBlock(x, y, z);
+      if (id !== 0 && !isLiquid(id)) return null; // solid got in the way first
+      if (id === BLOCK.WATER) return { x, y, z };
+    }
+    return null;
+  }
+
   // ── enchanting table (MC-like: held item + 3 lapis/XP offers) ────────────────
   openEnchant(): void {
     const st = useGameStore.getState();
@@ -1447,14 +1556,16 @@ export class Game {
     this.bowCharge = 0;
     if (charge < 0.14) return; // too weak — cancel
     const p = this.player;
+    const bowSlot = p.hotbar[p.selected];
     if (!p.isCreative) {
       if (this.countItem(ITEM.ARROW) <= 0) return;
-      this.consumeItem(ITEM.ARROW, 1);
+      // Infinity: the arrow is never consumed (needs 1 in inventory)
+      if (!hasInfinity(bowSlot?.ench)) this.consumeItem(ITEM.ARROW, 1);
     }
     const fwd = p.forwardVector();
     const speed = 14 + 40 * Math.min(1, charge);
     // Power: +1 dmg per level on the drawn bow
-    const heldSlot = p.hotbar[p.selected];
+    const heldSlot = bowSlot;
     const dmg = Math.max(1, Math.round(2 + 7 * Math.min(1, charge) + powerBonus(heldSlot?.ench)));
     this.mobs.shootPlayerArrow(p.x, p.eyeY() - 0.08, p.z, fwd.x, fwd.y, fwd.z, speed, dmg);
     // bow durability
@@ -2008,6 +2119,10 @@ export class Game {
       audio.pop();
       this.syncHUD();
       this.syncInventory();
+      const name = isItemId(stack.blockId)
+        ? (getItemDef(stack.blockId)?.name ?? 'Item')
+        : (getBlockDef(stack.blockId)?.name ?? 'Block');
+      this.showToast(name + ' ×' + pickupCount);
       // achievements on pickup
       if (stack.blockId === BLOCK.LOG || stack.blockId === BLOCK.SPRUCE_LOG || stack.blockId === BLOCK.JUNGLE_LOG) this.achievements.unlock('getWood');
       if (stack.blockId === ITEM.IRON_INGOT) this.achievements.unlock('acquireHardware');
@@ -2548,7 +2663,10 @@ export class Game {
       tex.generateMipmaps = false;
       tex.colorSpace = THREE.SRGBColorSpace;
       const geo = new THREE.PlaneGeometry(0.42, 0.42);
-      this.handMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide }));
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
+      // enchanted held item: purple glint tint (matches the slot glint)
+      if (slot?.ench && Object.keys(slot.ench).length > 0) mat.color.setRGB(0.85, 0.5, 1.35);
+      this.handMesh = new THREE.Mesh(geo, mat);
     } else if (id > 0) {
       const geo = createBlockGeometry(id, 0.42);
       this.handMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: getAtlas().texture }));
@@ -3156,16 +3274,7 @@ export class Game {
     }
 
     // drops + particles
-    this.drops.update(dt, p.entity, this.sky?.sunLevel ?? 1, (stack) => {
-      const picked = this.tryPickup(stack);
-      if (picked) {
-        const name = isItemId(stack.blockId)
-          ? (getItemDef(stack.blockId)?.name ?? 'Item')
-          : (getBlockDef(stack.blockId)?.name ?? 'Block');
-        this.showToast(name + ' ×' + pickupCount);
-      }
-      return picked;
-    });
+    this.drops.update(dt, p.entity, this.sky?.sunLevel ?? 1, (stack) => this.tryPickup(stack));
     this.particles.update(dt);
 
     // XP orbs

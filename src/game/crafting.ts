@@ -95,6 +95,8 @@ export const RECIPES: Recipe[] = [
   shapeless([ITEM.BONE], ITEM.BONEMEAL, 3),
   // shears: 2 iron ingots (MC pattern, diagonal)
   shaped(2, 2, [I, 0, 0, I], ITEM.SHEARS),
+  // bucket: 3 iron ingots in a V (MC pattern, needs table)
+  shaped(3, 2, [I, 0, I, 0, I, 0], ITEM.BUCKET),
   // fishing rod: sticks diagonal + 2 strings on the right (MC pattern)
   shaped(3, 3, [0, 0, S, 0, S, ST, S, 0, ST], ITEM.FISHING_ROD),
   // ── enchanting (paper → book → bookshelf / table) ──

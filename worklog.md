@@ -967,3 +967,19 @@ QA ROUND (Task 39 cont. — agent-browser, QA Survival Run):
 - Death-cam spot-check: a FIERY KNIGHT frozen mid hero-pose behind the You Died! overlay (Task 38 feature intact).
 - NOTES: player deaths spill hotbar (explains a slot shuffle mid-QA); knights near spawn knocked the corpse around pre-god — spawn guard will reduce this for new worlds.
 - dev.log clean (only HMR full-reload notes from mid-session edits), lint CLEAN, achievements 7/12 in save.
+---
+Task ID: 39-c (phase 12)
+Agent: main (Z.ai Code)
+Task: continue the overnight marathon — phase 12: buckets + remaining enchants (Infinity / Feather Falling) + held-item glint.
+
+Work Log:
+- BUCKETS: ITEM.BUCKET/WATER_BUCKET/MILK_BUCKET (341-343, MC stack sizes 16/16/1), pixel icons, recipe (3-iron V), sounds (bucketFill/Pour/milkDrink); engine.bucketInteract: scoop water source (NEW waterTarget() ray sample — the world raycast skips liquids, buckets need their own scan), pour at targeted face (source + fluid tick), milk cow in reach, drink milk (clears poison, empty bucket returns via replaceHeld); replaceHeld handles stacks (one becomes empty → stacks into hotbar/main) and DROPS the produced item when the inventory is full (MC behavior, was silently lost — fixed in QA).
+- INFINITY: bow never consumes the arrow (1 in inventory required) — verified 1 arrow before/after a full shot.
+- FEATHER FALLING (armor, max IV): fall damage ×(1−12%/lvl) — live A/B fall: 7 dmg raw → 4 with FF IV.
+- HELD-ITEM GLINT: first-person held sprite gets the purple tint when enchanted (matches slot glints).
+- QA (browser): scoop pit water → WATER_BUCKET ✅; pour onto sand face → source block + flow ✅; milk cow → MILK_BUCKET ✅; drink → poison 12→0 + empty bucket ✅ (after fix); Infinity ✅; FF ✅. All verified through the REAL rightClick path.
+- lint CLEAN, types CLEAN (game/components), dev.log clean.
+
+Stage Summary:
+- Phase 11 (shears/fishing/enchanting) + Phase 12 (buckets/Infinity/FF/glint) shipped, browser-verified, committed as v0.40/v0.41.
+- NEXT QUEUE: brewing/potions; villager trades restock UI polish; item frames/armor stands; cake from milk; Ocean monuments?; performance pass on real hardware.

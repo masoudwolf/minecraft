@@ -63,6 +63,8 @@ const CHEAT_ITEMS: { id: number; n: number }[] = [
   { id: ITEM.BOW, n: 1 },
   { id: ITEM.FISHING_ROD, n: 1 },
   { id: ITEM.SHEARS, n: 1 },
+  { id: ITEM.BUCKET, n: 4 },
+  { id: ITEM.WATER_BUCKET, n: 4 },
   { id: BLOCK.ENCHANTING_TABLE, n: 8 },
 ];
 

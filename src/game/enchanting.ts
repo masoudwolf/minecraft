@@ -21,6 +21,8 @@ export const ENCHANTS: Record<string, EnchantDef> = {
   protection: { id: 'protection', label: 'Protection', max: 3, kinds: ['armor'], weight: 10 },
   fortune: { id: 'fortune', label: 'Fortune', max: 2, kinds: ['pickaxe'], weight: 4 },
   power: { id: 'power', label: 'Power', max: 3, kinds: ['bow'], weight: 8 },
+  infinity: { id: 'infinity', label: 'Infinity', max: 1, kinds: ['bow'], weight: 2 },
+  featherFalling: { id: 'featherFalling', label: 'Feather Falling', max: 4, kinds: ['armor'], weight: 6 },
   lure: { id: 'lure', label: 'Lure', max: 2, kinds: ['rod'], weight: 6 },
   luckOfTheSea: { id: 'luckOfTheSea', label: 'Luck of the Sea', max: 2, kinds: ['rod'], weight: 4 },
 };
@@ -151,6 +153,16 @@ export function fortuneChance(lvl: number): number {
 /** Power: bow damage bonus (+1 per level) */
 export function powerBonus(ench: Record<string, number> | undefined): number {
   return ench?.power ?? 0;
+}
+
+/** Infinity: true when the bow never consumes arrows */
+export function hasInfinity(ench: Record<string, number> | undefined): boolean {
+  return (ench?.infinity ?? 0) > 0;
+}
+
+/** Feather Falling: fall damage ×(1 − 12%/level, cap 4 levels → 48%) */
+export function featherFallingFactor(lvl: number): number {
+  return 1 - Math.min(4, lvl) * 0.12;
 }
 
 /** Lure: fishing wait multiplier (−35% per level) */
