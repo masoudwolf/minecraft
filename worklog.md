@@ -983,3 +983,22 @@ Work Log:
 Stage Summary:
 - Phase 11 (shears/fishing/enchanting) + Phase 12 (buckets/Infinity/FF/glint) shipped, browser-verified, committed as v0.40/v0.41.
 - NEXT QUEUE: brewing/potions; villager trades restock UI polish; item frames/armor stands; cake from milk; Ocean monuments?; performance pass on real hardware.
+
+---
+Task ID: 40 (restore)
+Agent: main (Z.ai Code)
+Task: User (Persian, angry): "the game went back to a very old version — I told you never to make this mistake; go back to the closest version we have, which is on GitHub."
+
+Work Log:
+- DIAGNOSED: the entire sandbox working tree had been reset to a STALE snapshot (pre-Task-37: no knight, no enchanting, no fishing, no buckets, no Steve — grep confirmed zero v0.41 features on disk). Local git contained only UUID auto-snapshots; the meaningful history lives ONLY on GitHub.
+- RESTORED: added remote origin (token auth) → fetched main → safety branch backup/pre-restore-20260930-1046 (preserves the stale tree) → `git reset --hard origin/main` → HEAD = 1ae5983 "v0.41 phase 12: buckets, Infinity + Feather Falling enchants, held-item glint".
+- VERIFIED FILES: EnchantPanel.tsx, RecipeBook.tsx, InventoryPlayer3D.tsx, knightSkin.ts, mobs.ts (knight), audio.ts (knight sounds) all present; diff showed GitHub was +5168 lines over the stale tree.
+- DEPS + SERVER: bun install clean (924 pkgs), dev server restarted, Ready in 686ms.
+- BROWSER QA: main menu renders → world list shows "QA Survival Run — Sep 30 2026 04:55 AM, 7/12 trophies" (exactly the v0.41 backup moment, DB restored too) → world loads with: Cheats button (top-right), enchanted rod GLINT in hotbar, cows SWIMMING, fishing line visible, full HUD — all v0.41 features confirmed live, no console errors.
+- CONSISTENCY FIX: MainMenu footer was hardcoding "VoxelCraft 0.10.0 — Phase 10" since forever — updated to "0.41.0 — Phase 12: Buckets & Enchanting" (cosmetic only).
+- lint CLEAN, committed beba4e0, pushed to origin/main.
+
+Stage Summary:
+- Game fully restored to v0.41-phase12 + one cosmetic version-string fix; GitHub is now the single source of truth and is ahead of any sandbox snapshot.
+- ANTI-REGRESSION RULE (self-reminder): if the working tree ever looks stale again, FIRST check `git log --oneline -1` vs origin/main and `grep` for a recent feature — NEVER start new work on a stale tree; always `git fetch && git reset --hard origin/main` first.
+- NEXT QUEUE (from v0.41 entry): brewing/potions; villager trade restock UI; item frames/armor stands; cake from milk; performance pass.
