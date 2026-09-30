@@ -5,6 +5,8 @@ import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex, chunkKey, CHUNK_AREA } from '../c
 import { TerrainGenerator } from './terrain';
 import { buildChunkMesh, disposeChunkMesh, ChunkMeshes } from './mesher';
 import { getAtlas } from '../textures/atlas';
+import { createWaterMaterial } from '../graphics/waterGfx';
+import { GLSL_SHADOW } from '../graphics/glsl';
 
 /** simple FIFO queue with head pointer (avoids O(n) shift) */
 class LightQueue {
@@ -545,12 +547,15 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     attribute float aSky;
     attribute float aBlock;
     attribute vec3 aTint;
+    attribute vec3 aNormal;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
     varying float vBlock;
     varying vec3 vTint;
     varying float vFogDepth;
+    varying vec3 vWorldPos;
+    varying vec3 vNormalW;
     uniform float uTime;
     uniform float uWave;
     void main() {
@@ -559,6 +564,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       vSky = aSky;
       vBlock = aBlock;
       vTint = aTint;
+      vNormalW = aNormal;
       vec3 pos = position;
       if (uWave > 0.5) {
         // Wave phase MUST use world position (modelMatrix includes the chunk
@@ -573,7 +579,9 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
                    + sin(uTime * 2.7 + wp.x * 1.9 - wp.z * 1.4) * 0.015;
         pos.y += (wave - 0.045) * isTop;
       }
-      vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+      vec4 wp2 = modelMatrix * vec4(pos, 1.0);
+      vWorldPos = wp2.xyz;
+      vec4 mv = viewMatrix * wp2;
       vFogDepth = -mv.z;
       gl_Position = projectionMatrix * mv;
     }
@@ -585,19 +593,32 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform float uFogNear;
     uniform float uFogFar;
     uniform float uAlphaTest;
+    uniform sampler2D uShadowMap;
+    uniform mat4 uShadowMatrix;
+    uniform vec2 uShadowTexel;
+    uniform float uShadowStrength;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
     varying float vBlock;
     varying vec3 vTint;
     varying float vFogDepth;
+    varying vec3 vWorldPos;
+    varying vec3 vNormalW;
+    ${GLSL_SHADOW}
     void main() {
       vec4 tex = texture2D(uAtlas, vUv);
       if (tex.a < uAlphaTest) discard;
-      float light = max(vBlock, vSky * uSunLevel);
+      float sf = 1.0;
+      if (uShadowStrength > 0.001) {
+        sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW);
+        sf = mix(1.0, sf, uShadowStrength);
+      }
+      float light = max(vBlock, vSky * uSunLevel * sf);
       light = clamp(light, 0.045, 1.0);
       float l = pow(light, 1.15);
-      vec3 col = tex.rgb * vTint * vShade * l;
+      vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
+      vec3 col = tex.rgb * vTint * vShade * l * shadowTint;
       float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
       col = mix(col, uFogColor, fogF);
       gl_FragColor = vec4(col, tex.a);
@@ -617,6 +638,10 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uAlphaTest: { value: opts.alphaTest },
         uTime: { value: 0 },
         uWave: { value: opts.wave },
+        uShadowMap: { value: null },
+        uShadowMatrix: { value: new THREE.Matrix4() },
+        uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
+        uShadowStrength: { value: 0 },
       },
       transparent: opts.transparent,
       side: opts.side,
@@ -628,7 +653,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
   return {
     opaque: make({ transparent: false, alphaTest: 0.0, wave: 0, side: THREE.FrontSide, depthWrite: true }),
     cutout: make({ transparent: false, alphaTest: 0.5, wave: 0, side: THREE.DoubleSide, depthWrite: true }),
-    water: make({ transparent: true, alphaTest: 0.05, wave: 1, side: THREE.DoubleSide, depthWrite: true }),
+    water: createWaterMaterial(texture),
   };
 }
 

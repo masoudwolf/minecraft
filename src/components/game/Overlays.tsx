@@ -53,7 +53,10 @@ export function SettingsScreen() {
     audio.click();
     const engine = getEngine();
     engine?.applySettings();
-    useGameStore.getState().setScreen(prevScreen === 'settings' ? 'menu' : prevScreen);
+    // a running world (currentWorldId set) → back to pause; else main menu.
+    // (prevScreen is unreliable — it was overwritten by the graphics roundtrip)
+    const inWorld = useGameStore.getState().currentWorldId !== null;
+    useGameStore.getState().setScreen(inWorld ? 'paused' : 'menu');
   };
 
   return (
@@ -90,6 +93,20 @@ export function SettingsScreen() {
 
         <Toggle label="Clouds" value={settings.clouds} onChange={(v) => updateSettings({ clouds: v })} />
         <Toggle label="Show FPS" value={settings.showFps} onChange={(v) => updateSettings({ showFps: v })} />
+
+        <button
+          onClick={() => { audio.click(); useGameStore.getState().setScreen('graphics'); }}
+          className="mc-btn w-full px-4 py-2.5 text-[13px] text-white"
+          style={{
+            fontFamily: 'var(--font-mc)',
+            border: '2px solid #000',
+            background: '#3c7a6a',
+            boxShadow: 'inset 2px 2px 0 rgba(255,255,255,0.35), inset -2px -2px 0 rgba(0,0,0,0.35)',
+            textShadow: '2px 2px 0 rgba(0,0,0,0.6)',
+          }}
+        >
+          ✨ Graphics / گرافیک…
+        </button>
 
         <McButton onClick={back} className="mt-4">Done</McButton>
       </div>

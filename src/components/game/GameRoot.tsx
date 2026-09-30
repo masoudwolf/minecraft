@@ -10,6 +10,7 @@ import { AchievementsScreen } from './AchievementsScreen';
 import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen, TradePanel } from './Overlays';
+import { GraphicsScreen } from './GraphicsScreen';
 import { InventoryScreen } from './InventoryScreen';
 import { EnchantPanel } from './EnchantPanel';
 import AssetViewer from './AssetViewer';
@@ -58,6 +59,7 @@ export default function GameRoot() {
       {screen === 'loading' && <LoadingScreen />}
       {screen === 'paused' && <PauseMenu />}
       {screen === 'settings' && <SettingsScreen />}
+      {screen === 'graphics' && <GraphicsScreen />}
       {screen === 'assets' && <AssetViewer />}
       {screen === 'dead' && <DeathScreen />}
     </div>

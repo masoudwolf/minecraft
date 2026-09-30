@@ -25,6 +25,7 @@ import { audio, type MaterialSound } from './audio';
 import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL } from './textures/atlas';
 import { getItemIconCanvas } from './items';
 import { useGameStore, type GameMode, type WorldMeta } from './state';
+import { GraphicsSystem } from './graphics';
 
 /** display name for any block or item id (cheat toasts, etc.) */
 function itemLabel(id: number): string {
@@ -167,6 +168,8 @@ export class Game {
   private handBlockId = -1;
   private sunLight: THREE.DirectionalLight;
   private ambient: THREE.HemisphereLight;
+  /** shader-pack graphics (sky/volumetric water/shadows/grass/postfx) */
+  private gfx: GraphicsSystem;
 
   private settings = useGameStore.getState().settings;
   private storeUnsub: () => void;
@@ -208,6 +211,10 @@ export class Game {
     this.sunLight.position.set(0.4, 1, 0.3);
     this.scene.add(this.sunLight);
 
+    // shader-pack graphics system (atmosphere, volumetric clouds, real water,
+    // sun shadows, grass, post fx)
+    this.gfx = new GraphicsSystem(this.renderer, this.scene, this.camera, this.sunLight);
+
     // block highlight wireframe
     const hlGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
     this.highlight = new THREE.LineSegments(hlGeo, new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.6 }));
@@ -233,7 +240,8 @@ export class Game {
       this.settings = state.settings;
       audio.setVolume(this.settings.volume);
       this.applySkyFog();
-      if (this.sky) this.sky.cloudsEnabled = this.settings.clouds;
+      if (this.sky) this.sky.cloudsEnabled = this.settings.clouds && !this.settings.gfx.volumetricClouds;
+      if (this.world) this.gfx.applySettings(this.settings);
     });
     // restore persisted F5 camera mode
     if (this.settings.cameraMode === 1 || this.settings.cameraMode === 2) {
@@ -408,6 +416,8 @@ export class Game {
     this.clearPrimedTnt();
     this.world = new World(seed, save?.edits);
     this.scene.add(this.world.group);
+    this.gfx.attachWorld(this.world);
+    this.gfx.applySettings(this.settings);
     this.sky = new SkySystem(this.scene, seed);
     this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
     this.weather?.dispose();
@@ -586,6 +596,7 @@ export class Game {
     this.running = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     const store = useGameStore.getState();
+    store.setCurrentWorld(null, '');
     store.setScreen('menu');
     void this.fetchWorlds();
   }
@@ -733,6 +744,7 @@ export class Game {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.gfx.resize();
   };
 
   private onContextMenu = (e: Event): void => e.preventDefault();
@@ -2867,6 +2879,7 @@ export class Game {
             const w = this.world.getChunk(pcx + dx, pcz + dz - 1);
             if (n?.hasData && s?.hasData && e?.hasData && w?.hasData) {
               this.world.buildMesh(chunk);
+              this.gfx.onChunkMeshed(chunk, this.world);
               if (performance.now() - t1 > 7) break outer2;
             }
           }
@@ -2989,10 +3002,11 @@ export class Game {
       if (this.player && this.world && this.sky) {
         this.sky.update(0, this.camera, this.scene, 60, 130);
         this.applySkyFog();
+        this.gfx.update(0, this.camera, this.sky, this.player.x, this.player.y, this.player.z, false);
       }
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.gfx.render(dt);
 
     // debug overlay ~4Hz
     this.debugTimer += dt;
@@ -3409,6 +3423,9 @@ export class Game {
     const st = useGameStore.getState();
     if (st.hud.underwater !== underwater) st.setHud({ underwater });
 
+    // graphics pack: sky dome, clouds, water sun, shadow follow, postfx uniforms
+    this.gfx.update(dt, this.camera, this.sky, this.player.x, this.player.y, this.player.z, underwater);
+
     this.syncHUD();
   }
 
@@ -3500,7 +3517,8 @@ export class Game {
     this.camera.fov = s.fov;
     this.camera.updateProjectionMatrix();
     audio.setVolume(s.volume);
-    if (this.sky) this.sky.cloudsEnabled = s.clouds;
+    if (this.sky) this.sky.cloudsEnabled = s.clouds && !s.gfx.volumetricClouds;
+    if (this.world) this.gfx.applySettings(s);
   }
 
   dispose(): void {
@@ -3525,6 +3543,7 @@ export class Game {
     }
     this.particles?.dispose();
     this.weather?.dispose();
+    this.gfx.dispose();
     this.clearLightningBolts();
     this.drops?.clear();
     this.mobs?.clear();

@@ -63,7 +63,7 @@ export function MainMenu() {
 
       {/* footer */}
       <div className="absolute bottom-3 left-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
-        VoxelCraft 0.41.0 — Phase 12: Buckets &amp; Enchanting
+        VoxelCraft 0.42.0 — Shader Pack: Buckets &amp; Enchanting
       </div>
       <div className="absolute bottom-3 right-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
         Fan project — not affiliated with Mojang

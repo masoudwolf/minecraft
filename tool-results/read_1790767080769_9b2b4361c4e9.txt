@@ -1,0 +1,2002 @@
+     1→// ─── Game engine: orchestrates renderer, world, player, UI bridge ────────────
+     2→import * as THREE from 'three';
+     3→import { World } from './world/world';
+     4→import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
+     5→import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling } from './blocks';
+     6→import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
+     7→import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
+     8→import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
+     9→import { MobManager, type MobCallbacks, type SavedMob } from './entities/mobs';
+    10→import { preloadEntityTextures } from './entities/vanillaSkins';
+    11→import { BoatManager, type Boat } from './entities/boats';
+    12→import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
+    13→import { XPOrbManager } from './entities/xp';
+    14→import { AchievementManager, type AchievementDef } from './achievements';
+    15→import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, ITEM } from './items';
+    16→import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
+    17→import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
+    18→import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
+    19→import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, hasInfinity, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
+    20→import { BlockEntityManager } from './blockEntities';
+    21→import { ParticleSystem } from './particles';
+    22→import { SkySystem, getTimeLabel } from './sky';
+    23→import { WeatherSystem } from './weather';
+    24→import { audio, type MaterialSound } from './audio';
+    25→import { getAtlas, getCrackTextures, tileAvgColor, getTileCanvas, getTileIconURL } from './textures/atlas';
+    26→import { getItemIconCanvas } from './items';
+    27→import { useGameStore, type GameMode, type WorldMeta } from './state';
+    28→
+    29→/** display name for any block or item id (cheat toasts, etc.) */
+    30→function itemLabel(id: number): string {
+    31→  return isItemId(id) ? (getItemDef(id)?.name ?? `#${id}`) : (getBlockDef(id)?.name ?? `#${id}`);
+    32→}
+    33→
+    34→const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration source)
+    35→
+    36→interface SaveData {
+    37→  seed: number;
+    38→  time: number;
+    39→  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number };
+    40→  edits: Record<string, Record<number, number>>;
+    41→  blockEntities?: Record<string, unknown>;
+    42→  spawn?: { x: number; y: number; z: number };
+    43→  achievements?: string[];
+    44→  gameMode?: GameMode;
+    45→  flying?: boolean;
+    46→  /** persisted live mobs (Phase 5) */
+    47→  mobs?: SavedMob[];
+    48→}
+    49→
+    50→/** primed TNT entity (ignited block with fuse) */
+    51→interface PrimedTnt {
+    52→  x: number; y: number; z: number;
+    53→  vx: number; vy: number; vz: number;
+    54→  fuse: number;
+    55→  t: number;
+    56→  mesh: THREE.Mesh;
+    57→  overlay: THREE.Mesh;
+    58→}
+    59→
+    60→/** lightning bolt visual (thunderstorm strike) */
+    61→interface LightningBolt {
+    62→  group: THREE.Group;
+    63→  mats: THREE.MeshBasicMaterial[];
+    64→  t: number;
+    65→}
+    66→
+    67→export class Game {
+    68→  canvas: HTMLCanvasElement;
+    69→  renderer: THREE.WebGLRenderer;
+    70→  scene: THREE.Scene;
+    71→  camera: THREE.PerspectiveCamera;
+    72→  world!: World;
+    73→  player!: Player;
+    74→  drops!: DropManager;
+    75→  mobs!: MobManager;
+    76→  xpOrbs!: XPOrbManager;
+    77→  particles!: ParticleSystem;
+    78→  sky!: SkySystem;
+    79→  weather!: WeatherSystem;
+    80→  blockEnts!: BlockEntityManager;
+    81→  achievements = new AchievementManager();
+    82→  spawnPoint: { x: number; y: number; z: number } | null = null;
+    83→  /** DB world id currently being played (null = legacy local game) */
+    84→  currentWorldId: string | null = null;
+    85→  currentWorldName = '';
+    86→  /** transient: save failed notice shown once */
+    87→  private saveWarned = false;
+    88→
+    89→  private raf = 0;
+    90→  private lastTime = 0;
+    91→  private accumulator = 0;
+    92→  private keys = new Set<string>();
+    93→  private mining = false;
+    94→  private mineProgress = 0;
+    95→  private mineTarget: RayHit | null = null;
+    96→  private placeCooldown = 0;
+    97→  private attackCooldown = 0;
+    98→  private eatCooldown = 0;
+    99→  private hungerRegenTimer = 0;
+   100→  private starveTimer = 0;
+   101→  private swingT = 0;
+   102→  private swingActive = false;
+   103→  private stepTimer = 0;
+   104→  private wasInWater = false;
+   105→  private wasOnGround = true;
+   106→  private prevVy = 0;
+   107→  private boats!: BoatManager;
+   108→  private ridingBoat: Boat | null = null;
+   109→  private sprintFov = 0;
+   110→  private saveTimer = 0;
+   111→  private fpsAccum = 0;
+   112→  private fpsFrames = 0;
+   113→  private fps = 60;
+   114→  private debugTimer = 0;
+   115→  private target: RayHit | null = null;
+   116→  private running = false;
+   117→  private disposed = false;
+   118→  /** camera perspective: 0 = first person, 1 = third back, 2 = third front (F5) */
+   119→  cameraMode: 0 | 1 | 2 = 0;
+   120→  private playerModel: PlayerModelParts | null = null;
+   121→  /** smoothed world-light factor for the 3rd-person model (night realism) */
+   122→  private playerLightF = 1;
+   123→  /** base colors of the player model's materials (armor tints) before light multiplication */
+   124→  private playerModelBaseMats = new WeakMap<THREE.Material, THREE.Color>();
+   125→  private modelWalkPhase = 0;
+   126→  private sprintFxTimer = 0;
+   127→  /** bow draw state (RMB held with bow) */
+   128→  private bowCharging = false;
+   129→  private bowCharge = 0;
+   130→  private bowDrawSoundT = 0;
+   131→  /** fishing: active bobber state (cast while holding a fishing rod) */
+   132→  private fishing: { state: 'fly' | 'float' | 'bite'; x: number; y: number; z: number; vx: number; vy: number; vz: number; nextBite: number; biteT: number } | null = null;
+   133→  private bobberMesh: THREE.Group | null = null;
+   134→  private fishLine: THREE.Line | null = null;
+   135→  /** enchanting: current table session (held item + deterministic offers) */
+   136→  private enchantTarget: { slotRef: HotbarSlot; options: EnchantOption[] } | null = null;
+   137→  private enchantEpoch = 0;
+   138→  /** latest mob callbacks (mining attack → hurt→teleport chain) */
+   139→  private mobCb: MobCallbacks | null = null;
+   140→  /** active lightning bolts (thunderstorm visuals) */
+   141→  private lightningBolts: LightningBolt[] = [];
+   142→
+   143→  // inventory / crafting / containers
+   144→  private craft2: HotbarSlot[] = Array.from({ length: 4 }, () => ({ blockId: 0, count: 0 }));
+   145→  private craft9: HotbarSlot[] = Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 }));
+   146→  private craftOut: HotbarSlot | null = null;
+   147→  private cursor: HotbarSlot | null = null;
+   148→  private invTable = false;
+   149→  private invHover: { area: 'hotbar' | 'main' | 'craft' | 'container' | 'armor'; idx: number } | null = null;
+   150→  private lastInvHash = '';
+   151→  private containerKey: string | null = null; // "x,y,z" of open chest/furnace
+   152→  private furnaceSyncTimer = 0;
+   153→  private torchFxTimer = 0;
+   154→  private cactusTimer = 0;
+   155→  private plantScanTimer = 0;
+   156→  private lastXpSync = '';
+   157→  /** primed TNT entities (fuse burning) */
+   158→  private primedTnt: PrimedTnt[] = [];
+   159→  /** camera shake timer (explosions) */
+   160→  private shakeT = 0;
+   161→
+   162→  private highlight: THREE.LineSegments;
+   163→  private crackMesh: THREE.Mesh;
+   164→  private crackMats: THREE.MeshBasicMaterial[];
+   165→  private handGroup: THREE.Group;
+   166→  private handMesh: THREE.Mesh | null = null;
+   167→  private handBlockId = -1;
+   168→  private sunLight: THREE.DirectionalLight;
+   169→  private ambient: THREE.HemisphereLight;
+   170→
+   171→  private settings = useGameStore.getState().settings;
+   172→  private storeUnsub: () => void;
+   173→
+   174→  constructor(canvas: HTMLCanvasElement) {
+   175→    this.canvas = canvas;
+   176→    // decode vanilla entity textures up front → sync tinted skins (sheep dye etc.)
+   177→    void preloadEntityTextures();
+   178→    // WebGL context with graceful fallbacks: software-GL sandboxes (llvmpipe/
+   179→    // swiftshader) reject 'high-performance' contexts — retry plain, then
+   180→    // low-power without the perf caveat, before giving up
+   181→    const attempts: THREE.WebGLRendererParameters[] = [
+   182→      { canvas, antialias: false, powerPreference: 'high-performance' },
+   183→      { canvas, antialias: false },
+   184→      { canvas, antialias: false, powerPreference: 'low-power', failIfMajorPerformanceCaveat: false },
+   185→    ];
+   186→    let renderer: THREE.WebGLRenderer | null = null;
+   187→    for (const opts of attempts) {
+   188→      try {
+   189→        renderer = new THREE.WebGLRenderer(opts);
+   190→        break;
+   191→      } catch {
+   192→        // next fallback
+   193→      }
+   194→    }
+   195→    if (!renderer) throw new Error('WebGL is not available in this browser');
+   196→    this.renderer = renderer;
+   197→    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+   198→    this.renderer.setSize(window.innerWidth, window.innerHeight);
+   199→    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+   200→
+   201→    this.scene = new THREE.Scene();
+   202→    this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, 900);
+   203→
+   204→    // entity lighting (Lambert drops / hand)
+   205→    this.ambient = new THREE.HemisphereLight(0xffffff, 0x666666, 0.9);
+   206→    this.scene.add(this.ambient);
+   207→    this.sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+   208→    this.sunLight.position.set(0.4, 1, 0.3);
+   209→    this.scene.add(this.sunLight);
+   210→
+   211→    // block highlight wireframe
+   212→    const hlGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
+   213→    this.highlight = new THREE.LineSegments(hlGeo, new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.6 }));
+   214→    this.highlight.visible = false;
+   215→    this.scene.add(this.highlight);
+   216→
+   217→    // crack overlay
+   218→    const cracks = getCrackTextures();
+   219→    this.crackMats = cracks.map((tex) => new THREE.MeshBasicMaterial({
+   220→      map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+   221→    }));
+   222→    this.crackMesh = new THREE.Mesh(new THREE.BoxGeometry(1.004, 1.004, 1.004), this.crackMats[0]);
+   223→    this.crackMesh.visible = false;
+   224→    this.scene.add(this.crackMesh);
+   225→
+   226→    // hand (held item)
+   227→    this.handGroup = new THREE.Group();
+   228→    this.camera.add(this.handGroup);
+   229→    this.scene.add(this.camera);
+   230→
+   231→    // settings subscription
+   232→    this.storeUnsub = useGameStore.subscribe((state) => {
+   233→      this.settings = state.settings;
+   234→      audio.setVolume(this.settings.volume);
+   235→      this.applySkyFog();
+   236→      if (this.sky) this.sky.cloudsEnabled = this.settings.clouds;
+   237→    });
+   238→    // restore persisted F5 camera mode
+   239→    if (this.settings.cameraMode === 1 || this.settings.cameraMode === 2) {
+   240→      this.cameraMode = this.settings.cameraMode;
+   241→    }
+   242→
+   243→    // achievement popup bridge
+   244→    this.achievements.setCallback((a: AchievementDef) => {
+   245→      audio.achievement();
+   246→      const store = useGameStore.getState();
+   247→      store.setAdvancement({ title: a.title, desc: a.desc, icon: getTileIconURL(a.iconTile) });
+   248→      window.setTimeout(() => {
+   249→        if (useGameStore.getState().advancement?.title === a.title) {
+   250→          useGameStore.getState().setAdvancement(null);
+   251→        }
+   252→      }, 4500);
+   253→    });
+   254→
+   255→    this.bindEvents();
+   256→
+   257→    // QA/debug handle (used by automated testing)
+   258→    (window as unknown as { __voxel?: Game }).__voxel = this;
+   259→  }
+   260→
+   261→  // ── game start / save / load ───────────────────────────────────────────────
+   262→  /** legacy entry: create a fresh DB world with defaults */
+   263→  async newGame(): Promise<void> {
+   264→    await this.createWorld('New World', 'survival');
+   265→  }
+   266→
+   267→  /** create a persistent world in the DB, then play it */
+   268→  async createWorld(name: string, gameMode: GameMode, seed?: number): Promise<void> {
+   269→    const store = useGameStore.getState();
+   270→    try {
+   271→      const res = await fetch('/api/worlds', {
+   272→        method: 'POST',
+   273→        headers: { 'Content-Type': 'application/json' },
+   274→        body: JSON.stringify({ name, gameMode, seed }),
+   275→      });
+   276→      if (!res.ok) throw new Error('create failed');
+   277→      const { world } = (await res.json()) as { world: { id: string; name: string; seed: number } };
+   278→      this.currentWorldId = world.id;
+   279→      this.currentWorldName = world.name;
+   280→      store.setCurrentWorld(world.id, world.name);
+   281→      this.setupWorld(world.seed, null, gameMode);
+   282→      await this.preloadSpawn();
+   283→      this.enterPlaying();
+   284→      this.saveGame(); // persist spawn baseline immediately
+   285→    } catch (err) {
+   286→      console.error('createWorld failed', err);
+   287→      // offline fallback: play a local-only world
+   288→      const s = seed ?? Math.floor(Math.random() * 2147483647);
+   289→      this.currentWorldId = null;
+   290→      this.currentWorldName = name;
+   291→      store.setCurrentWorld(null, name);
+   292→      this.setupWorld(s, null, gameMode);
+   293→      await this.preloadSpawn();
+   294→      this.enterPlaying();
+   295→    }
+   296→  }
+   297→
+   298→  /** load a DB world and play it */
+   299→  async loadWorld(id: string): Promise<void> {
+   300→    const store = useGameStore.getState();
+   301→    try {
+   302→      const res = await fetch(`/api/worlds/${id}`);
+   303→      if (!res.ok) throw new Error('load failed');
+   304→      const { world } = (await res.json()) as { world: { id: string; name: string; gameMode: GameMode; seed: number; time: number; data: string } };
+   305→      let save: SaveData | null = null;
+   306→      try { save = JSON.parse(world.data) as SaveData; } catch { save = null; }
+   307→      if (save) save.gameMode = world.gameMode;
+   308→      this.currentWorldId = world.id;
+   309→      this.currentWorldName = world.name;
+   310→      store.setCurrentWorld(world.id, world.name);
+   311→      this.setupWorld(world.seed, save, world.gameMode);
+   312→      if (save) this.sky.time = save.time ?? this.sky.time;
+   313→      await this.preloadSpawn();
+   314→      this.enterPlaying();
+   315→    } catch (err) {
+   316→      console.error('loadWorld failed', err);
+   317→      this.showToast('Failed to load world');
+   318→      useGameStore.getState().setScreen('menu');
+   319→    }
+   320→  }
+   321→
+   322→  /** one-time migration: legacy localStorage save → DB world (singleton-guarded) */
+   323→  private migratePromise: Promise<void> | null = null;
+   324→  async migrateLocalSave(): Promise<void> {
+   325→    if (this.migratePromise) return this.migratePromise;
+   326→    this.migratePromise = (async (): Promise<void> => {
+   327→      try {
+   328→        const MIGRATED_FLAG = 'voxelcraft.migrated';
+   329→        const raw = localStorage.getItem(SAVE_KEY);
+   330→        if (!raw || localStorage.getItem(MIGRATED_FLAG)) return;
+   331→        localStorage.setItem(MIGRATED_FLAG, '1'); // set first — prevents duplicate worlds on race/retry
+   332→        const save = JSON.parse(raw) as SaveData & { gameMode?: GameMode };
+   333→        const res = await fetch('/api/worlds', {
+   334→          method: 'POST',
+   335→          headers: { 'Content-Type': 'application/json' },
+   336→          body: JSON.stringify({
+   337→            name: 'Migrated World',
+   338→            gameMode: save.gameMode ?? 'survival',
+   339→            seed: save.seed,
+   340→            time: save.time,
+   341→            data: raw,
+   342→          }),
+   343→        });
+   344→        if (!res.ok) return;
+   345→        localStorage.removeItem(SAVE_KEY);
+   346→        console.log('[voxelcraft] migrated local save → DB world');
+   347→      } catch { /* non-fatal */ }
+   348→    })();
+   349→    return this.migratePromise;
+   350→  }
+   351→
+   352→  /** refresh the world list in the store */
+   353→  async fetchWorlds(): Promise<void> {
+   354→    try {
+   355→      const res = await fetch('/api/worlds');
+   356→      if (!res.ok) return;
+   357→      const { worlds } = (await res.json()) as { worlds: (WorldMeta & { achievements: string | string[] })[] };
+   358→      useGameStore.getState().setWorlds(worlds.map((w) => ({
+   359→        id: w.id,
+   360→        name: w.name,
+   361→        gameMode: w.gameMode,
+   362→        seed: w.seed,
+   363→        updatedAt: w.updatedAt,
+   364→        achievements: Array.isArray(w.achievements) ? w.achievements : safeParseArray(w.achievements),
+   365→      })));
+   366→    } catch { /* offline */ }
+   367→  }
+   368→
+   369→  async deleteWorld(id: string): Promise<void> {
+   370→    console.warn('[voxelcraft] deleteWorld called', id, new Error().stack);
+   371→    try {
+   372→      await fetch(`/api/worlds/${id}`, { method: 'DELETE' });
+   373→      await this.fetchWorlds();
+   374→    } catch { /* ignore */ }
+   375→  }
+   376→
+   377→  /** rename a DB world (world select screen) */
+   378→  async renameWorld(id: string, name: string): Promise<void> {
+   379→    const clean = name.trim().slice(0, 32);
+   380→    if (!clean) return;
+   381→    try {
+   382→      await fetch(`/api/worlds/${id}`, {
+   383→        method: 'PUT',
+   384→        headers: { 'Content-Type': 'application/json' },
+   385→        body: JSON.stringify({ name: clean }),
+   386→      });
+   387→      if (this.currentWorldId === id) {
+   388→        this.currentWorldName = clean;
+   389→        useGameStore.getState().setCurrentWorld(id, clean);
+   390→      }
+   391→      await this.fetchWorlds();
+   392→      audio.click();
+   393→    } catch { /* ignore */ }
+   394→  }
+   395→
+   396→  private setupWorld(seed: number, save: SaveData | null, gameMode: GameMode = 'survival'): void {
+   397→    // clear previous world if any
+   398→    if (this.world) {
+   399→      for (const key of Array.from(this.world.chunks.keys())) {
+   400→        const [cx, cz] = key.split(',').map(Number);
+   401→        this.world.unloadChunk(cx, cz);
+   402→      }
+   403→    }
+   404→    this.drops?.clear();
+   405→    this.mobs?.clear();
+   406→    this.boats?.clear();
+   407→    this.ridingBoat = null;
+   408→    this.clearPrimedTnt();
+   409→    this.world = new World(seed, save?.edits);
+   410→    this.scene.add(this.world.group);
+   411→    this.sky = new SkySystem(this.scene, seed);
+   412→    this.sky.time = save?.time ?? DAY_LENGTH * 0.3;
+   413→    this.weather?.dispose();
+   414→    this.weather = new WeatherSystem(this.scene, seed, (wx, wz) => this.world.terrain.biomeAt(wx, wz));
+   415→    this.weather.onStrike = (sx, sy, sz) => this.spawnLightningBolt(sx, sy, sz);
+   416→    this.clearLightningBolts();
+   417→    this.drops = new DropManager(this.scene, this.world, getAtlas().texture);
+   418→    this.particles = new ParticleSystem(this.scene);
+   419→    this.mobs = new MobManager(this.scene, this.world);
+   420→    this.boats = new BoatManager(this.scene, this.world);
+   421→    if (save?.mobs && Array.isArray(save.mobs)) this.mobs.restore(save.mobs);
+   422→    this.xpOrbs = new XPOrbManager(this.scene, this.world);
+   423→    this.blockEnts = new BlockEntityManager(this.world);
+   424→    this.player = new Player(this.camera);
+   425→    this.player.gameMode = save?.gameMode ?? gameMode;
+   426→    this.player.flying = save?.flying ?? false;
+   427→    this.spawnPoint = save?.spawn ?? null;
+   428→    if (this.spawnPoint) this.mobs.spawnGuard = { x: this.spawnPoint.x, z: this.spawnPoint.z, r: 20 };
+   429→    if (save?.blockEntities) this.blockEnts.load(save.blockEntities);
+   430→
+   431→    // spawn position
+   432→    let sx = 8, sz = 8;
+   433→    this.world.ensureChunk(0, 0);
+   434→    let sy = this.world.surfaceY(sx, sz);
+   435→    let attempts = 0;
+   436→    while ((sy <= 40 || sy === 0) && attempts < 24) {
+   437→      sx += 12; sz += 5; attempts++;
+   438→      this.world.ensureChunk(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE));
+   439→      sy = this.world.surfaceY(sx, sz);
+   440→    }
+   441→    if (save?.player) {
+   442→      this.player.entity.x = save.player.x;
+   443→      this.player.entity.y = save.player.y;
+   444→      this.player.entity.z = save.player.z;
+   445→      this.player.yaw = save.player.yaw;
+   446→      this.player.pitch = save.player.pitch;
+   447→      this.player.health = save.player.health;
+   448→      this.player.hotbar = save.player.hotbar;
+   449→      this.player.main = save.player.main && save.player.main.length === 27
+   450→        ? save.player.main
+   451→        : Array.from({ length: 27 }, () => ({ blockId: 0, count: 0 }));
+   452→      this.player.armor = save.player.armor && save.player.armor.length === 4
+   453→        ? save.player.armor
+   454→        : [null, null, null, null];
+   455→      this.player.selected = save.player.selected;
+   456→      this.player.fallStartY = save.player.y;
+   457→      this.player.level = save.player.level ?? 0;
+   458→      this.player.xp = save.player.xp ?? 0;
+   459→      if (save.achievements) this.achievements.restore(save.achievements);
+   460→    } else {
+   461→      this.player.entity.x = sx + 0.5;
+   462→      this.player.entity.y = sy + 1.2;
+   463→      this.player.entity.z = sz + 0.5;
+   464→      this.player.fallStartY = this.player.entity.y;
+   465→    }
+   466→    this.updateHandMesh(true);
+   467→    this.syncHUD(true);
+   468→    this.applySkyFog();
+   469→  }
+   470→
+   471→  private async preloadSpawn(): Promise<void> {
+   472→    const store = useGameStore.getState();
+   473→    store.setScreen('loading');
+   474→    const pcx = Math.floor(this.player.entity.x / CHUNK_SIZE);
+   475→    const pcz = Math.floor(this.player.entity.z / CHUNK_SIZE);
+   476→    const dataR = 2;
+   477→    const jobs: [number, number][] = [];
+   478→    for (let dx = -dataR; dx <= dataR; dx++)
+   479→      for (let dz = -dataR; dz <= dataR; dz++)
+   480→        jobs.push([pcx + dx, pcz + dz]);
+   481→    jobs.sort((a, b) => (Math.abs(a[0] - pcx) + Math.abs(a[1] - pcz)) - (Math.abs(b[0] - pcx) + Math.abs(b[1] - pcz)));
+   482→
+   483→    for (let i = 0; i < jobs.length; i++) {
+   484→      this.world.ensureChunk(jobs[i][0], jobs[i][1]);
+   485→      if (i % 3 === 0) {
+   486→        const p = i / jobs.length;
+   487→        useGameStore.getState().setHud({ loadingProgress: p, loadingLabel: 'Generating world…' });
+   488→        await this.nextFrame();
+   489→      }
+   490→    }
+   491→    // mesh immediate area
+   492→    for (let dx = -1; dx <= 1; dx++) {
+   493→      for (let dz = -1; dz <= 1; dz++) {
+   494→        const c = this.world.getChunk(pcx + dx, pcz + dz);
+   495→        if (c) this.world.buildMesh(c);
+   496→      }
+   497→    }
+   498→    useGameStore.getState().setHud({ loadingProgress: 1, loadingLabel: 'Building terrain…' });
+   499→    await this.nextFrame();
+   500→  }
+   501→
+   502→  private nextFrame(): Promise<void> {
+   503→    return new Promise((r) => requestAnimationFrame(() => r()));
+   504→  }
+   505→
+   506→  private enterPlaying(): void {
+   507→    useGameStore.getState().setHud({ loadingProgress: 1 });
+   508→    useGameStore.getState().setScreen('playing');
+   509→    this.running = true;
+   510→    this.lastTime = performance.now();
+   511→    this.requestLock();
+   512→    if (!this.raf) this.loop();
+   513→  }
+   514→
+   515→  requestLock(): void {
+   516→    if (document.pointerLockElement !== this.canvas) {
+   517→      void this.canvas.requestPointerLock();
+   518→    }
+   519→  }
+   520→
+   521→  /** resume from pause (Back to Game / QA) */
+   522→  resume(): void {
+   523→    useGameStore.getState().setScreen('playing');
+   524→    this.requestLock();
+   525→  }
+   526→
+   527→  saveGame(): void {
+   528→    if (!this.world || !this.player) return;
+   529→    const edits: Record<string, Record<number, number>> = {};
+   530→    for (const [key, map] of this.world.edits) {
+   531→      const obj: Record<number, number> = {};
+   532→      for (const [idx, id] of map) obj[idx] = id;
+   533→      edits[key] = obj;
+   534→    }
+   535→    const save: SaveData = {
+   536→      seed: this.world.terrain.getSeed(),
+   537→      time: this.sky.time,
+   538→      player: {
+   539→        x: this.player.entity.x, y: this.player.entity.y, z: this.player.entity.z,
+   540→        yaw: this.player.yaw, pitch: this.player.pitch,
+   541→        health: this.player.health,
+   542→        hotbar: this.player.hotbar,
+   543→        main: this.player.main,
+   544→        armor: this.player.armor,
+   545→        selected: this.player.selected,
+   546→        level: this.player.level,
+   547→        xp: this.player.xp,
+   548→      },
+   549→      edits,
+   550→      blockEntities: this.blockEnts.serialize(),
+   551→      spawn: this.spawnPoint ?? undefined,
+   552→      achievements: this.achievements.serialize(),
+   553→      gameMode: this.player.gameMode,
+   554→      flying: this.player.flying,
+   555→      mobs: this.mobs ? this.mobs.serialize() : [],
+   556→    };
+   557→    const json = JSON.stringify(save);
+   558→    try {
+   559→      localStorage.setItem(SAVE_KEY, json); // legacy mirror (offline fallback)
+   560→      useGameStore.getState().setHasSave(true);
+   561→    } catch { /* quota */ }
+   562→    // canonical store: DB (fire-and-forget, throttled by callers)
+   563→    if (this.currentWorldId) {
+   564→      void fetch(`/api/worlds/${this.currentWorldId}`, {
+   565→        method: 'PUT',
+   566→        headers: { 'Content-Type': 'application/json' },
+   567→        body: JSON.stringify({
+   568→          time: save.time,
+   569→          data: json,
+   570→          achievements: JSON.stringify(this.achievements.serialize()),
+   571→        }),
+   572→      }).then(() => {
+   573→        this.saveWarned = false;
+   574→        useGameStore.getState().setHasSave(true);
+   575→      }).catch(() => {
+   576→        if (!this.saveWarned) {
+   577→          this.saveWarned = true;
+   578→          this.showToast('Cloud save failed — kept local copy');
+   579→        }
+   580→      });
+   581→    }
+   582→  }
+   583→
+   584→  quitToMenu(): void {
+   585→    this.saveGame();
+   586→    this.running = false;
+   587→    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+   588→    const store = useGameStore.getState();
+   589→    store.setScreen('menu');
+   590→    void this.fetchWorlds();
+   591→  }
+   592→
+   593→  // ── input ──────────────────────────────────────────────────────────────────
+   594→  private lastSpaceTap = 0;
+   595→
+   596→  private onKeyDown = (e: KeyboardEvent): void => {
+   597→    // OS key auto-repeat: a HELD key fires keydown ~30x/sec. Held movement keys
+   598→    // are already in this.keys (added on the first press), so re-processing
+   599→    // repeats would only re-trigger ONE-SHOT actions — critically the creative
+   600→    // flight double-tap, which then toggled flight on/off while Space was held.
+   601→    if (e.repeat) {
+   602→      if (e.code === 'Space' || e.code === 'F3' || e.code === 'F5') e.preventDefault();
+   603→      return;
+   604→    }
+   605→    if (e.code === 'F3') { e.preventDefault(); useGameStore.getState().toggleDebug(); return; }
+   606→    const st = useGameStore.getState();
+   607→    if (e.code === 'F5') {
+   608→      if (st.screen === 'playing') {
+   609→        e.preventDefault(); // don't reload the page mid-game
+   610→        this.cameraMode = ((this.cameraMode + 1) % 3) as 0 | 1 | 2;
+   611→        useGameStore.getState().updateSettings({ cameraMode: this.cameraMode }); // persist F5 preference
+   612→        audio.click();
+   613→      }
+   614→      return;
+   615→    }
+   616→    if (st.inv.open && st.screen === 'playing') {
+   617→      if (e.code === 'KeyE' || e.code === 'Escape') { e.preventDefault(); this.closeInventory(); return; }
+   618→      if (e.code.startsWith('Digit')) {
+   619→        const n = parseInt(e.code.slice(5), 10);
+   620→        if (n >= 1 && n <= 9 && this.invHover) this.invHotbarSwap(this.invHover.area, this.invHover.idx, n - 1);
+   621→      }
+   622→      return;
+   623→    }
+   624→    // trade panel open: Escape closes it
+   625→    if (st.tradeOpen && st.screen === 'playing') {
+   626→      if (e.code === 'Escape' || e.code === 'KeyE') { e.preventDefault(); this.closeTrade(); return; }
+   627→      return;
+   628→    }
+   629→    // enchanting panel open: Escape closes it
+   630→    if (st.enchantOpen && st.screen === 'playing') {
+   631→      if (e.code === 'Escape' || e.code === 'KeyE') { e.preventDefault(); this.closeEnchant(); return; }
+   632→      return;
+   633→    }
+   634→    if (st.screen !== 'playing') return;
+   635→    this.keys.add(e.code);
+   636→    if (e.code === 'F4') {
+   637→      e.preventDefault();
+   638→      const next = !st.creatorOpen;
+   639→      useGameStore.getState().setCreatorOpen(next);
+   640→      // unlock the cursor while the panel is open (clicks must reach the UI)
+   641→      if (next && document.pointerLockElement === this.canvas) document.exitPointerLock();
+   642→      else if (!next) this.requestLock();
+   643→      return;
+   644→    }
+   645→    if (e.code === 'KeyE') { e.preventDefault(); this.openInventory(false); return; }
+   646→    if (e.code.startsWith('Digit')) {
+   647→      const n = parseInt(e.code.slice(5), 10);
+   648→      if (n >= 1 && n <= 9) { this.player.selected = n - 1; this.syncHUD(); this.updateHandMesh(); }
+   649→    }
+   650→    if (e.code === 'KeyQ') this.dropSelected();
+   651→    // creative: double-tap space toggles flight (fresh presses only — repeats
+   652→    // are filtered above). Tap is consumed so a held key or a stray third tap
+   653→    // can't chain-toggle flight back and forth.
+   654→    if (e.code === 'Space' && this.player.isCreative) {
+   655→      const now = performance.now();
+   656→      if (now - this.lastSpaceTap < 280) {
+   657→        this.player.flying = !this.player.flying;
+   658→        if (this.player.flying) {
+   659→          // small liftoff impulse: guarantees the player rises even if Space is
+   660→          // released instantly (landing-cancel only fires while vy <= 0)
+   661→          this.player.entity.vy = Math.max(this.player.entity.vy, 3.4);
+   662→        }
+   663→        audio.click();
+   664→        this.syncHUD(true);
+   665→        this.lastSpaceTap = 0;
+   666→      } else {
+   667→        this.lastSpaceTap = now;
+   668→      }
+   669→    }
+   670→    if (e.code === 'Space') e.preventDefault();
+   671→  };
+   672→
+   673→  private onKeyUp = (e: KeyboardEvent): void => {
+   674→    this.keys.delete(e.code);
+   675→  };
+   676→
+   677→  private onMouseMove = (e: MouseEvent): void => {
+   678→    if (document.pointerLockElement !== this.canvas || useGameStore.getState().screen !== 'playing') return;
+   679→    const sens = 0.0022 * this.settings.sensitivity;
+   680→    const mx = Math.max(-60, Math.min(60, e.movementX));
+   681→    const my = Math.max(-60, Math.min(60, e.movementY));
+   682→    this.player.yaw -= mx * sens;
+   683→    this.player.pitch -= my * sens;
+   684→    this.player.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.player.pitch));
+   685→  };
+   686→
+   687→  private onMouseDown = (e: MouseEvent): void => {
+   688→    if (useGameStore.getState().screen !== 'playing') return;
+   689→    if (document.pointerLockElement !== this.canvas) { this.requestLock(); return; }
+   690→    audio.resume();
+   691→    if (e.button === 0) { this.mining = true; this.startSwing(); }
+   692→    else if (e.button === 2) { this.rightClick(); }
+   693→    else if (e.button === 1) { e.preventDefault(); this.pickBlock(); }
+   694→  };
+   695→
+   696→  private onMouseUp = (e: MouseEvent): void => {
+   697→    if (e.button === 0) { this.mining = false; this.mineProgress = 0; }
+   698→    else if (e.button === 2) { this.releaseBow(); }
+   699→  };
+   700→
+   701→  private onWheel = (e: WheelEvent): void => {
+   702→    if (useGameStore.getState().screen !== 'playing') return;
+   703→    const dir = e.deltaY > 0 ? 1 : -1;
+   704→    this.player.selected = (this.player.selected + dir + 9) % 9;
+   705→    this.syncHUD();
+   706→    this.updateHandMesh();
+   707→  };
+   708→
+   709→  private hadLock = false;
+   710→  private lockHeldAt = 0;
+   711→  private onPointerLockChange = (): void => {
+   712→    const locked = document.pointerLockElement === this.canvas;
+   713→    if (locked) { this.hadLock = true; this.lockHeldAt = performance.now(); return; }
+   714→    // unlocked: pause only if a real lock session just ended (>500ms).
+   715→    // flash-engage/disengage cycles (headless, alt-tab quirks) must not pause the game.
+   716→    if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
+   717→    if (useGameStore.getState().tradeOpen) return; // villager trade panel: world keeps running
+   718→    if (useGameStore.getState().enchantOpen) return; // enchanting panel: world keeps running
+   719→    if (useGameStore.getState().creatorOpen) return; // cheat panel (F4): world keeps running
+   720→    if (
+   721→      this.hadLock &&
+   722→      performance.now() - this.lockHeldAt > 500 &&
+   723→      useGameStore.getState().screen === 'playing' &&
+   724→      !this.player?.dead
+   725→    ) {
+   726→      useGameStore.getState().setScreen('paused');
+   727→      this.saveGame();
+   728→    }
+   729→    this.hadLock = false;
+   730→  };
+   731→
+   732→  private onResize = (): void => {
+   733→    this.camera.aspect = window.innerWidth / window.innerHeight;
+   734→    this.camera.updateProjectionMatrix();
+   735→    this.renderer.setSize(window.innerWidth, window.innerHeight);
+   736→  };
+   737→
+   738→  private onContextMenu = (e: Event): void => e.preventDefault();
+   739→
+   740→  /** RMB press: bow charge / villager trade / shears / fishing rod / bone meal fertilize / block interaction / place */
+   741→  private rightClick(): void {
+   742→    const st = useGameStore.getState();
+   743→    if (st.tradeOpen || st.enchantOpen || st.inv.open) return;
+   744→    const held = this.player.hotbar[this.player.selected];
+   745→    if (held && held.count > 0 && isBowItem(held.blockId)) {
+   746→      if (!this.bowCharging) {
+   747→        if (this.player.isCreative || this.countItem(ITEM.ARROW) > 0) {
+   748→          this.bowCharging = true;
+   749→          this.bowCharge = 0;
+   750→          this.bowDrawSoundT = 0;
+   751→        } else {
+   752→          this.showToast('No arrows left!');
+   753→        }
+   754→      }
+   755→      return;
+   756→    }
+   757→    // villager: open the trade panel (within reach, not sneaking)
+   758→    if (this.target && !this.player.sneaking) {
+   759→      const p = this.player;
+   760→      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+   761→      const dir = p.forwardVector();
+   762→      const hit = this.mobs?.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+   763→      if (hit && hit.mob.type === 'villager') {
+   764→        this.openTrade(hit.mob);
+   765→        return;
+   766→      }
+   767→    }
+   768→    // shears: shear a sheep in reach (drops its color's wool)
+   769→    if (held && held.count > 0 && isShearsItem(held.blockId) && this.mobs) {
+   770→      const p = this.player;
+   771→      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+   772→      const dir = p.forwardVector();
+   773→      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+   774→      if (hit && hit.mob.type === 'sheep') {
+   775→        const res = this.mobs.shearSheep(hit.mob);
+   776→        if (res) {
+   777→          for (let i = 0; i < res.count; i++) this.drops.spawn(res.woolId, hit.mob.x, hit.mob.y + 0.6, hit.mob.z, 1);
+   778→          audio.shear();
+   779→          this.achievements.unlock('shearBrilliance');
+   780→          // shears wear (Unbreaking-aware like tools)
+   781→          const sdef = getShearsDef(held.blockId);
+   782→          if (sdef && !this.player.isCreative) {
+   783→            if (!unbreakingKeep(held.ench?.unbreaking ?? 0)) {
+   784→              held.dur = (held.dur ?? sdef.dur) - 1;
+   785→              if (held.dur <= 0) {
+   786→                this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+   787→                audio.breakBlock('glass');
+   788→                this.showToast('Your shears broke!');
+   789→                this.updateHandMesh(true);
+   790→              }
+   791→            }
+   792→          }
+   793→          this.syncHUD();
+   794→          this.syncInventory();
+   795→          this.updateHandMesh();
+   796→          this.placeCooldown = 0.3;
+   797→          this.startSwing();
+   798→          return;
+   799→        }
+   800→      }
+   801→    }
+   802→    // fishing rod: cast / reel / catch
+   803→    if (held && held.count > 0 && isRodItem(held.blockId)) {
+   804→      this.rodInteract();
+   805→      return;
+   806→    }
+   807→    // buckets: scoop water / milk a cow / pour water / drink milk
+   808→    if (held && held.count > 0 && this.bucketInteract(held.blockId)) {
+   809→      return;
+   810→    }
+   811→    // mount a nearby boat (before placing a new one)
+   812→    if (!this.player.sneaking && !this.ridingBoat) {
+   813→      const p = this.player;
+   814→      const dir = p.forwardVector();
+   815→      const boatHit = this.boats.raycast(p.x, p.eyeY(), p.z, dir.x, dir.y, dir.z, 3.4);
+   816→      if (boatHit) {
+   817→        this.ridingBoat = boatHit.boat;
+   818→        boatHit.boat.occupied = true;
+   819→        audio.splash();
+   820→        this.showToast('Sneak to get out');
+   821→        return;
+   822→      }
+   823→    }
+   824→    // bone meal: fertilize the target block
+   825→    if (held && held.count > 0 && held.blockId === ITEM.BONEMEAL && this.target) {
+   826→      const t = this.target;
+   827→      const targetId = this.world.getBlock(t.x, t.y, t.z);
+   828→      if (this.fertilize(t.x, t.y, t.z, targetId)) {
+   829→        held.count--;
+   830→        if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+   831→        this.syncHUD();
+   832→        this.updateHandMesh();
+   833→        this.placeCooldown = 0.25;
+   834→        this.startSwing();
+   835→      }
+   836→      return;
+   837→    }
+   838→    // hoe: till grass/dirt/mycelium into farmland
+   839→    const heldTool = held && held.count > 0 && isItemId(held.blockId) ? getToolDef(held.blockId) : undefined;
+   840→    if (heldTool?.type === 'hoe' && this.target) {
+   841→      const t = this.target;
+   842→      const id = this.world.getBlock(t.x, t.y, t.z);
+   843→      const above = this.world.getBlock(t.x, t.y + 1, t.z);
+   844→      const tillable = id === BLOCK.GRASS || id === BLOCK.DIRT || id === BLOCK.MYCELIUM || id === BLOCK.SNOW_GRASS;
+   845→      if (tillable && above === BLOCK.AIR) {
+   846→        this.world.setBlock(t.x, t.y, t.z, BLOCK.FARMLAND);
+   847→        audio.dig('dirt');
+   848→        this.damageTool(1);
+   849→        this.placeCooldown = 0.25;
+   850→        this.startSwing();
+   851→        this.achievements.unlock('plowman');
+   852→      }
+   853→      return; // hoes never place blocks
+   854→    }
+   855→    // seeds: plant a wheat crop on farmland (top face)
+   856→    if (held && held.count > 0 && held.blockId === ITEM.SEEDS && this.target) {
+   857→      const t = this.target;
+   858→      if (this.world.getBlock(t.x, t.y, t.z) === BLOCK.FARMLAND && t.ny === 1) {
+   859→        const above = this.world.getBlock(t.x, t.y + 1, t.z);
+   860→        if (above === BLOCK.AIR) {
+   861→          this.world.setBlock(t.x, t.y + 1, t.z, BLOCK.WHEAT_STAGE0);
+   862→          audio.place('grass');
+   863→          this.placeCooldown = 0.22;
+   864→          this.startSwing();
+   865→          held.count--;
+   866→          if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+   867→          this.syncHUD();
+   868→          this.updateHandMesh();
+   869→        }
+   870→      }
+   871→      return; // seeds never place blocks
+   872→    }
+   873→    // boat: launch onto water along the look ray
+   874→    if (held && held.count > 0 && held.blockId === ITEM.BOAT) {
+   875→      const placed = this.tryPlaceBoat();
+   876→      if (placed && !this.player.isCreative) {
+   877→        held.count--;
+   878→        if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+   879→        this.syncHUD();
+   880→        this.updateHandMesh();
+   881→      }
+   882→      this.placeCooldown = 0.25;
+   883→      this.startSwing();
+   884→      return; // boat item never places blocks
+   885→    }
+   886→    this.placeBlock();
+   887→  }
+   888→
+   889→  /** drop the held boat onto the first water cell along the look ray */
+   890→  private tryPlaceBoat(): boolean {
+   891→    if (this.ridingBoat) return false;
+   892→    const p = this.player;
+   893→    const eyeY = p.eyeY();
+   894→    const dir = p.forwardVector();
+   895→    for (let t = 0.5; t <= 6; t += 0.25) {
+   896→      const x = Math.floor(p.x + dir.x * t);
+   897→      const y = Math.floor(eyeY + dir.y * t);
+   898→      const z = Math.floor(p.z + dir.z * t);
+   899→      if (isWaterId(this.world.getBlock(x, y, z)) && this.world.getBlock(x, y + 1, z) === BLOCK.AIR) {
+   900→        this.boats.spawn(x + 0.5, y + 0.45, z + 0.5, Math.atan2(dir.x, dir.z));
+   901→        audio.splash();
+   902→        return true;
+   903→      }
+   904→    }
+   905→    this.showToast('Point at water to launch the boat');
+   906→    return false;
+   907→  }
+   908→
+   909→  /** leave the boat: place the player on a free spot beside it */
+   910→  private dismountBoat(): void {
+   911→    const b = this.ridingBoat;
+   912→    if (!b) return;
+   913→    b.occupied = false;
+   914→    const spot = this.boats.dismountSpot(b);
+   915→    const p = this.player.entity;
+   916→    p.x = spot.x; p.y = spot.y; p.z = spot.z;
+   917→    p.vx = b.vx * 0.3; p.vy = Math.max(p.vy, 0); p.vz = b.vz * 0.3;
+   918→    this.ridingBoat = null;
+   919→    audio.splash();
+   920→  }
+   921→
+   922→  /** apply bone meal to a block; returns true when consumed */
+   923→  private fertilize(x: number, y: number, z: number, id: number): boolean {
+   924→    const greens: [number, number][] = [[0.5, 0.95, 0.4], [0.65, 1, 0.5], [0.4, 0.85, 0.35]] as unknown as [number, number][];
+   925→    void greens;
+   926→    // grass: sprout tall grass + flowers around (MC-like scatter)
+   927→    if (id === BLOCK.GRASS) {
+   928→      let planted = 0;
+   929→      for (let i = 0; i < 14 && planted < 5; i++) {
+   930→        const bx = x + Math.floor(Math.random() * 5) - 2;
+   931→        const bz = z + Math.floor(Math.random() * 5) - 2;
+   932→        const by = y + 1;
+   933→        if (this.world.getBlock(bx, by, bz) !== BLOCK.AIR) continue;
+   934→        if (this.world.getBlock(bx, y, bz) !== BLOCK.GRASS) continue;
+   935→        const r = Math.random();
+   936→        const block = r < 0.72 ? BLOCK.TALL_GRASS : r < 0.86 ? BLOCK.FLOWER_RED : BLOCK.FLOWER_YELLOW;
+   937→        this.world.setBlock(bx, by, bz, block);
+   938→        planted++;
+   939→      }
+   940→      if (planted > 0) {
+   941→        this.fertilizeFx(x, y + 1, z);
+   942→        this.achievements.unlock('gardener');
+   943→        return true;
+   944→      }
+   945→      return false;
+   946→    }
+   947→    // mycelium: sprout small mushrooms
+   948→    if (id === BLOCK.MYCELIUM) {
+   949→      let planted = 0;
+   950→      for (let i = 0; i < 12 && planted < 4; i++) {
+   951→        const bx = x + Math.floor(Math.random() * 5) - 2;
+   952→        const bz = z + Math.floor(Math.random() * 5) - 2;
+   953→        const by = y + 1;
+   954→        if (this.world.getBlock(bx, by, bz) !== BLOCK.AIR) continue;
+   955→        if (this.world.getBlock(bx, y, bz) !== BLOCK.MYCELIUM) continue;
+   956→        this.world.setBlock(bx, by, bz, Math.random() < 0.5 ? BLOCK.MUSHROOM_RED : BLOCK.MUSHROOM_BROWN);
+   957→        planted++;
+   958→      }
+   959→      if (planted > 0) {
+   960→        this.fertilizeFx(x, y + 1, z);
+   961→        this.achievements.unlock('gardener');
+   962→        return true;
+   963→      }
+   964→      return false;
+   965→    }
+   966→    // small mushroom: chance to grow a giant one
+   967→    if (id === BLOCK.MUSHROOM_RED || id === BLOCK.MUSHROOM_BROWN) {
+   968→      if (Math.random() < 0.55 && this.growGiantMushroom(x, y, z, id)) {
+   969→        this.fertilizeFx(x, y, z);
+   970→        this.achievements.unlock('gardener');
+   971→        return true;
+   972→      }
+   973→      this.showToast('The mushroom refuses to grow');
+   974→      return false;
+   975→    }
+   976→    // wheat crop: advance 1-2 stages
+   977→    if (isWheatCrop(id)) {
+   978→      if (id === BLOCK.WHEAT_STAGE3) {
+   979→        this.showToast('The wheat is already ripe');
+   980→        return false;
+   981→      }
+   982→      const next = Math.min(BLOCK.WHEAT_STAGE3, nextWheatStage(id) + (Math.random() < 0.35 ? 1 : 0));
+   983→      this.world.setBlock(x, y, z, next);
+   984→      this.fertilizeFx(x, y + 0.5, z);
+   985→      return true;
+   986→    }
+   987→    // sapling: instant tree
+   988→    if (isSapling(id)) {
+   989→      if (this.growSaplingTree(x, y, z, id)) {
+   990→        this.fertilizeFx(x, y + 1, z);
+   991→        this.achievements.unlock('gardener');
+   992→        return true;
+   993→      }
+   994→      this.showToast('Not enough room to grow');
+   995→      return false;
+   996→    }
+   997→    this.showToast('Bone meal has no effect here');
+   998→    return false;
+   999→  }
+  1000→
+  1001→  /** grow a full tree from a sapling at (x,y,z); returns false when blocked */
+  1002→  private growSaplingTree(x: number, y: number, z: number, saplingId: number): boolean {
+  1003→    const below = this.world.getBlock(x, y - 1, z);
+  1004→    if (below !== BLOCK.GRASS && below !== BLOCK.DIRT && below !== BLOCK.SNOW_GRASS && below !== BLOCK.FARMLAND) return false;
+  1005→    const isSpruce = saplingId === BLOCK.SPRUCE_SAPLING;
+  1006→    const height = isSpruce ? 6 + Math.floor(Math.random() * 3) : 4 + Math.floor(Math.random() * 3);
+  1007→    // trunk column must be clear
+  1008→    for (let dy = 1; dy <= height + 1; dy++) {
+  1009→      if (y + dy >= WORLD_HEIGHT) return false;
+  1010→      const cell = this.world.getBlock(x, y + dy, z);
+  1011→      if (cell !== BLOCK.AIR && !isLiquid(cell)) return false;
+  1012→    }
+  1013→    const log = isSpruce ? BLOCK.SPRUCE_LOG : BLOCK.LOG;
+  1014→    const leaf = isSpruce ? BLOCK.SPRUCE_LEAVES : BLOCK.LEAVES;
+  1015→    const topY = y + height;
+  1016→    // trunk (replaces the sapling)
+  1017→    this.world.setBlock(x, y, z, log);
+  1018→    for (let dy = 1; dy <= height; dy++) this.world.setBlock(x, y + dy, z, log);
+  1019→    if (isSpruce) {
+  1020→      // conical spruce: alternating ring radii + tip
+  1021→      this.setIfAir(x, topY + 1, z, leaf);
+  1022→      for (let ly = topY; ly >= y + 2; ly--) {
+  1023→        const layer = topY - ly;
+  1024→        const r = layer % 2 === 0 ? 1 : 2;
+  1025→        for (let dx = -r; dx <= r; dx++)
+  1026→          for (let dz = -r; dz <= r; dz++) {
+  1027→            if (dx === 0 && dz === 0) continue;
+  1028→            if (Math.abs(dx) === r && Math.abs(dz) === r && r === 2) continue;
+  1029→            this.setIfAir(x + dx, ly, z + dz, leaf);
+  1030→          }
+  1031→      }
+  1032→    } else {
+  1033→      // oak canopy: two wide layers + two small layers (terrain.placeTree pattern)
+  1034→      for (let dy = -2; dy <= 1; dy++) {
+  1035→        const r = dy <= -1 ? 2 : 1;
+  1036→        for (let dx = -r; dx <= r; dx++)
+  1037→          for (let dz = -r; dz <= r; dz++) {
+  1038→            if (dx === 0 && dz === 0 && dy <= 0) continue;
+  1039→            this.setIfAir(x + dx, topY + dy, z + dz, leaf);
+  1040→          }
+  1041→      }
+  1042→    }
+  1043→    return true;
+  1044→  }
+  1045→
+  1046→  private fertilizeFx(x: number, y: number, z: number): void {
+  1047→    audio.bonemeal();
+  1048→    for (let i = 0; i < 12; i++) {
+  1049→      this.particles.spawnParticle(
+  1050→        x + 0.5 + (Math.random() - 0.5) * 1.6, y + Math.random() * 0.8, z + 0.5 + (Math.random() - 0.5) * 1.6,
+  1051→        (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8,
+  1052→        [0.55, 0.9, 0.45], 0.055, 0.55, -0.6,
+  1053→      );
+  1054→    }
+  1055→  }
+  1056→
+  1057→  /** grow a giant mushroom from a small one (bonemeal); returns false when blocked */
+  1058→  private growGiantMushroom(x: number, y: number, z: number, smallId: number): boolean {
+  1059→    const below = this.world.getBlock(x, y - 1, z);
+  1060→    if (below !== BLOCK.MYCELIUM && below !== BLOCK.DIRT && below !== BLOCK.GRASS) return false;
+  1061→    const capId = smallId === BLOCK.MUSHROOM_BROWN ? BLOCK.MUSHROOM_BROWN_CAP : BLOCK.MUSHROOM_RED_CAP;
+  1062→    const height = 4 + Math.floor(Math.random() * 3); // 4..6
+  1063→    // clearance check
+  1064→    for (let dy = 1; dy <= height + 1; dy++) {
+  1065→      if (y + dy >= WORLD_HEIGHT) return false;
+  1066→      const cell = this.world.getBlock(x, y + dy, z);
+  1067→      if (cell !== BLOCK.AIR && !isLiquid(cell)) return false;
+  1068→    }
+  1069→    // stem (replaces the small mushroom at the base)
+  1070→    this.world.setBlock(x, y, z, BLOCK.MUSHROOM_STEM);
+  1071→    for (let dy = 1; dy <= height; dy++) this.world.setBlock(x, y + dy, z, BLOCK.MUSHROOM_STEM);
+  1072→    const topY = y + height;
+  1073→    if (smallId === BLOCK.MUSHROOM_RED) {
+  1074→      for (let dx = -2; dx <= 2; dx++)
+  1075→        for (let dz = -2; dz <= 2; dz++) {
+  1076→          if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+  1077→          this.setIfAir(x + dx, topY, z + dz, capId);
+  1078→        }
+  1079→      for (let dx = -1; dx <= 1; dx++)
+  1080→        for (let dz = -1; dz <= 1; dz++)
+  1081→          this.setIfAir(x + dx, topY + 1, z + dz, capId);
+  1082→    } else {
+  1083→      for (let dx = -2; dx <= 2; dx++)
+  1084→        for (let dz = -2; dz <= 2; dz++) {
+  1085→          if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+  1086→          this.setIfAir(x + dx, topY - 1, z + dz, capId);
+  1087→        }
+  1088→      for (let dx = -1; dx <= 1; dx++)
+  1089→        for (let dz = -1; dz <= 1; dz++)
+  1090→          this.setIfAir(x + dx, topY, z + dz, capId);
+  1091→      this.setIfAir(x, topY + 1, z, capId);
+  1092→    }
+  1093→    return true;
+  1094→  }
+  1095→
+  1096→  private setIfAir(x: number, y: number, z: number, id: number): void {
+  1097→    if (y < 0 || y >= WORLD_HEIGHT) return;
+  1098→    const cur = this.world.getBlock(x, y, z);
+  1099→    if (cur === BLOCK.AIR || isLiquid(cur)) this.world.setBlock(x, y, z, id);
+  1100→  }
+  1101→
+  1102→  // ── villager trading ────────────────────────────────────────────────────────
+  1103→  /** offers currently shown in the trade panel (set by openTrade) */
+  1104→  private activeTrades: TradeOffer[] = [];
+  1105→
+  1106→  openTrade(mob?: { x: number; z: number }): void {
+  1107→    audio.click();
+  1108→    // per-villager stock: deterministic pick from the pool, rotating every epoch (MC restock)
+  1109→    const seed = mob ? villagerTradeSeed(mob.x, mob.z) : 0;
+  1110→    this.activeTrades = villagerTrades(seed, tradeEpoch());
+  1111→    useGameStore.getState().setTradeOpen(true);
+  1112→    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  1113→  }
+  1114→
+  1115→  closeTrade(): void {
+  1116→    const st = useGameStore.getState();
+  1117→    if (!st.tradeOpen) return;
+  1118→    st.setTradeOpen(false);
+  1119→    if (st.screen === 'playing') this.requestLock();
+  1120→  }
+  1121→
+  1122→  /** offers shown in the trade panel (called by the UI when rendering) */
+  1123→  getTradeOffers(): TradeOffer[] {
+  1124→    return this.activeTrades;
+  1125→  }
+  1126→
+  1127→  /** execute a villager trade offer (validated server-side… er, engine-side) */
+  1128→  executeTrade(index: number): void {
+  1129→    const offer = this.activeTrades[index] ?? null;
+  1130→    if (!offer) return;
+  1131→    if (this.countItem(offer.give.id) < offer.give.count) {
+  1132→      this.showToast('Not enough ' + this.itemLabel(offer.give.id));
+  1133→      return;
+  1134→    }
+  1135→    this.consumeItem(offer.give.id, offer.give.count);
+  1136→    const leftover = addToSlots(this.player.hotbar, offer.get.id, offer.get.count, freshDur(offer.get.id));
+  1137→    if (leftover > 0) addToSlots(this.player.main, offer.get.id, leftover, freshDur(offer.get.id));
+  1138→    audio.trade();
+  1139→    this.achievements.unlock('trader');
+  1140→    this.showToast('Traded for ' + this.itemLabel(offer.get.id) + ' ×' + offer.get.count);
+  1141→    this.syncHUD();
+  1142→    this.syncInventory();
+  1143→  }
+  1144→
+  1145→  private itemLabel(id: number): string {
+  1146→    return isItemId(id) ? (getItemDef(id)?.name ?? 'item') : (getBlockDef(id)?.name ?? 'block');
+  1147→  }
+  1148→
+  1149→  // ── fishing (fishing rod: cast → wait → bite window → catch) ────────────────
+  1150→  /** RMB with a fishing rod: cast, or reel in (catch when biting) */
+  1151→  private rodInteract(): void {
+  1152→    if (!this.fishing) {
+  1153→      const p = this.player;
+  1154→      const fwd = p.forwardVector();
+  1155→      this.fishing = {
+  1156→        state: 'fly',
+  1157→        x: p.x + fwd.x * 0.6, y: p.eyeY() - 0.2 + fwd.y * 0.6, z: p.z + fwd.z * 0.6,
+  1158→        vx: fwd.x * 11, vy: fwd.y * 11 + 2.2, vz: fwd.z * 11,
+  1159→        nextBite: 0, biteT: 0,
+  1160→      };
+  1161→      this.ensureBobberVisual();
+  1162→      audio.rodCast();
+  1163→      this.startSwing();
+  1164→      return;
+  1165→    }
+  1166→    if (this.fishing.state === 'bite') {
+  1167→      this.catchFish();
+  1168→    } else {
+  1169→      this.endFishing();
+  1170→      audio.rodReel();
+  1171→    }
+  1172→  }
+  1173→
+  1174→  private ensureBobberVisual(): void {
+  1175→    if (this.bobberMesh) return;
+  1176→    const g = new THREE.Group();
+  1177→    const red = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), new THREE.MeshLambertMaterial({ color: 0xd8382e }));
+  1178→    red.position.y = 0.04;
+  1179→    const white = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), new THREE.MeshLambertMaterial({ color: 0xf4f4f4 }));
+  1180→    white.position.y = -0.04;
+  1181→    g.add(red, white);
+  1182→    this.scene.add(g);
+  1183→    this.bobberMesh = g;
+  1184→    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  1185→    this.fishLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xdddddd }));
+  1186→    this.scene.add(this.fishLine);
+  1187→  }
+  1188→
+  1189→  private endFishing(): void {
+  1190→    if (this.fishLine) {
+  1191→      this.scene.remove(this.fishLine);
+  1192→      this.fishLine.geometry.dispose();
+  1193→      (this.fishLine.material as THREE.Material).dispose();
+  1194→      this.fishLine = null;
+  1195→    }
+  1196→    if (this.bobberMesh) {
+  1197→      this.scene.remove(this.bobberMesh);
+  1198→      this.bobberMesh = null;
+  1199→    }
+  1200→    this.fishing = null;
+  1201→  }
+  1202→
+  1203→  private updateFishing(dt: number): void {
+  1204→    const f = this.fishing;
+  1205→    if (!f || !this.bobberMesh || !this.fishLine) return;
+  1206→    const held = this.player.hotbar[this.player.selected];
+  1207→    if (!held || held.count <= 0 || !isRodItem(held.blockId) || this.player.dead) { this.endFishing(); return; }
+  1208→    const dist = Math.hypot(f.x - this.player.x, f.z - this.player.z);
+  1209→    if (dist > 26) { this.endFishing(); return; }
+  1210→
+  1211→    if (f.state === 'fly') {
+  1212→      // projectile arc toward the aim point
+  1213→      f.vy -= 18 * dt;
+  1214→      f.x += f.vx * dt; f.y += f.vy * dt; f.z += f.vz * dt;
+  1215→      const bx = Math.floor(f.x), by = Math.floor(f.y), bz = Math.floor(f.z);
+  1216→      const bid = this.world.getBlock(bx, by, bz);
+  1217→      if (isWaterId(bid)) {
+  1218→        f.state = 'float';
+  1219→        f.y = by + 0.9;
+  1220→        f.vx = 0; f.vy = 0; f.vz = 0;
+  1221→        const lure = lureFactor(held.ench);
+  1222→        const rain = this.weather.raining ? 0.75 : 1; // MC: rain bites faster
+  1223→        f.nextBite = (5 + Math.random() * 14) * lure * rain;
+  1224→        audio.rodSplash(dist);
+  1225→        this.particles.burstLand(f.x, by + 1, f.z, [0.55, 0.7, 0.95], 8);
+  1226→      } else if (bid !== BLOCK.AIR) {
+  1227→        // snagged on land: the line snaps back (no cost)
+  1228→        this.endFishing();
+  1229→        return;
+  1230→      }
+  1231→    } else {
+  1232→      // floating: bob gently; bite window after the wait
+  1233→      if (f.state === 'bite') {
+  1234→        f.biteT -= dt;
+  1235→        if (f.biteT <= 0) {
+  1236→          f.state = 'float';
+  1237→          f.nextBite = 4 + Math.random() * 10; // missed — fish may return
+  1238→        }
+  1239→      } else {
+  1240→        f.nextBite -= dt;
+  1241→        if (f.nextBite <= 0) {
+  1242→          f.state = 'bite';
+  1243→          f.biteT = 1.4;
+  1244→          audio.fishBite();
+  1245→          this.particles.burstLand(f.x, f.y, f.z, [0.55, 0.7, 0.95], 5);
+  1246→        }
+  1247→      }
+  1248→    }
+  1249→
+  1250→    // visuals: bobber (dips while biting) + line from the rod hand
+  1251→    this.bobberMesh.position.set(f.x, f.y + (f.state === 'bite' ? -0.12 : Math.sin(performance.now() / 300) * 0.02), f.z);
+  1252→    this.bobberMesh.rotation.y += dt * 2;
+  1253→    const p = this.player;
+  1254→    const hand = new THREE.Vector3(p.x, p.eyeY() - 0.32, p.z);
+  1255→    hand.x += -Math.cos(p.yaw) * 0.34 - Math.sin(p.yaw) * 0.24;
+  1256→    hand.z += Math.sin(p.yaw) * 0.34 - Math.cos(p.yaw) * 0.24;
+  1257→    const posAttr = this.fishLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+  1258→    posAttr.setXYZ(0, hand.x, hand.y, hand.z);
+  1259→    posAttr.setXYZ(1, this.bobberMesh.position.x, this.bobberMesh.position.y, this.bobberMesh.position.z);
+  1260→    posAttr.needsUpdate = true;
+  1261→  }
+  1262→
+  1263→  /** fish on! loot roll (fish / junk / treasure, Luck of the Sea shifts treasure) */
+  1264→  private catchFish(): void {
+  1265→    const f = this.fishing;
+  1266→    if (!f || f.state !== 'bite') return;
+  1267→    const held = this.player.hotbar[this.player.selected];
+  1268→    const luck = luckBonus(held?.ench);
+  1269→    const roll = Math.random();
+  1270→    const treasureShare = 0.10 + luck;
+  1271→    const junkShare = 0.18;
+  1272→    let loot: { id: number; count: number };
+  1273→    if (roll < treasureShare) {
+  1274→      const t = Math.random();
+  1275→      loot = t < 0.4 ? { id: ITEM.IRON_INGOT, count: 1 } : t < 0.7 ? { id: ITEM.GOLD_INGOT, count: 1 } : t < 0.85 ? { id: ITEM.ARROW, count: 3 } : t < 0.95 ? { id: ITEM.BOOK, count: 1 } : { id: ITEM.DIAMOND, count: 1 };
+  1276→    } else if (roll < treasureShare + junkShare) {
+  1277→      const t = Math.random();
+  1278→      loot = t < 0.35 ? { id: ITEM.STICK, count: 2 } : t < 0.6 ? { id: ITEM.STRING, count: 1 } : t < 0.8 ? { id: ITEM.BONE, count: 1 } : t < 0.92 ? { id: ITEM.LEATHER, count: 1 } : { id: ITEM.ROTTEN_FLESH, count: 1 };
+  1279→    } else {
+  1280→      loot = Math.random() < 0.65 ? { id: ITEM.RAW_COD, count: 1 } : { id: ITEM.RAW_SALMON, count: 1 };
+  1281→    }
+  1282→    const left = this.addToInventory(loot.id, loot.count);
+  1283→    if (left > 0) this.drops.spawn(loot.id, this.player.x, this.player.y + 1, this.player.z, left);
+  1284→    this.showToast('Caught ' + this.itemLabel(loot.id) + (loot.count > 1 ? ' ×' + loot.count : ''));
+  1285→    audio.fishCaught();
+  1286→    this.achievements.unlock('fisherman');
+  1287→    if (loot.id === ITEM.RAW_COD || loot.id === ITEM.RAW_SALMON) this.addXP(1 + Math.floor(Math.random() * 3));
+  1288→    // rod durability (1 per catch, MC-style; Unbreaking works)
+  1289→    if (held && !this.player.isCreative) {
+  1290→      const rdef = getRodDef(held.blockId);
+  1291→      if (rdef && !unbreakingKeep(held.ench?.unbreaking ?? 0)) {
+  1292→        held.dur = (held.dur ?? rdef.dur) - 1;
+  1293→        if (held.dur <= 0) {
+  1294→          this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+  1295→          audio.breakBlock('glass');
+  1296→          this.showToast('Your fishing rod broke!');
+  1297→          this.updateHandMesh(true);
+  1298→        }
+  1299→      }
+  1300→    }
+  1301→    this.endFishing();
+  1302→    this.syncHUD();
+  1303→    this.syncInventory();
+  1304→    this.updateHandMesh();
+  1305→  }
+  1306→
+  1307→  // ── buckets: scoop / milk / pour / drink ─────────────────────────────────────
+  1308→  /** RMB with any bucket. Returns true when the click was consumed. */
+  1309→  private bucketInteract(id: number): boolean {
+  1310→    // milk: drink it (clears poison like MC); the empty bucket comes back
+  1311→    if (id === ITEM.MILK_BUCKET) {
+  1312→      this.player.poisonT = 0;
+  1313→      this.player.poisonTickT = 0;
+  1314→      audio.milkDrink();
+  1315→      this.replaceHeld(ITEM.BUCKET);
+  1316→      this.showToast('Poison cleared');
+  1317→      this.placeCooldown = 0.35;
+  1318→      this.startSwing();
+  1319→      this.syncInventory();
+  1320→      return true;
+  1321→    }
+  1322→    // milk a cow in reach
+  1323→    if (id === ITEM.BUCKET && this.mobs) {
+  1324→      const p = this.player;
+  1325→      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+  1326→      const dir = p.forwardVector();
+  1327→      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+  1328→      if (hit && hit.mob.type === 'cow') {
+  1329→        this.replaceHeld(ITEM.MILK_BUCKET);
+  1330→        audio.milkDrink();
+  1331→        this.showToast('Fresh milk!');
+  1332→        this.placeCooldown = 0.35;
+  1333→        this.startSwing();
+  1334→        this.syncInventory();
+  1335→        return true;
+  1336→      }
+  1337→    }
+  1338→    // scoop a water source cell along the look ray (the world raycast skips
+  1339→    // liquids, so buckets need their own water scan)
+  1340→    if (id === ITEM.BUCKET) {
+  1341→      const w = this.waterTarget(4.2);
+  1342→      if (w) {
+  1343→        this.world.setBlock(w.x, w.y, w.z, BLOCK.AIR);
+  1344→        this.replaceHeld(ITEM.WATER_BUCKET);
+  1345→        audio.bucketFill();
+  1346→        this.particles.burstLand(w.x + 0.5, w.y + 0.9, w.z + 0.5, [0.55, 0.7, 0.95], 6);
+  1347→        this.placeCooldown = 0.3;
+  1348→        this.startSwing();
+  1349→        this.syncInventory();
+  1350→        return true;
+  1351→      }
+  1352→      return false;
+  1353→    }
+  1354→    // pour water: place a source at the target's adjacent cell
+  1355→    if (id === ITEM.WATER_BUCKET && this.target && !this.player.sneaking) {
+  1356→      const t = this.target;
+  1357→      const px2 = t.x + t.nx, py2 = t.y + t.ny, pz2 = t.z + t.nz;
+  1358→      if (py2 < 0 || py2 >= WORLD_HEIGHT) return false;
+  1359→      const there = this.world.getBlock(px2, py2, pz2);
+  1360→      const def = getBlockDef(there);
+  1361→      const replaceable = there === BLOCK.AIR || (def && !def.solid && !isWaterId(there));
+  1362→      if (!replaceable) return false;
+  1363→      this.world.setBlock(px2, py2, pz2, BLOCK.WATER);
+  1364→      this.world.scheduleFluidTick(px2, py2, pz2, 0.4);
+  1365→      this.replaceHeld(ITEM.BUCKET);
+  1366→      audio.bucketPour();
+  1367→      this.particles.burstLand(px2 + 0.5, py2 + 0.9, pz2 + 0.5, [0.55, 0.7, 0.95], 8);
+  1368→      this.placeCooldown = 0.3;
+  1369→      this.startSwing();
+  1370→      this.syncInventory();
+  1371→      return true;
+  1372→    }
+  1373→    return false;
+  1374→  }
+  1375→
+  1376→  /** swap one of the held stack for a new item id (bucket flows: full ↔ empty);
+  1377→   *  the produced item drops on the ground when the inventory is full (MC) */
+  1378→  private replaceHeld(newId: number): void {
+  1379→    const slot = this.player.hotbar[this.player.selected];
+  1380→    if (slot.count > 1) {
+  1381→      slot.count--;
+  1382→      // try to stack into an existing pile, else a free slot, else drop it
+  1383→      const left = addToSlots(this.player.hotbar, newId, 1);
+  1384→      const rest = left > 0 ? addToSlots(this.player.main, newId, left) : 0;
+  1385→      if (rest > 0) {
+  1386→        this.drops.spawn(newId, this.player.x, this.player.y + 1, this.player.z, rest);
+  1387→        this.showToast('Inventory full — item dropped');
+  1388→      }
+  1389→    } else {
+  1390→      this.player.hotbar[this.player.selected] = { blockId: newId, count: 1 };
+  1391→    }
+  1392→    this.syncHUD();
+  1393→    this.updateHandMesh();
+  1394→  }
+  1395→
+  1396→  /** first WATER SOURCE cell along the look ray; null when a solid block blocks the path first */
+  1397→  private waterTarget(maxDist: number): { x: number; y: number; z: number } | null {
+  1398→    const p = this.player;
+  1399→    const dir = p.forwardVector();
+  1400→    const step = 0.1;
+  1401→    for (let d = 0.3; d <= maxDist; d += step) {
+  1402→      const x = Math.floor(p.x + dir.x * d);
+  1403→      const y = Math.floor(p.eyeY() + dir.y * d);
+  1404→      const z = Math.floor(p.z + dir.z * d);
+  1405→      const id = this.world.getBlock(x, y, z);
+  1406→      if (id !== 0 && !isLiquid(id)) return null; // solid got in the way first
+  1407→      if (id === BLOCK.WATER) return { x, y, z };
+  1408→    }
+  1409→    return null;
+  1410→  }
+  1411→
+  1412→  // ── enchanting table (MC-like: held item + 3 lapis/XP offers) ────────────────
+  1413→  openEnchant(): void {
+  1414→    const st = useGameStore.getState();
+  1415→    if (st.screen !== 'playing' || st.inv.open || st.tradeOpen || st.enchantOpen) return;
+  1416→    const slot = this.player.hotbar[this.player.selected];
+  1417→    if (!slot || slot.count <= 0 || !isEnchantable(slot.blockId)) {
+  1418→      this.showToast('Hold an enchantable item!');
+  1419→      return;
+  1420→    }
+  1421→    audio.click();
+  1422→    this.enchantEpoch++;
+  1423→    this.enchantTarget = { slotRef: slot, options: enchantOptions(slot.blockId, this.enchantEpoch) };
+  1424→    st.setEnchantOpen(true);
+  1425→    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  1426→  }
+  1427→
+  1428→  closeEnchant(): void {
+  1429→    const st = useGameStore.getState();
+  1430→    if (!st.enchantOpen) return;
+  1431→    st.setEnchantOpen(false);
+  1432→    this.enchantTarget = null;
+  1433→    if (st.screen === 'playing') this.requestLock();
+  1434→  }
+  1435→
+  1436→  /** snapshot for the panel: held item + offers + lapis/XP resources */
+  1437→  getEnchantState(): { itemId: number; options: EnchantOption[]; lapis: number; xpLevel: number; canEnchant: boolean } | null {
+  1438→    const t = this.enchantTarget;
+  1439→    if (!t) return null;
+  1440→    const held = this.player.hotbar[this.player.selected];
+  1441→    if (!held || held.count <= 0) return null;
+  1442→    return { itemId: held.blockId, options: t.options, lapis: this.countItem(ITEM.LAPIS_LAZULI), xpLevel: this.player.level, canEnchant: isEnchantable(held.blockId) };
+  1443→  }
+  1444→
+  1445→  /** public read of the currently held hotbar slot (enchant panel, QA) */
+  1446→  getHeldSlot(): HotbarSlot | null {
+  1447→    const s = this.player.hotbar[this.player.selected];
+  1448→    return s && s.count > 0 ? s : null;
+  1449→  }
+  1450→
+  1451→  /** apply offer idx to the held item (lapis + XP cost; offers reroll after) */
+  1452→  applyEnchant(idx: number): void {
+  1453→    const t = this.enchantTarget;
+  1454→    if (!t) return;
+  1455→    const opt = t.options[idx];
+  1456→    if (!opt) return;
+  1457→    const slot = t.slotRef;
+  1458→    if (!slot || slot.count <= 0) return;
+  1459→    if (this.countItem(ITEM.LAPIS_LAZULI) < opt.lapis) { this.showToast('Not enough Lapis Lazuli!'); return; }
+  1460→    if (this.player.level < opt.levels) { this.showToast(`Needs ${opt.levels} XP levels!`); return; }
+  1461→    const cur = { ...(slot.ench ?? {}) };
+  1462→    cur[opt.enchId] = Math.max(cur[opt.enchId] ?? 0, opt.level);
+  1463→    slot.ench = cur;
+  1464→    this.consumeItem(ITEM.LAPIS_LAZULI, opt.lapis);
+  1465→    this.player.level = Math.max(0, this.player.level - opt.levels);
+  1466→    audio.enchant();
+  1467→    this.achievements.unlock('enchanter');
+  1468→    this.showToast(opt.label + ' applied!');
+  1469→    // MC rerolls the offers after each enchant
+  1470→    this.enchantEpoch++;
+  1471→    t.options = enchantOptions(slot.blockId, this.enchantEpoch);
+  1472→    this.syncHUD(true);
+  1473→    this.syncInventory(true);
+  1474→    this.updateHandMesh();
+  1475→  }
+  1476→
+  1477→  // ── lightning (weather thunderstorm callback) ─────────────────────────────
+  1478→  private spawnLightningBolt(x: number, y: number, z: number): void {
+  1479→    const group = new THREE.Group();
+  1480→    const mats: THREE.MeshBasicMaterial[] = [];
+  1481→    const segments = 5;
+  1482→    const totalH = 42;
+  1483→    const segH = totalH / segments;
+  1484→    let px = x, pz = z;
+  1485→    for (let i = 0; i < segments; i++) {
+  1486→      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false });
+  1487→      mats.push(mat);
+  1488→      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.16 + Math.random() * 0.1, segH, 0.16 + Math.random() * 0.1), mat);
+  1489→      const nx = px + (i === 0 ? 0 : (Math.random() - 0.5) * 2.2);
+  1490→      const nz = pz + (i === 0 ? 0 : (Math.random() - 0.5) * 2.2);
+  1491→      seg.position.set((px + nx) / 2 - x, y + segH * (i + 0.5), (pz + nz) / 2 - z);
+  1492→      seg.rotation.y = Math.random() * Math.PI;
+  1493→      group.add(seg);
+  1494→      px = nx; pz = nz;
+  1495→    }
+  1496→    group.position.set(x, y, z);
+  1497→    this.scene.add(group);
+  1498→    this.lightningBolts.push({ group, mats, t: 0.42 });
+  1499→    // impact effects + damage
+  1500→    this.particles.burstLand(x, y + 0.4, z, [1, 0.95, 0.7], 18);
+  1501→    for (let i = 0; i < 8; i++) {
+  1502→      this.particles.spawnParticle(
+  1503→        x + (Math.random() - 0.5) * 1.4, y + 0.5 + Math.random() * 1.4, z + (Math.random() - 0.5) * 1.4,
+  1504→        (Math.random() - 0.5) * 2, 2 + Math.random() * 2, (Math.random() - 0.5) * 2,
+  1505→        [1, 0.85, 0.35], 0.08, 0.5, -1,
+  1506→      );
+  1507→    }
+  1508→    audio.lightningStrike(Math.hypot(this.player.x - x, this.player.z - z));
+  1509→    // shockwave damage: mobs + player within 3 blocks
+  1510→    if (this.mobCb) {
+  1511→      for (const m of this.mobs.mobs) {
+  1512→        if (m.dead) continue;
+  1513→        const d = Math.hypot(m.x - x, m.y - y, m.z - z);
+  1514→        if (d < 3) this.mobs.hurtMob(m, 5, (m.x - x) / (d || 1) * 3, (m.z - z) / (d || 1) * 3, this.mobCb);
+  1515→      }
+  1516→    }
+  1517→    const pd = Math.hypot(this.player.x - x, this.player.y - y, this.player.z - z);
+  1518→    if (pd < 3.2 && !this.player.isCreative) {
+  1519→      this.player.damage(Math.max(1, Math.round(6 - pd * 1.6)));
+  1520→      audio.hurt();
+  1521→    }
+  1522→  }
+  1523→
+  1524→  private updateLightning(dt: number): void {
+  1525→    for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
+  1526→      const b = this.lightningBolts[i];
+  1527→      b.t -= dt;
+  1528→      const flicker = b.t > 0 ? (Math.sin(b.t * 60) > -0.3 ? 0.95 : 0.25) : 0;
+  1529→      for (const m of b.mats) m.opacity = Math.max(0, flicker * Math.min(1, b.t * 4));
+  1530→      if (b.t <= 0) {
+  1531→        this.scene.remove(b.group);
+  1532→        for (const seg of b.group.children) {
+  1533→          const mesh = seg as THREE.Mesh;
+  1534→          mesh.geometry.dispose();
+  1535→        }
+  1536→        for (const m of b.mats) m.dispose();
+  1537→        this.lightningBolts.splice(i, 1);
+  1538→      }
+  1539→    }
+  1540→  }
+  1541→
+  1542→  private clearLightningBolts(): void {
+  1543→    for (const b of this.lightningBolts) {
+  1544→      this.scene.remove(b.group);
+  1545→      for (const seg of b.group.children) (seg as THREE.Mesh).geometry.dispose();
+  1546→      for (const m of b.mats) m.dispose();
+  1547→    }
+  1548→    this.lightningBolts = [];
+  1549→  }
+  1550→
+  1551→  /** RMB released: fire the arrow (charge ≥ 0.14) or cancel */
+  1552→  private releaseBow(): void {
+  1553→    if (!this.bowCharging) return;
+  1554→    this.bowCharging = false;
+  1555→    const charge = this.bowCharge;
+  1556→    this.bowCharge = 0;
+  1557→    if (charge < 0.14) return; // too weak — cancel
+  1558→    const p = this.player;
+  1559→    const bowSlot = p.hotbar[p.selected];
+  1560→    if (!p.isCreative) {
+  1561→      if (this.countItem(ITEM.ARROW) <= 0) return;
+  1562→      // Infinity: the arrow is never consumed (needs 1 in inventory)
+  1563→      if (!hasInfinity(bowSlot?.ench)) this.consumeItem(ITEM.ARROW, 1);
+  1564→    }
+  1565→    const fwd = p.forwardVector();
+  1566→    const speed = 14 + 40 * Math.min(1, charge);
+  1567→    // Power: +1 dmg per level on the drawn bow
+  1568→    const heldSlot = bowSlot;
+  1569→    const dmg = Math.max(1, Math.round(2 + 7 * Math.min(1, charge) + powerBonus(heldSlot?.ench)));
+  1570→    this.mobs.shootPlayerArrow(p.x, p.eyeY() - 0.08, p.z, fwd.x, fwd.y, fwd.z, speed, dmg);
+  1571→    // bow durability
+  1572→    const slot = heldSlot;
+  1573→    const bow = slot ? getBowDef(slot.blockId) : undefined;
+  1574→    if (bow && !p.isCreative) {
+  1575→      slot.dur = (slot.dur ?? bow.dur) - 1;
+  1576→      if (slot.dur <= 0) {
+  1577→        p.hotbar[p.selected] = { blockId: 0, count: 0 };
+  1578→        audio.breakBlock('glass');
+  1579→        this.showToast('Your bow broke!');
+  1580→        this.updateHandMesh(true);
+  1581→      }
+  1582→      this.syncHUD();
+  1583→      this.syncInventory();
+  1584→    }
+  1585→    this.startSwing();
+  1586→  }
+  1587→
+  1588→  /** total count of an item id across hotbar + main inventory */
+  1589→  private countItem(id: number): number {
+  1590→    let n = 0;
+  1591→    for (const s of this.player.hotbar) if (s.count > 0 && s.blockId === id) n += s.count;
+  1592→    for (const s of this.player.main) if (s.count > 0 && s.blockId === id) n += s.count;
+  1593→    return n;
+  1594→  }
+  1595→
+  1596→  /** remove n of an item id (hotbar first), returns true when fully consumed */
+  1597→  private consumeItem(id: number, n: number): boolean {
+  1598→    let left = n;
+  1599→    const takeFrom = (slots: HotbarSlot[]): void => {
+  1600→      for (const s of slots) {
+  1601→        if (left <= 0) return;
+  1602→        if (s.count > 0 && s.blockId === id) {
+  1603→          const take = Math.min(s.count, left);
+  1604→          s.count -= take;
+  1605→          left -= take;
+  1606→          if (s.count <= 0) { s.blockId = 0; s.count = 0; }
+  1607→        }
+  1608→      }
+  1609→    };
+  1610→    takeFrom(this.player.hotbar);
+  1611→    takeFrom(this.player.main);
+  1612→    if (left < n) {
+  1613→      this.syncHUD();
+  1614→      this.syncInventory();
+  1615→      this.updateHandMesh();
+  1616→    }
+  1617→    return left === 0;
+  1618→  }
+  1619→
+  1620→  private bindEvents(): void {
+  1621→    window.addEventListener('keydown', this.onKeyDown);
+  1622→    window.addEventListener('keyup', this.onKeyUp);
+  1623→    window.addEventListener('mousemove', this.onMouseMove);
+  1624→    window.addEventListener('mouseup', this.onMouseUp);
+  1625→    window.addEventListener('resize', this.onResize);
+  1626→    document.addEventListener('pointerlockchange', this.onPointerLockChange);
+  1627→    this.canvas.addEventListener('mousedown', this.onMouseDown);
+  1628→    this.canvas.addEventListener('wheel', this.onWheel, { passive: true });
+  1629→    this.canvas.addEventListener('contextmenu', this.onContextMenu);
+  1630→  }
+  1631→
+  1632→  private unbindEvents(): void {
+  1633→    window.removeEventListener('keydown', this.onKeyDown);
+  1634→    window.removeEventListener('keyup', this.onKeyUp);
+  1635→    window.removeEventListener('mousemove', this.onMouseMove);
+  1636→    window.removeEventListener('mouseup', this.onMouseUp);
+  1637→    window.removeEventListener('resize', this.onResize);
+  1638→    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+  1639→    this.canvas.removeEventListener('mousedown', this.onMouseDown);
+  1640→    this.canvas.removeEventListener('wheel', this.onWheel);
+  1641→    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+  1642→  }
+  1643→
+  1644→  // ── interaction ────────────────────────────────────────────────────────────
+  1645→  private updateTarget(): void {
+  1646→    const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
+  1647→    const dir = this.player.forwardVector();
+  1648→    this.target = raycast(this.world, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 4.5);
+  1649→    if (this.target) {
+  1650→      this.highlight.visible = true;
+  1651→      this.highlight.position.set(this.target.x + 0.5, this.target.y + 0.5, this.target.z + 0.5);
+  1652→    } else {
+  1653→      this.highlight.visible = false;
+  1654→    }
+  1655→  }
+  1656→
+  1657→  private mineTick(dt: number): void {
+  1658→    const heldSlot = this.player.hotbar[this.player.selected];
+  1659→    const heldTool = heldSlot && heldSlot.count > 0 && isItemId(heldSlot.blockId)
+  1660→      ? getToolDef(heldSlot.blockId)
+  1661→      : undefined;
+  1662→
+  1663→    // mob attack takes priority over mining (boats too)
+  1664→    if (this.mining && this.attackCooldown <= 0) {
+  1665→      const eye = new THREE.Vector3(this.player.x, this.player.eyeY(), this.player.z);
+  1666→      const dir = this.player.forwardVector();
+  1667→      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+  1668→      // attacking a boat breaks it (drops the boat item)
+  1669→      const boatHit = this.ridingBoat ? null : this.boats.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+  1670→      if (boatHit && (!hit || boatHit.dist < hit.dist)) {
+  1671→        this.attackCooldown = 0.42;
+  1672→        this.startSwing();
+  1673→        this.boats.remove(boatHit.boat);
+  1674→        this.drops.spawn(ITEM.BOAT, boatHit.boat.x, boatHit.boat.y + 0.4, boatHit.boat.z, 1);
+  1675→        audio.breakBlock('wood' as MaterialSound);
+  1676→        this.particles.burstBlockBreak(boatHit.boat.x, boatHit.boat.y + 0.2, boatHit.boat.z, [0.54, 0.41, 0.24]);
+  1677→        this.crackMesh.visible = false;
+  1678→        return;
+  1679→      }
+  1680→      if (hit) {
+  1681→        this.attackCooldown = 0.42;
+  1682→        this.startSwing();
+  1683→        const kx = hit.mob.x - this.player.x;
+  1684→        const kz = hit.mob.z - this.player.z;
+  1685→        // Sharpness: +1 dmg per level (sword/axe)
+  1686→        const melee = (heldTool ? heldTool.dmg : 2) + (heldTool ? sharpnessBonus(heldSlot?.ench) : 0);
+  1687→        const killed = this.mobs.hurtMob(hit.mob, melee, kx, kz, this.mobCb ?? undefined);
+  1688→        if (killed && hit.mob.def.hostile) this.achievements.unlock('monsterHunter');
+  1689→        this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
+  1690→        this.damageTool(heldTool && heldTool.type !== 'sword' ? 2 : 1);
+  1691→        this.crackMesh.visible = false;
+  1692→        return;
+  1693→      }
+  1694→    }
+  1695→    if (!this.mining || !this.target) { this.crackMesh.visible = false; return; }
+  1696→    const t = this.target;
+  1697→    // ── creative: instant break, no drops, no XP, no tool wear ──
+  1698→    if (this.player.isCreative) {
+  1699→      const cdef = getBlockDef(t.id);
+  1700→      if (!cdef) return;
+  1701→      const col = tileAvgColor(Array.isArray(cdef.tiles) ? cdef.tiles[2] : cdef.tiles);
+  1702→      this.particles.burstBlockBreak(t.x, t.y, t.z, col);
+  1703→      audio.breakBlock((cdef.sound ?? 'stone') as MaterialSound);
+  1704→      if (containerOf(t.id)) this.blockEnts.destroy(t.x, t.y, t.z);
+  1705→      this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+  1706→      // pop unsupported blocks above (torch, flowers, bed) + plant stacks
+  1707→      let py = t.y + 1;
+  1708→      let guard = 0;
+  1709→      while (py < WORLD_HEIGHT && guard++ < 96) {
+  1710→        const aboveId = this.world.getBlock(t.x, py, t.z);
+  1711→        const aboveDef = getBlockDef(aboveId);
+  1712→        const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
+  1713→        if (!aboveDef?.needsGround && !isStack) break;
+  1714→        if (containerOf(aboveId)) this.blockEnts.destroy(t.x, py, t.z);
+  1715→        this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+  1716→        py++;
+  1717→      }
+  1718→      this.startSwing();
+  1719→      this.crackMesh.visible = false;
+  1720→      return;
+  1721→    }
+  1722→    // target changed? reset progress
+  1723→    if (!this.mineTarget || this.mineTarget.x !== t.x || this.mineTarget.y !== t.y || this.mineTarget.z !== t.z) {
+  1724→      this.mineTarget = t;
+  1725→      this.mineProgress = 0;
+  1726→    }
+  1727→    const def = getBlockDef(t.id);
+  1728→    if (!def) { this.crackMesh.visible = false; return; }
+  1729→    const bi = breakInfo(def, heldTool);
+  1730→    // Efficiency: faster mining, but only when the held tool is the block's
+  1731→    // matching class (MC behavior — a sword's Efficiency never digs faster)
+  1732→    const effF = heldTool && heldSlot?.ench && heldTool.type === def.tool ? efficiencyFactor(heldSlot.ench) : 1;
+  1733→    const time = this.instantBreak ? 0.04 : bi.time * effF; // cheat: instant break
+  1734→    const harvest = bi.harvest;
+  1735→    if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
+  1736→    this.mineProgress += dt / time;
+  1737→
+  1738→    // dig sound + swing loop
+  1739→    this.stepTimer += dt;
+  1740→    if (this.stepTimer > 0.24) {
+  1741→      this.stepTimer = 0;
+  1742→      audio.dig((def.sound ?? 'stone') as MaterialSound);
+  1743→      this.startSwing();
+  1744→    }
+  1745→
+  1746→    if (this.mineProgress >= 1) {
+  1747→      // break!
+  1748→      const col = tileAvgColor(Array.isArray(def.tiles) ? def.tiles[2] : def.tiles);
+  1749→      this.particles.burstBlockBreak(t.x, t.y, t.z, col);
+  1750→      audio.breakBlock((def.sound ?? 'stone') as MaterialSound);
+  1751→      const dropId = def.drop === undefined ? t.id : def.drop;
+  1752→      // gravel has a 12% chance to drop flint (MC-style, used for arrows)
+  1753→      let actualDrop = harvest && t.id === BLOCK.GRAVEL && Math.random() < 0.12 ? ITEM.FLINT : dropId;
+  1754→      // leaves drop saplings (~8%, MC-style) — the tree regrowth loop
+  1755→      if (harvest && t.id === BLOCK.LEAVES && Math.random() < 0.08) actualDrop = BLOCK.OAK_SAPLING;
+  1756→      if (harvest && t.id === BLOCK.SPRUCE_LEAVES && Math.random() < 0.08) actualDrop = BLOCK.SPRUCE_SAPLING;
+  1757→      // tall grass drops wheat seeds (~20%, MC-style foraging)
+  1758→      if (harvest && t.id === BLOCK.TALL_GRASS && Math.random() < 0.2) actualDrop = ITEM.SEEDS;
+  1759→      if (harvest && actualDrop && actualDrop > 0) {
+  1760→        this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+  1761→        // Fortune: chance of an extra gem (MC-lite)
+  1762→        const fl = heldSlot?.ench?.fortune ?? 0;
+  1763→        if (fl > 0 && (t.id === BLOCK.COAL_ORE || t.id === BLOCK.DIAMOND_ORE || t.id === BLOCK.LAPIS_ORE) && Math.random() < fortuneChance(fl)) {
+  1764→          this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+  1765→        }
+  1766→      }
+  1767→      // lapis ore drops 4-8 gems (+Fortune), MC-style (the default drop is 1)
+  1768→      if (harvest && t.id === BLOCK.LAPIS_ORE) {
+  1769→        const fl = heldSlot?.ench?.fortune ?? 0;
+  1770→        const extra = 3 + Math.floor(Math.random() * 5) + (fl > 0 ? Math.floor(Math.random() * (fl + 1)) : 0);
+  1771→        for (let i2 = 0; i2 < extra; i2++) this.drops.spawn(ITEM.LAPIS_LAZULI, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+  1772→      }
+  1773→      // mature wheat: grain + seeds for replanting
+  1774→      if (harvest && t.id === BLOCK.WHEAT_STAGE3) {
+  1775→        this.drops.spawn(ITEM.WHEAT, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+  1776→        const seeds = 1 + Math.floor(Math.random() * 2);
+  1777→        for (let s = 0; s < seeds; s++) this.drops.spawn(ITEM.SEEDS, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+  1778→        this.achievements.unlock('harvest');
+  1779→      }
+  1780→      // XP from ores
+  1781→      const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.LAPIS_ORE ? 3 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
+  1782→      if (oreXp > 0) {
+  1783→        const n = 1 + Math.floor(Math.random() * oreXp);
+  1784→        for (let i = 0; i < n; i++) this.xpOrbs.spawn(t.x + 0.5, t.y + 0.4, t.z + 0.5, oreXp);
+  1785→      }
+  1786→      this.damageTool(1);
+  1787→      // container: spill contents
+  1788→      if (containerOf(t.id)) {
+  1789→        for (const item of this.blockEnts.destroy(t.x, t.y, t.z)) {
+  1790→          this.drops.spawn(item.id, t.x + 0.5, t.y + 0.5, t.z + 0.5, item.count);
+  1791→        }
+  1792→      }
+  1793→      this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+  1794→      // pop unsupported blocks above (torch, flowers, bed) + plant stacks (sugarcane/cactus)
+  1795→      let py = t.y + 1;
+  1796→      let guard = 0;
+  1797→      while (py < WORLD_HEIGHT && guard++ < 96) {
+  1798→        const aboveId = this.world.getBlock(t.x, py, t.z);
+  1799→        const aboveDef = getBlockDef(aboveId);
+  1800→        const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
+  1801→        if (!aboveDef?.needsGround && !isStack) break;
+  1802→        const aDrop = aboveDef && aboveDef.drop !== undefined ? aboveDef.drop : aboveId;
+  1803→        if (aDrop) this.drops.spawn(aDrop, t.x + 0.5, py + 0.3, t.z + 0.5, 1);
+  1804→        if (containerOf(aboveId)) {
+  1805→          for (const item of this.blockEnts.destroy(t.x, py, t.z)) {
+  1806→            this.drops.spawn(item.id, t.x + 0.5, py + 0.5, t.z + 0.5, item.count);
+  1807→          }
+  1808→        }
+  1809→        this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+  1810→        py++;
+  1811→      }
+  1812→      this.mineProgress = 0;
+  1813→      this.mineTarget = null;
+  1814→      this.crackMesh.visible = false;
+  1815→      return;
+  1816→    }
+  1817→    // crack overlay
+  1818→    const stage = Math.min(9, Math.floor(this.mineProgress * 10));
+  1819→    this.crackMesh.material = this.crackMats[stage];
+  1820→    this.crackMesh.visible = true;
+  1821→    this.crackMesh.position.set(t.x + 0.5, t.y + 0.5, t.z + 0.5);
+  1822→  }
+  1823→
+  1824→  private placeBlock(): void {
+  1825→    if (!this.target || this.placeCooldown > 0) return;
+  1826→    // ── right-click interactions on target block ──
+  1827→    const targetId = this.world.getBlock(this.target.x, this.target.y, this.target.z);
+  1828→    if (!this.player.sneaking) {
+  1829→      if (targetId === BLOCK.CRAFTING_TABLE) { this.openInventory(true); return; }
+  1830→      if (targetId === BLOCK.ENCHANTING_TABLE) { this.openEnchant(); return; }
+  1831→      const cont = containerOf(targetId);
+  1832→      if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
+  1833→      if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
+  1834→      // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
+  1835→      if (targetId === BLOCK.TNT) {
+  1836→        const held = this.player.hotbar[this.player.selected];
+  1837→        const holdingBlock = held && held.count > 0 && !isItemId(held.blockId);
+  1838→        if (!holdingBlock) {
+  1839→          this.igniteTNT(this.target.x, this.target.y, this.target.z);
+  1840→          this.placeCooldown = 0.3;
+  1841→          this.startSwing();
+  1842→          return;
+  1843→        }
+  1844→      }
+  1845→    }
+  1846→    const slot = this.player.hotbar[this.player.selected];
+  1847→    if (!slot || slot.blockId === 0 || slot.count <= 0) return;
+  1848→    // eating food items
+  1849→    if (isItemId(slot.blockId)) {
+  1850→      const itemDef = getItemDef(slot.blockId);
+  1851→      if (itemDef?.food && this.player.hunger < 19.6 && this.eatCooldown <= 0) {
+  1852→        this.eatCooldown = 1.4;
+  1853→        this.player.hunger = Math.min(20, this.player.hunger + itemDef.food);
+  1854→        audio.eat();
+  1855→        window.setTimeout(() => audio.burp(), 700);
+  1856→        this.startSwing();
+  1857→        slot.count--;
+  1858→        if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+  1859→        this.syncHUD();
+  1860→        this.updateHandMesh();
+  1861→      }
+  1862→      return;
+  1863→    }
+  1864→    const bx = this.target.x + this.target.nx;
+  1865→    const by = this.target.y + this.target.ny;
+  1866→    const bz = this.target.z + this.target.nz;
+  1867→    if (by < 0 || by >= WORLD_HEIGHT) return;
+  1868→    let existing = this.world.getBlock(bx, by, bz);
+  1869→    // lily pads ride the water surface: walk up out of the water column
+  1870→    if (slot.blockId === BLOCK.LILY_PAD) {
+  1871→      let ly = by;
+  1872→      let guard = 0;
+  1873→      while (ly < WORLD_HEIGHT - 1 && isLiquid(this.world.getBlock(bx, ly, bz)) && guard++ < 32) ly++;
+  1874→      const cur = this.world.getBlock(bx, ly, bz);
+  1875→      const belowCell = this.world.getBlock(bx, ly - 1, bz);
+  1876→      if (cur !== BLOCK.AIR || belowCell !== BLOCK.WATER) {
+  1877→        this.showToast('Lily pads need still water');
+  1878→        return;
+  1879→      }
+  1880→      this.world.setBlock(bx, ly, bz, BLOCK.LILY_PAD);
+  1881→      audio.place('grass');
+  1882→      this.placeCooldown = 0.22;
+  1883→      this.startSwing();
+  1884→      slot.count--;
+  1885→      if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+  1886→      this.syncHUD();
+  1887→      this.updateHandMesh();
+  1888→      return;
+  1889→    }
+  1890→    if (existing !== BLOCK.AIR && !isLiquid(existing)) return;
+  1891→    // don't place inside player
+  1892→    if (aabbIntersectsBlock(this.player.entity, bx, by, bz)) return;
+  1893→    const def = getBlockDef(slot.blockId);
+  1894→    // sugarcane: needs sand/grass/dirt below (with adjacent water) or another cane
+  1895→    if (slot.blockId === BLOCK.SUGARCANE) {
+  1896→      const below = this.world.getBlock(bx, by - 1, bz);
+  1897→      const belowOk = below === BLOCK.SUGARCANE || ((below === BLOCK.SAND || below === BLOCK.GRASS || below === BLOCK.DIRT) && this.hasAdjacentWater(bx, by - 1, bz));
+  1898→      if (!belowOk) {
+  1899→        this.showToast('Needs sand or grass beside water');
+  1900→        return;
+  1901→      }
+  1902→    }
+  1903→    // ground-support requirement (torch, flowers, bed)
+  1904→    if (def?.needsGround) {
+  1905→      const below = this.world.getBlock(bx, by - 1, bz);
+  1906→      const belowDef = getBlockDef(below);
+  1907→      if (!belowDef?.solid) {
+  1908→        this.showToast('Needs solid ground below');
+  1909→        return;
+  1910→      }
+  1911→    }
+  1912→    this.world.setBlock(bx, by, bz, slot.blockId);
+  1913→    // attach block entity for containers
+  1914→    if (def?.container) this.blockEnts.getOrCreate(bx, by, bz);
+  1915→    // achievements
+  1916→    if (slot.blockId === BLOCK.FURNACE) this.achievements.unlock('hotTopic');
+  1917→    if (slot.blockId === BLOCK.TORCH) this.achievements.unlock('lightItUp');
+  1918→    audio.place((def?.sound ?? 'stone') as MaterialSound);
+  1919→    this.placeCooldown = 0.22;
+  1920→    this.startSwing();
+  1921→    if (!this.player.isCreative) {
+  1922→      slot.count--;
+  1923→      if (slot.count <= 0) { slot.blockId = 0; slot.count = 0; }
+  1924→    }
+  1925→    this.syncHUD();
+  1926→    this.updateHandMesh();
+  1927→  }
+  1928→
+  1929→  /** any water block orthogonally adjacent to this cell (at same or one-below level)? */
+  1930→  private hasAdjacentWater(x: number, y: number, z: number): boolean {
+  1931→    const dirs: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [1, -1, 0], [-1, -1, 0], [0, -1, 1], [0, -1, -1]];
+  1932→    for (const [dx, dy, dz] of dirs) {
+  1933→      if (isWaterId(this.world.getBlock(x + dx, y + dy, z + dz))) return true;
+  1934→    }
+  1935→    return false;
+  1936→  }
+  1937→
+  1938→  // ── TNT ─────────────────────────────────────────────────────────────────────
+  1939→  /** replace a TNT block with a primed entity (fuse seconds, MC = 4s) */
+  1940→  igniteTNT(x: number, y: number, z: number, fuse = 3): void {
+  1941→    if (this.world.getBlock(x, y, z) !== BLOCK.TNT) return;
+  1942→    this.world.setBlock(x, y, z, BLOCK.AIR);
+  1943→    const mesh = new THREE.Mesh(createBlockGeometry(BLOCK.TNT, 0.98), new THREE.MeshLambertMaterial({ map: getAtlas().texture }));
+  1944→    const overlay = new THREE.Mesh(
+  1945→      new THREE.BoxGeometry(1.04, 1.04, 1.04),
+  1946→      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })
+  1947→    );
+  1948→    mesh.add(overlay);
+  1949→    mesh.position.set(x + 0.5, y + 0.49, z + 0.5);
+  1950→    this.scene.add(mesh);
+  1951→    this.primedTnt.push({ x: x + 0.5, y, z: z + 0.5, vx: 0, vy: 4.6, vz: 0, fuse, t: 0, mesh, overlay });
+  1952→    audio.fuseHiss();
+  1953→  }
+  1954→
+  1955→  private clearPrimedTnt(): void {
+  1956→    for (const t of this.primedTnt) {
+  1957→      this.scene.remove(t.mesh);
+  1958→      t.mesh.geometry.dispose();
+  1959→      t.overlay.geometry.dispose();
+  1960→    }
+  1961→    this.primedTnt = [];
+  1962→  }
+  1963→
+  1964→  private updatePrimedTnt(dt: number): void {
+  1965→    for (let i = this.primedTnt.length - 1; i >= 0; i--) {
+  1966→      const t = this.primedTnt[i];
+  1967→      t.t += dt;
+  1968→      t.fuse -= dt;
+  1969→      // physics (small AABB, bounces settle on ground)
+  1970→      const e = { x: t.x, y: t.y, z: t.z, vx: t.vx, vy: t.vy, vz: t.vz, width: 0.98, height: 0.98, onGround: false, inWater: false };
+  1971→      e.vy -= 24 * dt;
+  1972→      moveEntity(this.world, e, dt);
+  1973→      t.x = e.x; t.y = e.y; t.z = e.z;
+  1974→      t.vx = e.vx * Math.pow(0.6, dt);
+  1975→      t.vz = e.vz * Math.pow(0.6, dt);
+  1976→      t.vy = e.vy;
+  1977→      t.mesh.position.set(t.x, t.y + 0.49, t.z);
+  1978→      // white flash accelerates as the fuse burns down
+  1979→      const flash = Math.sin(t.t * 10) > 0 ? 0.55 : 0;
+  1980→      (t.overlay.material as THREE.MeshBasicMaterial).opacity = t.fuse < 0.6 ? (Math.sin(t.t * 40) > 0 ? 0.85 : 0) : flash;
+  1981→      // smoke trail
+  1982→      if (Math.random() < dt * 14) {
+  1983→        this.particles.spawnParticle(t.x, t.y + 1.02, t.z, (Math.random() - 0.5) * 0.3, 0.6 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3, [0.85, 0.85, 0.85], 0.07, 0.6, -0.5);
+  1984→      }
+  1985→      if (t.fuse <= 0) {
+  1986→        this.scene.remove(t.mesh);
+  1987→        t.mesh.geometry.dispose();
+  1988→        t.overlay.geometry.dispose();
+  1989→        this.primedTnt.splice(i, 1);
+  1990→        this.explodeAt(t.x, t.y + 0.49, t.z, 3.8);
+  1991→      }
+  1992→    }
+  1993→  }
+  1994→
+  1995→  /** explosion: destroys blocks (30% drops), chain-ignites TNT, damages player + mobs */
+  1996→  private explodeAt(x: number, y: number, z: number, radius: number): void {
+  1997→    audio.boom();
+  1998→    for (let bx = Math.floor(x - radius); bx <= Math.floor(x + radius); bx++)
+  1999→      for (let by = Math.floor(y - radius); by <= Math.floor(y + radius); by++)
+  2000→        for (let bz = Math.floor(z - radius); bz <= Math.floor(z + radius); bz++) {
+
+[showing lines 1-2000 of 3555; use offset=2001 with limit to continue reading]

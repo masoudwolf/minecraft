@@ -44,6 +44,7 @@ const TANGENT_AXES: [number, number][] = [[1, 2], [1, 2], [0, 2], [0, 2], [0, 1]
 
 interface MeshBuffers {
   positions: number[];
+  normals: number[];
   uvs: number[];
   shades: number[];
   skies: number[];
@@ -53,12 +54,13 @@ interface MeshBuffers {
 }
 
 function newBuffers(): MeshBuffers {
-  return { positions: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], indices: [] };
+  return { positions: [], normals: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], indices: [] };
 }
 
 function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(b.positions, 3));
+  geo.setAttribute('aNormal', new THREE.Float32BufferAttribute(b.normals, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(b.uvs, 2));
   geo.setAttribute('aShade', new THREE.Float32BufferAttribute(b.shades, 1));
   geo.setAttribute('aSky', new THREE.Float32BufferAttribute(b.skies, 1));
@@ -323,6 +325,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
 
           const shade = face.shade;
           for (let c = 0; c < 4; c++) {
+            target.normals.push(face.dir[0], face.dir[1], face.dir[2]);
             target.shades.push(shade * aoLevels[c]);
             target.skies.push(skyLevels[c]);
             target.blocks.push(blockLevels[c]);

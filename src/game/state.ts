@@ -1,8 +1,9 @@
 // ─── Global game state (zustand) — bridge between engine and React UI ────────
 import { create } from 'zustand';
 import type { InvSlot } from './inventory';
+import { DEFAULT_GFX, type GfxSettings } from './graphics/settings';
 
-export type Screen = 'menu' | 'worlds' | 'createWorld' | 'achievements' | 'loading' | 'playing' | 'paused' | 'settings' | 'dead' | 'assets';
+export type Screen = 'menu' | 'worlds' | 'createWorld' | 'achievements' | 'loading' | 'playing' | 'paused' | 'settings' | 'graphics' | 'dead' | 'assets';
 
 export type GameMode = 'survival' | 'creative';
 
@@ -41,6 +42,8 @@ export interface Settings {
   showFps: boolean;
   /** F5 camera perspective, persisted (0 first / 1 third-back / 2 third-front) */
   cameraMode: number;
+  /** shader-pack graphics options */
+  gfx: GfxSettings;
 }
 
 export interface HUDState {
@@ -134,13 +137,17 @@ const DEFAULT_SETTINGS: Settings = {
   clouds: true,
   showFps: false,
   cameraMode: 0,
+  gfx: { ...DEFAULT_GFX },
 };
 
 function loadSettings(): Settings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem('voxelcraft.settings');
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Settings>;
+      return { ...DEFAULT_SETTINGS, ...parsed, gfx: { ...DEFAULT_GFX, ...(parsed.gfx ?? {}) } };
+    }
   } catch { /* ignore */ }
   return DEFAULT_SETTINGS;
 }
