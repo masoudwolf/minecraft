@@ -614,7 +614,11 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW);
         sf = mix(1.0, sf, uShadowStrength);
       }
-      float light = max(vBlock, vSky * uSunLevel * sf);
+      // Shadow keeps 45% sky ambient (shader-pack / Unreal convention: ambient
+      // never dies, so shadowed ground stays readable and blue-shifted via
+      // shadowTint instead of collapsing to pitch black).
+      float sAmb = mix(sf, 1.0, 0.45);
+      float light = max(vBlock, vSky * uSunLevel * sAmb);
       light = clamp(light, 0.045, 1.0);
       float l = pow(light, 1.15);
       vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);

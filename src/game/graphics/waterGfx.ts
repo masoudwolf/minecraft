@@ -106,13 +106,18 @@ const FRAG = /* glsl */ `
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
     bool under = !gl_FrontFacing;
 
-    // ── shadowed voxel sky-light (same model as terrain, shadow-aware) ──
+    // ── shadowed voxel sky-light ──
+    // A shadow blocks the DIRECT sun, but ambient sky light still reaches the
+    // surface — and a mirror keeps reflecting the sky above it regardless of
+    // what stands on the shore. Water keeps 62% ambient in shadow so tree/
+    // hill shadows read as gentle blue-tinted darkening, never pitch black.
     float sf = 1.0;
     if (uShadowStrength > 0.001 && !under) {
       sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vec3(0.0, 1.0, 0.0));
       sf = mix(1.0, sf, uShadowStrength);
     }
-    float light = max(vBlock, vSky * uSunLevel * sf);
+    float sunKeep = mix(sf, 1.0, 0.62);
+    float light = max(vBlock, vSky * uSunLevel * sunKeep);
     light = clamp(light, 0.045, 1.0);
     float l = pow(light, 1.15);
     vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
@@ -142,7 +147,9 @@ const FRAG = /* glsl */ `
         reflCol = gfxSkyColor(reflDir, false);
       }
 
-      col = mix(col, reflCol * l * shadowTint, clamp(fres, 0.0, 0.92));
+      // reflections stay alive in shadow — the sky is still above the water
+      float rl = max(l, 0.62);
+      col = mix(col, reflCol * rl * shadowTint, clamp(fres, 0.0, 0.92));
 
       // HDR sun glint (feeds bloom → sparkling highlights)
       vec3 R = reflect(-viewDir, nrm);

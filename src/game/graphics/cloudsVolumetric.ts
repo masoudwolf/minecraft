@@ -35,7 +35,8 @@ const FRAG = /* glsl */ `
   float cloudDensity(vec3 p) {
     vec2 q = p.xz * SCALE + vec2(uWind * 0.85, uWind * 0.5);
     float shape = fbm3(q);
-    float detail = fbm3(q * 3.4 + vec2(uWind * 1.4, -uWind)) * 0.42;
+    // detail layer drifts faster than the base shape (wind shear with altitude)
+    float detail = fbm3(q * 3.4 + vec2(uWind * 4.6, -uWind * 3.2)) * 0.42;
     float d = shape * 0.85 + detail * 0.55;
     float cov = mix(0.545, 0.30, clamp(uCover, 0.0, 1.0)) + uStorm * 0.06;
     float h = clamp((p.y - CLOUD_BASE) / (CLOUD_TOP - CLOUD_BASE), 0.0, 1.0);
@@ -158,7 +159,11 @@ export class VolumetricClouds {
     this.uniforms.uSunDir.value.copy(sunDir);
     this.uniforms.uSunColor.value.copy(sunColor);
     this.uniforms.uTime.value = performance.now() / 1000;
-    this.uniforms.uWind.value += dt * (2.2 + storm * 5.0);
+    // Realistic drift: the shape layer moves uWind*0.85/SCALE ≈ 73.9 world
+    // blocks per unit of uWind, so a rate of 0.0068/s ≈ 0.5 blocks/s calm
+    // (Minecraft-vanilla feel; the old 2.2/s raced clouds at ~160 blocks/s).
+    // Storms push it to ~2.5 blocks/s.
+    this.uniforms.uWind.value += dt * (0.0068 + storm * 0.027);
     this.uniforms.uCover.value = cover;
     this.uniforms.uStorm.value = storm;
     this.uniforms.uDay.value = day;
