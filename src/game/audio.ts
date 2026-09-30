@@ -150,6 +150,7 @@ class AudioManager {
       case 'mooshroom': this.tone(150 + Math.random() * 30, 0.45, v * 1.2, 'sawtooth', 95); break;
       case 'golem': this.tone(78 + Math.random() * 18, 0.55, v * 1.6, 'sawtooth', 52); setTimeout(() => this.tone(64, 0.35, v * 1.1, 'sine', 45), 240); break;
       case 'witch': this.tone(640, 0.09, v * 0.9, 'square', 380); setTimeout(() => this.tone(520, 0.1, v * 0.85, 'square', 320), 90); setTimeout(() => this.tone(660, 0.14, v * 0.8, 'square', 420), 200); break;
+      case 'knight': this.tone(56 + Math.random() * 12, 0.85, v * 1.7, 'sawtooth', 40); this.noiseBurst(320, 0.6, v * 0.3, 'lowpass'); break;
       case 'hiss': break; // creepers are silent until fuse
     }
   }
@@ -170,7 +171,22 @@ class AudioManager {
       case 'mooshroom': this.tone(170, 0.3, v, 'sawtooth', 110); break;
       case 'golem': this.tone(130, 0.14, v * 1.5, 'square', 85); setTimeout(() => this.noiseBurst(500, 0.2, v * 0.8, 'lowpass'), 60); break;
       case 'witch': this.tone(760, 0.12, v, 'square', 460); setTimeout(() => this.tone(590, 0.14, v * 0.9, 'square', 380), 100); break;
+      case 'knight': this.noiseBurst(2600, 0.12, v, 'highpass', 3); setTimeout(() => this.tone(150, 0.2, v * 0.9, 'sawtooth', 95), 60); break;
     }
+  }
+
+  /** knight greatsword whoosh (swing wind-up) */
+  knightSlash(dist = 5): void {
+    const v = 0.26 * Math.max(0.15, 1 - dist / 22);
+    this.noiseBurst(700, 0.22, v, 'bandpass', 1.6, 0.7);
+  }
+
+  /** knight sword impact: metal ring + hit thud */
+  knightClang(dist = 5): void {
+    const v = 0.3 * Math.max(0.15, 1 - dist / 22);
+    this.tone(1150, 0.14, v * 0.7, 'square', 820);
+    setTimeout(() => this.tone(870, 0.1, v * 0.5, 'square', 700), 45);
+    setTimeout(() => this.noiseBurst(500, 0.14, v * 0.8, 'lowpass'), 30);
   }
 
   /** iron golem hammer blow: heavy metallic thud + clang */

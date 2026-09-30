@@ -31,6 +31,10 @@ const MOB_SPAWN_LIST: { type: MobType; label: string; variant?: string }[] = [
   { type: 'golem', label: 'Iron Golem' },
   { type: 'snowgolem', label: 'Snow Golem' },
   { type: 'snowgolem', label: 'Sheared Snow Golem', variant: 'plain' },
+  { type: 'knight', label: 'Knight ♦ Cyber', variant: 'cyber' },
+  { type: 'knight', label: 'Knight 🔥 Fire', variant: 'fiery' },
+  { type: 'knight', label: 'Knight ☢ Toxic', variant: 'toxic' },
+  { type: 'knight', label: 'Knight ✦ Ender', variant: 'ender' },
 ];
 
 const TIME_PRESETS: { label: string; t: number }[] = [
@@ -190,7 +194,10 @@ export function CreatorTools() {
             <Section title="Spawn Mob (in front)">
               <div className="grid grid-cols-3 gap-1">
                 {MOB_SPAWN_LIST.map((m, i) => (
-                  <Btn key={m.label + i} onClick={() => spawnAtLook(m.type, m.variant)}>{m.label}</Btn>
+                  // spawnAtLook RETURNS the handler — call it (wrapping it in
+                  // another arrow built a never-invoked closure: the spawn
+                  // buttons silently did nothing)
+                  <Btn key={m.label + i} onClick={spawnAtLook(m.type, m.variant)}>{m.label}</Btn>
                 ))}
               </div>
               <div className="mt-1 grid grid-cols-2 gap-1">

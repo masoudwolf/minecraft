@@ -4,10 +4,11 @@ import { moveEntity, type AABBEntity } from '../physics';
 import { BLOCK, isWaterId } from '../blocks';
 import { getMobSkins, type MobSkinPart, type MobSkins } from './mobSkins';
 import { boxUV, type BoxUVOptions } from './vanillaSkins';
+import { buildKnight, animateKnight, getKnightRig } from './knightSkin';
 import { audio } from '../audio';
 import { ITEM } from '../items';
 
-export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem';
+export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem' | 'knight';
 
 interface MobDef {
   hostile: boolean;
@@ -18,14 +19,14 @@ interface MobDef {
   /** contact/attack damage to player */
   damage: number;
   drops: { id: number; min: number; max: number }[];
-  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem';
+  sound: 'oink' | 'moo' | 'baa' | 'cluck' | 'groan' | 'hiss' | 'rattle' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'knight';
   /** spiders are neutral in daylight (still hostile in dark / when provoked) */
   neutralInDay?: boolean;
   /** spiders climb walls when chasing */
   climbs?: boolean;
   /** endermen teleport */
   teleports?: boolean;
-  builder: (skins: ReturnType<typeof getMobSkins>) => MobParts;
+  builder: (skins: ReturnType<typeof getMobSkins>, variant?: string) => MobParts;
 }
 
 export interface MobParts {
@@ -352,7 +353,7 @@ export function buildMobModel(type: string, variant?: string): MobParts | null {
   const def = MOB_DEFS[base];
   if (!def) return null;
   const skins = getMobSkins(variant ? `${type}:${variant}` : type);
-  const parts = def.builder(skins);
+  const parts = def.builder(skins, variant);
   return parts;
 }
 
@@ -776,6 +777,19 @@ const MOB_DEFS: Record<MobType, MobDef> = {
       return { group, head, legs, arms, materials: mats, shadow: null as unknown as THREE.Mesh };
     },
   },
+  knight: {
+    hostile: true, width: 0.7, height: 2.1, health: 50, speed: 2.2, damage: 6,
+    drops: [
+      { id: ITEM.IRON_INGOT, min: 1, max: 2 },
+      { id: ITEM.COAL, min: 0, max: 2 },
+    ], sound: 'knight',
+    // NEON SHADOW KNIGHT — verbatim port of the user-provided character (see
+    // knightSkin.ts): model, seeded procedural textures, glow maps, sword light
+    // and all 4 animations are the original's, unchanged by design request.
+    // Elite night duelist: closes in and slashes — damage lands on the swing's
+    // hit frame. Rare spawn (capped), 4 color themes as variants.
+    builder: (_s, variant) => buildKnight(variant || 'cyber'),
+  },
   snowgolem: {
     // buildable snow golem (MC): VANILLA SnowGolemModel — lower body 12³ (the
     // wide snow base), upper body 10³, head 8³ (−0.5, coal face / carved
@@ -961,9 +975,9 @@ export class MobManager {
 
   private spawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
     const def = MOB_DEFS[type];
-    const skinKey = variant && (type === 'sheep' || type === 'snowgolem') ? `${type}:${variant}` : type;
+    const skinKey = variant && (type === 'sheep' || type === 'snowgolem' || type === 'knight') ? `${type}:${variant}` : type;
     const skins = getMobSkins(skinKey);
-    const parts = def.builder(skins);
+    const parts = def.builder(skins, variant);
     // SAFETY NET: rebuild the material list from a FULL recursive traversal so
     // every nested part (fleece-leg fur, hat tiers, bows, …) is registered and
     // gets a per-instance clone — a missed material keeps the shared builder
@@ -1006,7 +1020,7 @@ export class MobManager {
       burnTimer: 0, burning: false,
       fuse: -1, dead: false, deathT: 0,
       provoked: false, teleportCd: 0, waterHurtT: 0,
-      variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : '',
+      variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : type === 'knight' ? (variant || 'cyber') : '',
       wanderX: x, wanderZ: z,
       tintR: 1, tintG: 1, tintB: 1,
       lightF: 1, lastAppliedF: 1,
@@ -1084,8 +1098,10 @@ export class MobManager {
     if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
       const roll = Math.random();
       const isSwamp = this.world.biomeAt?.(cx, cz) === 'swamp';
-      const type: MobType = roll < 0.32 ? 'zombie' : roll < 0.58 ? 'skeleton' : roll < 0.74 ? 'creeper' : roll < 0.86 ? 'spider' : roll < 0.95 && isSwamp ? 'witch' : 'enderman';
-      this.spawn(type, x, sy + 1, z);
+      // knights are RARE elites — at most 2 alive at once
+      const knightCount = this.mobs.filter((m2) => m2.type === 'knight').length;
+      const type: MobType = roll < 0.30 ? 'zombie' : roll < 0.55 ? 'skeleton' : roll < 0.71 ? 'creeper' : roll < 0.84 ? 'spider' : roll < 0.90 && knightCount < 2 ? 'knight' : roll < 0.95 && isSwamp ? 'witch' : 'enderman';
+      this.spawn(type, x, sy + 1, z, type === 'knight' ? pickKnightVariant() : '');
     } else if (wantPassive) {
       const roll = Math.random();
       // snowy ground → snow golems (pumpkin-headed, occasionally sheared)
@@ -1575,6 +1591,37 @@ export class MobManager {
             else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
           }
         }
+      } else if (m.type === 'knight') {
+        // NEON SHADOW KNIGHT: relentless elite duelist — closes in and swings
+        // the greatsword (the swing is the ORIGINAL animation; damage lands on
+        // its hit frame so visuals and gameplay are one motion)
+        if (distToPlayer < 26 && !cb.playerCreative) {
+          m.state = 'chase';
+          const dx = player.x - m.x;
+          const dz = player.z - m.z;
+          const len = Math.hypot(dx, dz) || 1;
+          const ka = getKnightRig(m.parts.group);
+          const swinging = !!ka && ka.swingT >= 0;
+          if (distToPlayer > 2.1 && !swinging) {
+            wantX = dx / len; wantZ = dz / len;
+            moveSpeed = m.def.speed;
+          }
+          if (!swinging && distToPlayer < 2.7 && m.attackCd <= 0) {
+            m.attackCd = 2.1; // swing cycle 1.5s + recovery
+            if (ka) { ka.swingT = 0; ka.swingHitDone = false; }
+            audio.knightSlash(distToPlayer);
+          }
+        } else {
+          if (m.state === 'chase') { m.state = 'idle'; m.stateTimer = 2; }
+          wanderAI(m, dt);
+          if (m.state === 'walk') {
+            const dx = m.wanderX - m.x;
+            const dz = m.wanderZ - m.z;
+            const len = Math.hypot(dx, dz);
+            if (len < 0.8 || m.stateTimer <= 0) { m.state = 'idle'; m.stateTimer = 2 + Math.random() * 3; }
+            else { wantX = dx / len; wantZ = dz / len; moveSpeed = m.def.speed * 0.55; }
+          }
+        }
       }
 
       // ── movement + physics ──
@@ -1641,7 +1688,40 @@ export class MobManager {
       m.walkPhase += hSpeed * dt * 3.2;
       const swing = Math.sin(m.walkPhase * 2.4) * Math.min(1, hSpeed / m.def.speed) * 0.65;
       const legs = m.parts.legs;
-      if (m.type === 'spider') {
+      if (m.type === 'knight') {
+        // NEON KNIGHT: the verbatim 8-channel animator (idle/walk/attack/pose)
+        // drives EVERY part — including the head that tracks the player (the
+        // demo's signature head-follows-camera behavior, ported 1:1)
+        const ka = getKnightRig(m.parts.group);
+        if (ka) {
+          if (ka.swingT >= 0) {
+            ka.swingT += dt;
+            if (ka.swingT > 1.5) ka.swingT = -1;
+          }
+          const mode = ka.swingT >= 0 ? 'attack' : hSpeed > 0.25 ? 'walk' : 'idle';
+          let lookYaw = 0;
+          let lookPitch: number | undefined;
+          if (distToPlayer < 26 && !cb.playerCreative) {
+            const dxp = player.x - m.x;
+            const dzp = player.z - m.z;
+            lookYaw = Math.atan2(dxp, dzp) - m.yaw;
+            while (lookYaw > Math.PI) lookYaw -= Math.PI * 2;
+            while (lookYaw < -Math.PI) lookYaw += Math.PI * 2;
+            lookPitch = Math.atan2((player.y + 1.62) - (m.y + 1.75), Math.hypot(dxp, dzp));
+          }
+          animateKnight(m.parts.group, dt, mode, {
+            lookYaw,
+            lookPitch,
+            attackPhase: ka.swingT >= 0 ? ka.swingT : undefined,
+            onHit: () => {
+              if (distToPlayer < 3.4) {
+                cb.damagePlayer(m.def.damage, m.x, m.z);
+                audio.knightClang(distToPlayer);
+              }
+            },
+          });
+        }
+      } else if (m.type === 'spider') {
         // vanilla SpiderModel scuttle: per-leg phase (hind 0, midHind π,
         // midFront π/2, front 3π/2), ySway = −cos(2ωt+φ)·0.4·amt (mirrored per
         // side), zBob = |sin(ωt+φ)|·0.4·amt — around the vanilla base pose
@@ -1707,8 +1787,8 @@ export class MobManager {
           }
         }
       }
-      // head bob
-      m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
+      // head bob (knight: its own animator already owns the head)
+      if (m.type !== 'knight') m.parts.head.rotation.y = Math.sin(this.time * 0.7 + m.walkPhase) * 0.14;
       // enderman glows purple when provoked
       if (m.type === 'enderman' && m.hurtT <= 0) {
         if (m.provoked) this.setTint(m, 1, 0.72, 1.12);
@@ -1965,6 +2045,24 @@ function sheepWoolId(variant: string): number {
     case 'black': return BLOCK.WOOL_BLACK;
     default: return BLOCK.WOOL;
   }
+}
+
+// ─── knight color themes (the demo's 4 palettes) ────────────────────────────
+const KNIGHT_VARIANTS: { name: string; weight: number }[] = [
+  { name: 'cyber', weight: 0.38 },
+  { name: 'fiery', weight: 0.27 },
+  { name: 'toxic', weight: 0.2 },
+  { name: 'ender', weight: 0.15 },
+];
+
+function pickKnightVariant(): string {
+  const r = Math.random();
+  let acc = 0;
+  for (const v of KNIGHT_VARIANTS) {
+    acc += v.weight;
+    if (r < acc) return v.name;
+  }
+  return 'cyber';
 }
 
 /** idle<->walk transitions for hostile mobs far from player */

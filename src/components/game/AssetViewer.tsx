@@ -18,6 +18,7 @@ import { audio } from '@/game/audio';
 import { getMobSkins } from '@/game/entities/mobSkins';
 import { preloadEntityTextures, type MobSkinPart } from '@/game/entities/vanillaSkins';
 import { buildMobModel, getMobDims } from '@/game/entities/mobs';
+import { buildKnight, animateKnight } from '@/game/entities/knightSkin';
 import { getAtlas, tileUV } from '@/game/textures/atlas';
 import { BLOCKS, type BlockDef } from '@/game/blocks';
 
@@ -44,14 +45,19 @@ const MOB_ENTRIES: MobEntry[] = [
   { key: 'golem', label: 'Iron Golem' },
   { key: 'snowgolem', label: 'Snow Golem (Pumpkin)', variant: 'pumpkin' },
   { key: 'snowgolem', label: 'Snow Golem (Sheared)', variant: 'plain' },
+  { key: 'knight', label: 'Neon Knight (Cyber)', variant: 'cyber', hostile: true },
+  { key: 'knight', label: 'Neon Knight (Fiery)', variant: 'fiery', hostile: true },
+  { key: 'knight', label: 'Neon Knight (Toxic)', variant: 'toxic', hostile: true },
+  { key: 'knight', label: 'Neon Knight (Ender)', variant: 'ender', hostile: true },
 ];
 
 // ─── Animation catalog (mirrors the in-game animator poses) ──────────────────
-interface AnimOpt { key: 'idle' | 'walk' | 'attack' | 'flap'; label: string; mobs?: string[] }
+interface AnimOpt { key: 'idle' | 'walk' | 'attack' | 'flap' | 'pose'; label: string; mobs?: string[] }
 const ANIMS: AnimOpt[] = [
   { key: 'idle', label: 'Idle' },
   { key: 'walk', label: 'Walk' },
-  { key: 'attack', label: 'Attack / Chase', mobs: ['skeleton', 'enderman', 'golem', 'spider'] },
+  { key: 'attack', label: 'Attack / Chase', mobs: ['skeleton', 'enderman', 'golem', 'spider', 'knight'] },
+  { key: 'pose', label: 'Hero Pose', mobs: ['knight'] },
   { key: 'flap', label: 'Wing Flap (air)', mobs: ['chicken'] },
 ];
 function animsFor(key: string): AnimOpt[] {
@@ -61,6 +67,47 @@ function animsFor(key: string): AnimOpt[] {
 // ─── Block catalog (all registered, in id order) ─────────────────────────────
 function blockList(): BlockDef[] {
   return Object.values(BLOCKS).sort((a, b) => a.id - b.id);
+}
+
+/** The knight's textures are runtime-painted canvases (map + emissive glow map)
+ *  — rasterize each unique one off a throwaway build, labeled by the parts
+ *  that use it (dispose everything afterwards). */
+function knightSkinCards(variant: string): { label: string; size: string; src: string }[] {
+  const parts = buildKnight(variant);
+  const seen = new Map<THREE.Texture, { fields: Set<string>; canvas: HTMLCanvasElement }>();
+  parts.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const part = (mesh.userData.part as string) ?? 'part';
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mm of mats as THREE.MeshLambertMaterial[]) {
+      const map = mm.map;
+      const img = map?.image as HTMLCanvasElement | undefined;
+      if (!img) continue;
+      const prev = seen.get(map);
+      if (prev) prev.fields.add(part);
+      else seen.set(map, { fields: new Set([part]), canvas: img });
+    }
+  });
+  const out: { label: string; size: string; src: string }[] = [];
+  for (const { fields, canvas } of seen.values()) {
+    const c = document.createElement('canvas');
+    c.width = canvas.width; c.height = canvas.height;
+    c.getContext('2d')!.drawImage(canvas, 0, 0);
+    out.push({ label: `${[...fields].join(', ')} (+glow map)`, size: `${canvas.width}×${canvas.height}`, src: c.toDataURL() });
+  }
+  parts.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.dispose();
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mm of mats as THREE.MeshLambertMaterial[]) {
+      mm.map?.dispose();
+      mm.emissiveMap?.dispose();
+      mm.dispose();
+    }
+  });
+  return out;
 }
 
 // ─── Three.js viewport (shared by both tabs) ─────────────────────────────────
@@ -80,6 +127,7 @@ function defaultCam(tab: 'mobs' | 'blocks', key?: string): { targetY: number; di
   if (key === 'chicken') return { targetY: 0.45, dist: 3.6 };
   if (key === 'golem') return { targetY: 1.35, dist: 5 };
   if (key === 'enderman') return { targetY: 1.35, dist: 3.6 };
+  if (key === 'knight') return { targetY: 1.05, dist: 4.6 };
   return { targetY: 0.85, dist: 3.6 };
 }
 
@@ -186,6 +234,7 @@ function AssetViewer() {
     el.addEventListener('wheel', onWheel, { passive: false });
 
     let raf = 0;
+    let lastNow = performance.now();
     const resize = (): void => {
       const w = host.clientWidth || 1, h = host.clientHeight || 1;
       renderer.setSize(w, h, false);
@@ -198,17 +247,37 @@ function AssetViewer() {
 
     const tick = (): void => {
       raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      const rdt = Math.min(0.05, (now - lastNow) / 1000);
+      lastNow = now;
       const s = animState.current;
       s.t += 0.05 * s.speed;
       // mob pose — mirrors the in-game animator per animation state
       const g = modelGroup.current;
       if (g) {
-        const legs = g.userData.legs as THREE.Object3D[] | undefined;
-        const arms = g.userData.arms as THREE.Object3D[] | undefined;
-        const head = g.userData.head as THREE.Object3D | undefined;
         const mobKey = g.userData.mobKey as string | undefined;
-        const walking = s.anim === 'walk';
-        if (legs) {
+        if (mobKey === 'knight') {
+          // NEON KNIGHT: verbatim 8-channel animator + real dt (its lerp needs
+          // seconds, not the demo clock); the head tracks the viewer camera —
+          // the demo's signature head-follows-the-orbit-camera behavior
+          const inner = g.children[0];
+          if (inner) {
+            const cpos = camera.position;
+            const cosr = Math.cos(g.rotation.y);
+            const sinr = Math.sin(g.rotation.y);
+            const lx = cpos.x * cosr - cpos.z * sinr;
+            const lz = cpos.x * sinr + cpos.z * cosr;
+            animateKnight(inner, rdt * s.speed, (s.anim === 'flap' ? 'idle' : s.anim) as 'idle' | 'walk' | 'attack' | 'pose', {
+              lookYaw: Math.atan2(lx, lz),
+              lookPitch: Math.atan2(cpos.y - 1.75, Math.hypot(lx, lz)),
+            });
+          }
+        } else {
+          const legs = g.userData.legs as THREE.Object3D[] | undefined;
+          const arms = g.userData.arms as THREE.Object3D[] | undefined;
+          const head = g.userData.head as THREE.Object3D | undefined;
+          const walking = s.anim === 'walk';
+          if (legs) {
           const isSpider = mobKey === 'spider';
           legs.forEach((leg, i) => {
             // legs[] ARE the hip pivot groups — rotate them (top pivot, MC-style);
@@ -263,6 +332,7 @@ function AssetViewer() {
           // gentle idle look-around, always on (game keeps this too)
           head.rotation.y = Math.sin(s.t * 0.55) * 0.22;
           head.rotation.x = Math.sin(s.t * 0.4) * 0.06;
+        }
         }
         if (s.spin) g.rotation.y += 0.0035; // turntable (togglable)
       }
@@ -416,6 +486,12 @@ function AssetViewer() {
     };
     if (tab === 'mobs') {
       const e = MOB_ENTRIES[mobSel] ?? MOB_ENTRIES[0];
+      if (e.key === 'knight') {
+        // the knight paints its own canvases at runtime (no UV atlas file) —
+        // rasterize the REAL map+glow textures off a throwaway build
+        cards.push(...knightSkinCards(e.variant ?? 'cyber'));
+        return cards;
+      }
       const skins = getMobSkins(e.variant ? `${e.key}:${e.variant}` : e.key);
       const seen = new Map<THREE.Texture, { fields: string[]; part: MobSkinPart }>();
       const visit = (field: string, part?: MobSkinPart): void => {
