@@ -1118,3 +1118,20 @@ Stage Summary:
 - Sun shadows: softer (52% ambient floor, 1.3-texel PCF) — shadowed canopies/terrain stay readable.
 - God rays: window/door shafts work with the sun off-screen; direct sun patches through glass already worked (verified BFS + depth-pass cutout).
 - Lint clean. Push pending QA completion.
+
+---
+Task ID: 45-b (QA continuation + wrap-up)
+Agent: Z.ai Code (main)
+Task: browser QA for v0.44.x + wrap-up.
+
+Work Log:
+- Discovered + fixed a sandbox freeze vector: the torch cube-shadow passes (CubeCamera ×6 faces + the new PCF shader) intermittently hard-freeze llvmpipe (0% CPU deadlock, no frames, CDP dead). Added a software-GL guard: maxTorchShadows = 0 on llvmpipe (real GPUs unaffected — user runs the pack at 119 fps and torches already rendered there in v0.43). After the guard, day loads with shadows:1 render fine (tree/sugarcane shadows visible on sand, water clean).
+- Verified via shadow-map pixel readback that glass tiles are alpha-cutout in the depth pass (window centers let direct sun through) and the sky-light BFS propagates through glass (opaque:false) — direct sun patches through windows/doors work geometrically; the god-rays widening (±55% off-screen) now adds visible shafts from window pixels.
+- Visual QA completed for: world load + render with all new shaders (multiple day loads), sun shadows ON (1024 map) with the softer 52% ambient floor + 1.3-texel PCF, sugarcane/tree cast shadows, water reflections.
+- Visual QA NOT completable in this sandbox: night-time torch scene. Reason: game time advances ~0.15s per real second at sandbox fps (dt clamp) → night is ~30+ real minutes away, and the llvmpipe freezes recur intermittently on night loads (pre-dates this round's changes; also reproduced with v0.43.0). The warm-tint + soft-cube torch code paths are math-verified and compile-verified; final look confirmation falls to the user's GPU (next round should retry on a healthier sandbox).
+- User's world save: QA artifacts removed (planks/sandstone test blocks restored to sand, test torches removed), time restored to morning.
+- Version → 0.44.1. Commits pushed: 421ce0b (v0.44.0 core fixes), d06b61d + 16e844e (repo hygiene: qa/upload out of git), 6f89d91 (software-GL cube guard).
+
+Stage Summary:
+- Shipped: soft PCF cube shadows (384px Linear + normal-offset bias + tangent PCF + 0.32 bounce floor), warm Unreal-style torch tint (terrain/cutout/grass), sun ambient floor 52% + softer PCF, god rays through openings with the sun off-screen, software-GL cube-shadow guard.
+- Next-round QA checklist: (1) night torch pool = warm/orange glow, soft shadows, never a black room; (2) treetop shadows read ~52% brightness, no near-black patches; (3) window/door god rays visible indoors with the sun off-screen; (4) confirm no regression on the user's GPU at Ultra.
