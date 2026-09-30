@@ -58,6 +58,40 @@ function newBuffers(): MeshBuffers {
 }
 
 function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
+  // ── HARD PER-VERTEX INVARIANT ──────────────────────────────────────────
+  // Every attribute buffer must have EXACTLY one entry per vertex. A short
+  // buffer makes the GPU read out-of-bounds vertex data, which on real
+  // GPUs surfaces as (0,0,0) tint/normals → random BLACK patches on the
+  // LAST vertices of the chunk — and since the y-loop runs bottom-up, the
+  // tail is always the HIGHEST cutout geometry: tree canopies, sugarcane
+  // tops, bamboo. This bug family shipped twice:
+  //   v0.44 — aNormal skipped for cross/torch/lily (black cane/lily with
+  //           shadows on: garbage normals in the shadow lookup)
+  //   v0.45 — aTint skipped for torch/lily (black tree tops at ANY shadow
+  //           setting; breaking any block remeshed the chunk and moved the
+  //           damaged tail window to a different block, so "breaking the
+  //           black top of one bamboo turned another bamboo black")
+  // Pad + warn so a future model type can never silently corrupt meshes.
+  const vertCount = b.positions.length / 3;
+  if (b.normals.length !== vertCount * 3) {
+    console.warn(`[mesher] aNormal count ${b.normals.length} != ${vertCount * 3} — padded (model missing normals)`);
+    while (b.normals.length < vertCount * 3) b.normals.push(0, 1, 0);
+  }
+  if (b.tints.length !== vertCount * 3) {
+    console.warn(`[mesher] aTint count ${b.tints.length} != ${vertCount * 3} — padded white (model missing tint)`);
+    while (b.tints.length < vertCount * 3) b.tints.push(1, 1, 1);
+  }
+  if (b.uvs.length !== vertCount * 2) {
+    console.warn(`[mesher] uv count ${b.uvs.length} != ${vertCount * 2} — padded`);
+    while (b.uvs.length < vertCount * 2) b.uvs.push(0, 0);
+  }
+  for (const [name, arr] of [['aShade', b.shades], ['aSky', b.skies], ['aBlock', b.blocks]] as const) {
+    if (arr.length !== vertCount) {
+      console.warn(`[mesher] ${name} count ${arr.length} != ${vertCount} — padded`);
+      while (arr.length < vertCount) arr.push(1);
+    }
+  }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(b.positions, 3));
   geo.setAttribute('aNormal', new THREE.Float32BufferAttribute(b.normals, 3));
@@ -207,6 +241,11 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               cutout.shades.push(f.sh);
               cutout.skies.push(sky);
               cutout.blocks.push(blk);
+              // aTint MUST also stay 1:1 (v0.45 regression: missing tint made
+              // the buffer run short and the chunk tail — tree tops — read
+              // out-of-bounds tint = BLACK canopy patches at any graphics
+              // setting). Torch texture carries its own warm color; tint white.
+              pushTint(cutout, TINT_WHITE);
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -235,6 +274,10 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             cutout.shades.push(0.96);
             cutout.skies.push(sky);
             cutout.blocks.push(blk);
+            // aTint 1:1 — same invariant as the torch model above (missing
+            // tint = short buffer = black chunk tail). Lilies share the cutout
+            // buffer with leaves/canes, so one lily corrupted the whole tail.
+            pushTint(cutout, TINT_WHITE);
           }
           cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           continue;

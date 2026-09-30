@@ -1190,3 +1190,20 @@ Work Log:
 
 Stage Summary:
 - origin (masoudwolf/minecraft) main = 0a3290e = VoxelCraft v0.45.0. Mobs-Project untouched at its own 126cb1e.
+
+---
+Task ID: 47
+Agent: Z.ai Code (main)
+Task: third user report of black tree leaves/bamboo tops — broad root-cause investigation ("بررسی گسترده بکن ببین منبع اصلی این باگ از کجاست")
+
+Work Log:
+- User evidence this round: (1) 3 trees with black upper branches + a bamboo on dirt near water with black top (screenshot); (2) black persists at LOWEST and HIGHEST graphics → NOT the shadow pipeline; (3) breaking the black top of one bamboo made a DIFFERENT bamboo's top turn black → corruption moves with remeshing.
+- Empirical proof in the live user world (window.__voxel): scanned every loaded chunk mesh comparing position.count vs aTint.count. Chunk "19,-5" reported posCount 1540 vs tintCount 1516 → 24-vertex shortfall, torches: 1. The last 24 vertices of that chunk's cutout buffer mapped to world (314-317, y 51-52, -67/-68) = exactly the blackened canopy top, while the torch sat at (314.5, 47.6, -70.5) below it.
+- ROOT CAUSE: the mesher's torch model (24 verts) and lily model (4 verts) never pushed aTint, while cross + cube paths do. aTint is a vec3 attribute → every torch/lily shortened the tint buffer by 12/72 floats. GPUs fetch out-of-bounds vertex data as (0,0,0) → shader `col = tex.rgb * vTint * ...` = PURE BLACK for the chunk's LAST vertices. The y-loop runs bottom-up so the tail is always the highest cutout geometry (tree canopies, cane/bamboo tops) — matches every report since v0.42. Graphics-setting independent (vertex data, not shadows). Breaking ANY block remeshes the chunk, changes the vertex layout, and moves which block the short tail lands on → "broke bamboo A's top, bamboo B turned black". Explains why llvmpipe QA missed it (OOB fetch behavior differs + QA worlds had no torch/lily near inspected trees).
+- FIX (mesher.ts): torch + lily models now pushTint(TINT_WHITE) 1:1 per corner. Plus a HARD PER-VERTEX INVARIANT in buildGeometry: aNormal (3/vert), aTint (3/vert), uv (2/vert), aShade/aSky/aBlock (1/vert) are length-checked against position count; shortfalls are padded (normals up, tint white, shade/sky bright) + console.warn with exact counts — this bug family can never silently corrupt meshes again.
+- Version → 0.45.1 (VERSION + version.ts "Black Canopy Root Fix").
+
+Stage Summary:
+- VERIFIED in the user's world (seed 7777, their base with torches): 92 loaded chunks → 0 attribute mismatches (was: chunk 19,-5 short by 24 verts). Break/remesh cycle on the previously-corrupted chunk (broke leaf at 314,50,-69, restored) stays 0-mismatch. Screenshots: canopies fully green at the exact formerly-black coords, at default time and sunset. No [mesher] padding warnings in console.
+- World-save hygiene: player restored to (239.3, 42.0, -108.5, yaw -0.75, pitch -0.10), sky.time 248.9 after QA teleports; leaf broken/restored to its generated value (no lasting edits-map diff); autosave captured the restored state (PUT 200).
+- NEXT QUEUE (unchanged + still open from earlier rounds): torch light/shadow realism pass, glass/open-block god-ray transparency, Minecraft-style grass tufts, mob/player real cast shadows (blob shadow replacement), cloud speed, water black-patch re-check on user GPU, mob sun-shadow tinting, performance pass, brewing/potions, villager restock UI, item frames/armor stands, cake from milk.
