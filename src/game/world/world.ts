@@ -6,7 +6,7 @@ import { TerrainGenerator } from './terrain';
 import { buildChunkMesh, disposeChunkMesh, ChunkMeshes } from './mesher';
 import { getAtlas } from '../textures/atlas';
 import { createWaterMaterial } from '../graphics/waterGfx';
-import { GLSL_SHADOW, GLSL_CUBE_SHADOW } from '../graphics/glsl';
+import { GLSL_SHADOW, GLSL_CUBE_SHADOW, GLSL_NOISE, GLSL_CLOUD_SHADOW } from '../graphics/glsl';
 
 /** simple FIFO queue with head pointer (avoids O(n) shift) */
 class LightQueue {
@@ -548,6 +548,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     attribute float aBlock;
     attribute vec3 aTint;
     attribute vec3 aNormal;
+    attribute float aSway;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
@@ -558,6 +559,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     varying vec3 vNormalW;
     uniform float uTime;
     uniform float uWave;
+    uniform float uWindAmp;
     void main() {
       vUv = uv;
       vShade = aShade;
@@ -566,17 +568,29 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       vTint = aTint;
       vNormalW = aNormal;
       vec3 pos = position;
+      vec4 wp0 = modelMatrix * vec4(position, 1.0);
+      // ── waving foliage (shader-pack staple) ──
+      // aSway: leaf cubes wobble rigidly (0.5), cross plants bend at the top
+      // (0..0.9 by corner height), everything else is rigid. Phase uses WORLD
+      // position so canopies/chunks desync naturally; a slow gust wave rides
+      // on top so the breeze visibly travels across the terrain.
+      if (aSway > 0.001 && uWindAmp > 0.001) {
+        float ph = wp0.x * 0.85 + wp0.z * 0.65;
+        float wnd = sin(uTime * 1.45 + ph) * 0.6 + sin(uTime * 2.55 + ph * 2.3 + wp0.x * 0.37) * 0.4;
+        float gust = 0.75 + 0.45 * sin(uTime * 0.35 + wp0.z * 0.045);
+        pos.x += wnd * 0.042 * aSway * uWindAmp * gust;
+        pos.z += cos(uTime * 1.15 + ph * 1.6 + wp0.z * 0.41) * 0.034 * aSway * uWindAmp * gust;
+      }
       if (uWave > 0.5) {
         // Wave phase MUST use world position (modelMatrix includes the chunk
         // offset): local position.x/z restart at 0 in every chunk, which made
         // phases disagree across chunk borders and tore visible seams in the
         // ocean surface (sand showing through the crack).
-        vec4 wp = modelMatrix * vec4(position, 1.0);
         // Only bob the top-surface vertices (fract(y) ≈ 0.875 for sources);
         // bottom edges stay welded to the floor/shore so no underwater gaps.
         float isTop = step(0.8, fract(position.y));
-        float wave = sin(uTime * 1.6 + wp.x * 0.9 + wp.z * 0.7) * 0.03
-                   + sin(uTime * 2.7 + wp.x * 1.9 - wp.z * 1.4) * 0.015;
+        float wave = sin(uTime * 1.6 + wp0.x * 0.9 + wp0.z * 0.7) * 0.03
+                   + sin(uTime * 2.7 + wp0.x * 1.9 - wp0.z * 1.4) * 0.015;
         pos.y += (wave - 0.045) * isTop;
       }
       vec4 wp2 = modelMatrix * vec4(pos, 1.0);
@@ -589,6 +603,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
   const fragmentShader = /* glsl */ `
     uniform sampler2D uAtlas;
     uniform float uSunLevel;
+    uniform float uTime;
     uniform vec3 uFogColor;
     uniform float uFogNear;
     uniform float uFogFar;
@@ -599,6 +614,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform float uShadowStrength;
     uniform float uShadowAmbient;
     uniform vec3 uSunDirW;
+    uniform vec3 uSunColorW;
     uniform vec3 uTorchPos0;
     uniform vec3 uTorchPos1;
     uniform samplerCube uTorchMap0;
@@ -608,6 +624,9 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform float uTorchRange0;
     uniform float uTorchRange1;
     uniform float uTorchCount;
+    uniform float uTorchFlicker;
+    uniform float uWaterLine;
+    uniform float uCaustics;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
@@ -616,8 +635,10 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     varying float vFogDepth;
     varying vec3 vWorldPos;
     varying vec3 vNormalW;
+    ${GLSL_NOISE}
     ${GLSL_SHADOW}
     ${GLSL_CUBE_SHADOW}
+    ${GLSL_CLOUD_SHADOW}
     void main() {
       vec4 tex = texture2D(uAtlas, vUv);
       if (tex.a < uAlphaTest) discard;
@@ -633,25 +654,47 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       // as light-diffusing, so their shadowed parts keep extra ambient and no
       // longer read as black patches inside the canopy (user report).
       float sAmb = mix(sf, 1.0, uShadowAmbient);
+      // ── moving cloud shadows (BSL/SEUS staple): the same fbm the cloud dome
+      // renders, projected along the light ray onto the cloud slab. Clouds
+      // filter the sun, they never block it (55% floor).
+      float cloudS = gfxCloudShadow(vWorldPos, uSunDirW);
       // torch (block) light vs sun light are SEPARATE terms: the torch term is
       // modulated by the point-light cube shadow map (fences/trees/mobs cast
       // real radial shadows), and torch-dominant areas get a warm Unreal-style
       // tint while sun-dominant areas stay neutral daylight.
-      float sunL = vSky * uSunLevel * sAmb;
+      float sunL = vSky * uSunLevel * sAmb * cloudS;
       float torchL = vBlock;
       if (uTorchCount > 0.5 && torchL > 0.02) {
         float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vNormalW, uTorchFar0, uTorchRange0);
         if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, vNormalW, uTorchFar1, uTorchRange1));
         // 32% bounce floor: point-light shadows stay soft and warm, never black
         torchL *= mix(0.32, 1.0, ts);
+        torchL *= uTorchFlicker; // candle flame flutter
       }
       float light = max(torchL, sunL);
       light = clamp(light, 0.045, 1.0);
       float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
       vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
+      // ── sun/moon color grading of the terrain itself (BSL-style): warm
+      // sunlight at sunset, cool blue moonlight at night — the sky and the
+      // ground finally agree on the time of day.
+      vec3 sunTintN = uSunColorW / max(max(uSunColorW.r, max(uSunColorW.g, uSunColorW.b)), 0.001);
+      lightCol *= mix(vec3(1.0), sunTintN, 0.42);
       float l = pow(light, 1.15);
       vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
       vec3 col = tex.rgb * vTint * vShade * l * lightCol * shadowTint;
+      // ── water caustics (SEUS-style) on floors beneath the water line: two
+      // animated fbm layers interfere into a traveling bright web. Gated by
+      // sky light (caves stay dark — no surface overhead to focus the sun)
+      // and by depth, so dry ground a hair above the waterline is untouched.
+      if (uCaustics > 0.5 && vSky > 0.4 && vSky < 0.94 && vWorldPos.y < uWaterLine - 0.55) {
+        float depthFade = clamp((uWaterLine - vWorldPos.y) / 12.0, 0.0, 1.0);
+        vec2 cp = vWorldPos.xz * 0.85;
+        float c1 = fbm2(cp + vec2(uTime * 0.5, uTime * 0.34));
+        float c2 = fbm2(cp * 1.7 - vec2(uTime * 0.43, uTime * 0.61));
+        float caustic = smoothstep(0.52, 0.95, (c1 + c2) * 0.5);
+        col *= 1.0 + caustic * 0.55 * depthFade * clamp(vSky - 0.4, 0.0, 1.0) * uSunLevel;
+      }
       float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
       col = mix(col, uFogColor, fogF);
       gl_FragColor = vec4(col, tex.a);
@@ -671,6 +714,14 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uAlphaTest: { value: opts.alphaTest },
         uTime: { value: 0 },
         uWave: { value: opts.wave },
+        uWindAmp: { value: 1 },
+        uTorchFlicker: { value: 1 },
+        uWaterLine: { value: 40.875 },
+        uCaustics: { value: 0 },
+        uSunColorW: { value: new THREE.Color(1, 1, 1) },
+        uCloudShadow: { value: 0 },
+        uCloudWind: { value: 0 },
+        uCloudCover: { value: 0.22 },
         uShadowMap: { value: null },
         uShadowMatrix: { value: new THREE.Matrix4() },
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },

@@ -24,6 +24,8 @@ export interface GfxSettings {
   shadows: number;
   /** 0..1 → blades per grass block (0..11) */
   grassDensity: number;
+  /** waving foliage — leaves wobble + plants bend in the breeze (vertex wind) */
+  windSway: boolean;
   exposure: number;   // 0.6..1.8
   saturation: number; // 0.4..1.6
   contrast: number;   // 0.7..1.3
@@ -44,6 +46,7 @@ export const DEFAULT_GFX: GfxSettings = {
   waterQuality: 1,
   shadows: 2,
   grassDensity: 0.45,
+  windSway: true,
   exposure: 1.0,
   saturation: 1.08,
   contrast: 1.02,
@@ -55,7 +58,7 @@ export const GFX_PRESETS: Record<GfxPreset, Partial<GfxSettings>> = {
   potato: {
     postfx: false, bloom: false, godRays: false, fxaa: false,
     volumetricClouds: false, cloudQuality: 0, waterQuality: 0, shadows: 0,
-    grassDensity: 0, renderScale: 0.6,
+    grassDensity: 0, windSway: false, renderScale: 0.6,
   },
   low: {
     postfx: true, bloom: false, godRays: true, fxaa: true, godRaysStrength: 0.55,

@@ -3436,7 +3436,8 @@ export class Game {
     if (st.hud.underwater !== underwater) st.setHud({ underwater });
 
     // graphics pack: sky dome, clouds, water sun, shadow follow, postfx uniforms
-    this.gfx.update(dt, this.camera, this.sky, this.player.x, this.player.y, this.player.z, underwater);
+    this.gfx.update(dt, this.camera, this.sky, this.player.x, this.player.y, this.player.z, underwater,
+      this.weather ? (this.weather.raining ? this.weather.intensity : 0) : 0);
 
     this.syncHUD();
   }

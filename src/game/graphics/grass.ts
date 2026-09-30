@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { BLOCK } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import type { Chunk, World } from '../world/world';
-import { GLSL_SHADOW, GLSL_CUBE_SHADOW } from './glsl';
+import { GLSL_NOISE, GLSL_SHADOW, GLSL_CUBE_SHADOW, GLSL_CLOUD_SHADOW } from './glsl';
 
 const MAX_PER_CHUNK = 4096;
 
@@ -67,6 +67,8 @@ const FRAG = /* glsl */ `
   uniform float uFogNear;
   uniform float uFogFar;
   uniform vec3 uSunDirW;
+  uniform vec3 uSunColorW;
+  uniform float uTorchFlicker;
   uniform sampler2D uShadowMap;
   uniform mat4 uShadowMatrix;
   uniform vec2 uShadowTexel;
@@ -80,8 +82,10 @@ const FRAG = /* glsl */ `
   uniform float uTorchRange0;
   uniform float uTorchRange1;
   uniform float uTorchCount;
+  ${GLSL_NOISE}
   ${GLSL_SHADOW}
   ${GLSL_CUBE_SHADOW}
+  ${GLSL_CLOUD_SHADOW}
   void main() {
     vec4 t = texture2D(uMap, vUv);
     if (t.a < 0.5) discard;
@@ -92,18 +96,24 @@ const FRAG = /* glsl */ `
       sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vec3(0.0, 1.0, 0.0), ndl);
     }
     float sAmb = mix(sf, 1.0, 0.52);
+    // drifting cloud shadows reach the grass too (same fbm as the cloud dome)
+    float cloudS = gfxCloudShadow(vWorldPos, uSunDirW);
     // torch light with point-light cube shadows (same formula as terrain,
     // warm Unreal-style tint when the torch dominates)
-    float sunL = vSky * uSunLevel * sAmb;
+    float sunL = vSky * uSunLevel * sAmb * cloudS;
     float torchL = vBlock;
     if (uTorchCount > 0.5 && torchL > 0.02) {
       float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vec3(0.0, 1.0, 0.0), uTorchFar0, uTorchRange0);
       if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, vec3(0.0, 1.0, 0.0), uTorchFar1, uTorchRange1));
       torchL *= mix(0.32, 1.0, ts);
+      torchL *= uTorchFlicker;
     }
     float light = clamp(max(torchL, sunL), 0.06, 1.0);
     float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
     vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
+    // sun/moon grading — grass agrees with terrain and sky
+    vec3 sunTintN = uSunColorW / max(max(uSunColorW.r, max(uSunColorW.g, uSunColorW.b)), 0.001);
+    lightCol *= mix(vec3(1.0), sunTintN, 0.42);
     float l = pow(light, 1.15);
     // vanilla plains-like tint with gentle per-tuft variation (darker base)
     vec3 tint = mix(vec3(0.40, 0.62, 0.22), vec3(0.54, 0.78, 0.30), vTintV);
@@ -199,6 +209,11 @@ export class GrassManager {
         uFogFar: { value: 120 },
         uMap: { value: this.tex },
         uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
+        uSunColorW: { value: new THREE.Color(1, 1, 1) },
+        uTorchFlicker: { value: 1 },
+        uCloudShadow: { value: 0 },
+        uCloudWind: { value: 0 },
+        uCloudCover: { value: 0.22 },
         uShadowMap: { value: null },
         uShadowMatrix: { value: new THREE.Matrix4() },
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
@@ -361,6 +376,15 @@ export class GrassManager {
   setShadowStrength(s: number, sunDir: THREE.Vector3): void {
     this.mat.uniforms.uShadowStrength.value = s;
     (this.mat.uniforms.uSunDirW.value as THREE.Vector3).copy(sunDir);
+  }
+
+  /** per-frame environment sync: sun color grading + torch flicker + cloud shadows */
+  setEnv(sunColor: THREE.Color, flicker: number, cloudShadow: number, cloudWind: number, cloudCover: number): void {
+    (this.mat.uniforms.uSunColorW.value as THREE.Color).copy(sunColor);
+    this.mat.uniforms.uTorchFlicker.value = flicker;
+    this.mat.uniforms.uCloudShadow.value = cloudShadow;
+    this.mat.uniforms.uCloudWind.value = cloudWind;
+    this.mat.uniforms.uCloudCover.value = cloudCover;
   }
 
   /** torch cube-shadow uniforms for slot 0|1 (pos=null → inactive) */

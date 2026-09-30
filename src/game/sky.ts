@@ -25,6 +25,7 @@ export class SkySystem {
   private sun: THREE.Mesh;
   private moon: THREE.Mesh;
   private stars: THREE.Points;
+  private starMat: THREE.ShaderMaterial;
   private clouds: THREE.InstancedMesh;
   private cloudNoise: (x: number, y: number) => number;
   time = DAY_LENGTH * 0.25; // start morning
@@ -40,6 +41,13 @@ export class SkySystem {
   weatherDarkness = 0;
   /** weather: 0..1 lightning flash brightness */
   lightningFlash = 0;
+  /** shader-pack mode: the atmosphere dome draws its own HDR sun disk + moon,
+   *  so the legacy textured quads retire (they used to double-render the sun —
+   *  a flat white rectangle over the dome's disk, starkly visible in fog). */
+  setLegacyBodiesVisible(v: boolean): void {
+    this.sun.visible = v;
+    this.moon.visible = v;
+  }
   /** storm gray targets */
   private static STORM_SKY = new THREE.Color(0x5a6068);
   private static STORM_HORIZON = new THREE.Color(0x707680);
@@ -79,26 +87,102 @@ export class SkySystem {
     this.moon.renderOrder = -10;
     this.group.add(this.moon);
 
-    // stars
-    const starCount = 420;
-    const starPos = new Float32Array(starCount * 3);
-    const rnd = mulberry32(seed);
-    for (let i = 0; i < starCount; i++) {
-      // random direction on sphere
-      const theta = rnd() * Math.PI * 2;
-      const phi = Math.acos(rnd() * 2 - 1);
-      const r = 480;
-      starPos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      starPos[i * 3 + 1] = Math.abs(r * Math.cos(phi));
-      starPos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    // ── stars — shader-pack style (BSL/Complementary): per-star twinkle,
+    // color temperature (blue-white / warm / orange giants) + a faint Milky
+    // Way band with nebula glow points. Replaces the old flat white dots.
+    {
+      const MAIN_STARS = 420;
+      const MW_STARS = 900;
+      const starCount = MAIN_STARS + MW_STARS;
+      const starPos = new Float32Array(starCount * 3);
+      const starSize = new Float32Array(starCount);
+      const starPhase = new Float32Array(starCount);
+      const starCol = new Float32Array(starCount * 3);
+      const rnd = mulberry32(seed);
+      // Milky Way band: great circle around a fixed tilted plane
+      const mwN = new THREE.Vector3(0.42, 0.52, 0.74).normalize();
+      const mwU = new THREE.Vector3(1, 0, 0).cross(mwN).normalize();
+      const mwV = mwN.clone().cross(mwU).normalize();
+      const R = 480;
+      const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) / 2; // approx normal
+      for (let i = 0; i < starCount; i++) {
+        const isMW = i >= MAIN_STARS;
+        let dx: number, dy: number, dz: number;
+        if (isMW) {
+          const t = rnd() * Math.PI * 2;
+          const off = gauss() * 0.30; // band spread
+          dx = Math.cos(t) * mwU.x + Math.sin(t) * mwV.x + off * mwN.x;
+          dy = Math.cos(t) * mwU.y + Math.sin(t) * mwV.y + off * mwN.y;
+          dz = Math.cos(t) * mwU.z + Math.sin(t) * mwV.z + off * mwN.z;
+          const l = Math.hypot(dx, dy, dz);
+          dx /= l; dy = Math.abs(dy / l); dz /= l; // upper hemisphere
+        } else {
+          const theta = rnd() * Math.PI * 2;
+          const phi = Math.acos(rnd() * 2 - 1);
+          dx = Math.sin(phi) * Math.cos(theta);
+          dy = Math.abs(Math.cos(phi));
+          dz = Math.sin(phi) * Math.sin(theta);
+        }
+        starPos[i * 3] = dx * R;
+        starPos[i * 3 + 1] = dy * R;
+        starPos[i * 3 + 2] = dz * R;
+        // occasional large dim “nebula glow” points along the band
+        const nebula = isMW && rnd() < 0.07;
+        starSize[i] = nebula ? 6 + rnd() * 7 : isMW ? 0.9 + rnd() * 0.9 : 1.5 + rnd() * 1.7;
+        starPhase[i] = rnd() * Math.PI * 2;
+        const w = rnd();
+        let cr: number, cg: number, cb: number;
+        if (w < 0.62) { cr = 0.82 + rnd() * 0.18; cg = 0.88 + rnd() * 0.12; cb = 1.0; }       // blue-white
+        else if (w < 0.88) { cr = 1.0; cg = 0.93 + rnd() * 0.06; cb = 0.82 + rnd() * 0.12; } // warm white
+        else { cr = 1.0; cg = 0.78 + rnd() * 0.10; cb = 0.62 + rnd() * 0.12; }               // orange giant
+        const b = nebula ? 0.05 + rnd() * 0.05 : isMW ? 0.30 + rnd() * 0.25 : 0.75 + rnd() * 0.25;
+        starCol[i * 3] = cr * b;
+        starCol[i * 3 + 1] = cg * b;
+        starCol[i * 3 + 2] = cb * b;
+      }
+      const starGeo = new THREE.BufferGeometry();
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+      starGeo.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+      starGeo.setAttribute('aPhase', new THREE.BufferAttribute(starPhase, 1));
+      starGeo.setAttribute('aColor', new THREE.BufferAttribute(starCol, 3));
+      this.starMat = new THREE.ShaderMaterial({
+        vertexShader: /* glsl */ `
+          attribute float aSize;
+          attribute float aPhase;
+          attribute vec3 aColor;
+          varying vec3 vColor;
+          varying float vTw;
+          uniform float uTime;
+          void main() {
+            vColor = aColor;
+            // each star flickers at its own rate/phase (real atmospheric scintillation)
+            vTw = 0.72 + 0.38 * sin(uTime * (0.6 + fract(aPhase * 0.63) * 1.7) + aPhase * 7.0);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = aSize * mix(0.8, 1.15, vTw);
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          varying vec3 vColor;
+          varying float vTw;
+          uniform float uNight;
+          void main() {
+            vec2 d = gl_PointCoord - 0.5;
+            float a = smoothstep(0.5, 0.06, length(d));
+            gl_FragColor = vec4(vColor * vTw, a * uNight);
+          }
+        `,
+        uniforms: { uTime: { value: 0 }, uNight: { value: 0 } },
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        toneMapped: false,
+      });
+      this.stars = new THREE.Points(starGeo, this.starMat);
+      this.stars.renderOrder = -11;
+      this.group.add(this.stars);
     }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false,
-    }));
-    this.stars.renderOrder = -11;
-    this.group.add(this.stars);
 
     // clouds (blocky instanced quads)
     this.cloudNoise = (x, y) => {
@@ -139,9 +223,9 @@ export class SkySystem {
     const dayAmount = THREE.MathUtils.clamp((sunHeight + 0.12) / 0.32, 0, 1);
     this.sunLevel = 0.30 + 0.70 * dayAmount;
 
-    // star opacity
-    const starMat = this.stars.material as THREE.PointsMaterial;
-    starMat.opacity = THREE.MathUtils.clamp(1 - dayAmount * 1.6, 0, 0.9);
+    // star opacity + twinkle clock
+    this.starMat.uniforms.uNight.value = THREE.MathUtils.clamp(1 - dayAmount * 1.6, 0, 0.9);
+    this.starMat.uniforms.uTime.value = performance.now() / 1000;
     this.stars.position.copy(camPos);
     this.stars.rotation.y = dayFrac * Math.PI * 2;
 

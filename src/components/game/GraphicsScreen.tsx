@@ -129,6 +129,7 @@ export function GraphicsScreen() {
           min={0} max={1} step={0.05} value={gfx.grassDensity}
           onChange={(v) => setGfx({ grassDensity: v })}
         />
+        <Toggle label="Waving Foliage / تکان برگ‌ها در باد" value={gfx.windSway} onChange={(v) => setGfx({ windSway: v })} />
 
         {/* ── color grade ── */}
         {gfx.postfx && (

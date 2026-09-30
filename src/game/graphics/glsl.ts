@@ -79,6 +79,30 @@ export const GLSL_SHADOW = /* glsl */ `
   }
 `;
 
+/** Moving cloud shadows on terrain/water/grass — projects the fragment toward
+ *  the light onto the volumetric cloud slab (base 112) and evaluates the SAME
+ *  fbm shape layer the cloud dome renders (cloudsVolumetric.ts SCALE/wind
+ *  offsets), so shadows drift in lock-step with the visible clouds. uCloudWind
+ *  mirrors the clouds' accumulated wind uniform; uCloudCover mirrors coverage.
+ *  Returns 1.0 = fully lit; shadowed ground keeps 55% (clouds filter, never
+ *  block, so terrain under clouds stays readable — shader-pack convention). */
+export const GLSL_CLOUD_SHADOW = /* glsl */ `
+  uniform float uCloudShadow; // 0 off → 1 full strength
+  uniform float uCloudWind;   // mirrors VolumetricClouds uWind
+  uniform float uCloudCover;  // 0 clear → 1 overcast
+  float gfxCloudShadow(vec3 wp, vec3 lightDir) {
+    if (uCloudShadow < 0.01) return 1.0;
+    float h = 112.0 - wp.y;
+    if (h <= 2.0) return 1.0; // at/above the cloud layer
+    vec2 cp = wp.xz + lightDir.xz / max(abs(lightDir.y), 0.14) * h;
+    vec2 q = cp * 0.0115 + vec2(uCloudWind * 0.85, uCloudWind * 0.5);
+    float dens = fbm3(q) * 0.85 + fbm3(q * 3.4 + vec2(uCloudWind * 4.6, -uCloudWind * 3.2)) * 0.24;
+    float cov = mix(0.545, 0.30, clamp(uCloudCover, 0.0, 1.0));
+    float sh = smoothstep(cov - 0.03, cov + 0.16, dens);
+    return 1.0 - sh * 0.45 * uCloudShadow;
+  }
+`;
+
 /** Point-light (torch) cube shadow sampling over the pack's OWN cube depth
  *  passes (GraphicsSystem renders casters from the light into a cube RT with
  *  the same RGBA-packed depth). Returns 1.0 = LIT, 0.0 = shadowed.

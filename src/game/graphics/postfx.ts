@@ -17,6 +17,8 @@ const GodRaysShader = {
     uSunPos: { value: new THREE.Vector2(-1, -1) },
     uStrength: { value: 0.7 },
     uSamples: { value: 40 },
+    uFlare: { value: 0.55 },   // lens flare intensity (0 = off)
+    uAspect: { value: 1.777 }, // screen aspect — keeps ghosts circular
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -30,6 +32,8 @@ const GodRaysShader = {
     uniform vec2 uSunPos;
     uniform float uStrength;
     uniform float uSamples;
+    uniform float uFlare;
+    uniform float uAspect;
     varying vec2 vUv;
     void main() {
       vec4 base = texture2D(tDiffuse, vUv);
@@ -55,7 +59,36 @@ const GodRaysShader = {
       acc /= max(total, 1e-4);
       float dist = distance(vUv, uSunPos);
       float falloff = smoothstep(1.55, 0.05, dist);
-      gl_FragColor = vec4(base.rgb + acc * uStrength * falloff, base.a);
+      vec3 col = base.rgb + acc * uStrength * falloff;
+
+      // ── cinematic lens flare (BSL/Complementary style) ──
+      // anamorphic horizontal streak through the sun + three ghosts chasing
+      // the sun-to-center axis, all scaled by the same visibility factor that
+      // gates the god rays (storm/cover/off-screen already folded into it).
+      if (uFlare > 0.001) {
+        vec2 toC = 0.5 - uSunPos;
+        float vis = clamp(uStrength * 1.3, 0.0, 1.0);
+        // anamorphic streak: wide horizontally, razor thin vertically
+        float sy = abs(vUv.y - uSunPos.y);
+        float sx = abs(vUv.x - uSunPos.x);
+        float streak = exp(-sy * 130.0) * exp(-sx * 4.2);
+        vec3 flare = vec3(0.42, 0.62, 1.0) * streak * 0.42;
+        // ghosts along the sun↔center axis (aspect-corrected radius)
+        for (int gi = 0; gi < 3; gi++) {
+          float k = gi == 0 ? -0.42 : (gi == 1 ? 0.32 : 0.78);
+          vec2 gp = uSunPos + toC * k;
+          vec2 d2 = vec2((vUv.x - gp.x) * uAspect, vUv.y - gp.y);
+          float rad = gi == 0 ? 0.055 : (gi == 1 ? 0.10 : 0.035);
+          float halo = smoothstep(rad, 0.0, length(d2));
+          vec3 gc = gi == 0 ? vec3(1.0, 0.72, 0.42) : (gi == 1 ? vec3(0.5, 0.85, 1.0) : vec3(1.0, 0.9, 0.62));
+          flare += gc * halo * halo * (gi == 1 ? 0.10 : 0.16);
+        }
+        // halo ring right around the sun
+        float ring = smoothstep(0.05, 0.10, dist) * smoothstep(0.30, 0.13, dist);
+        flare += vec3(1.0, 0.82, 0.58) * ring * ring * 0.30;
+        col += flare * uFlare * vis;
+      }
+      gl_FragColor = vec4(col, base.a);
     }
   `,
 };
@@ -171,6 +204,11 @@ export class PostFX {
     this.godRaysPass.uniforms.uSunPos.value.set(x, y);
     this.godRaysPass.uniforms.uStrength.value = strength;
     this.godRaysPass.uniforms.uSamples.value = samples;
+  }
+
+  setFlare(strength: number, aspect: number): void {
+    this.godRaysPass.uniforms.uFlare.value = strength;
+    this.godRaysPass.uniforms.uAspect.value = aspect;
   }
 
   setGrade(exposure: number, saturation: number, contrast: number, vignette: number): void {

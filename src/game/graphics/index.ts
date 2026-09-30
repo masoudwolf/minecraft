@@ -91,6 +91,11 @@ export class GraphicsSystem {
   private lastFogNear = 60;
   private lastFogFar = 130;
   private underwaterCam = false;
+  private legacyBodiesHidden = false;
+  /** smoothed per-frame environment state (auto-exposure / wind / rain) */
+  private expAdapt = 1;
+  private windAmpSmooth = 1;
+  private rainSmooth = 0;
 
   private sweepTimer = 0;
   private grassSweepTimer = 0;
@@ -449,9 +454,15 @@ export class GraphicsSystem {
   }
 
   // ── per-frame update ────────────────────────────────────────────────────────
-  update(dt: number, camera: THREE.PerspectiveCamera, sky: SkySystem, playerX: number, playerY: number, playerZ: number, underwater: boolean): void {
+  update(dt: number, camera: THREE.PerspectiveCamera, sky: SkySystem, playerX: number, playerY: number, playerZ: number, underwater: boolean, rain = 0): void {
     if (!this.gfx || !this.atmosphere) return;
     const gfx = this.gfx;
+
+    // retire the legacy sun/moon quads once — the atmosphere dome owns both now
+    if (!this.legacyBodiesHidden) {
+      this.legacyBodiesHidden = true;
+      sky.setLegacyBodiesVisible(false);
+    }
 
     // sun direction (same formula as SkySystem)
     const dayFrac = sky.time / DAY_LENGTH;
@@ -486,6 +497,28 @@ export class GraphicsSystem {
     if (this.clouds?.mesh.visible) {
       this.clouds.update(camera, dt, lightDir, this.lastSunColor, dayAmount, cover, storm);
     }
+
+    // ── shader-pack environment sync (cloud shadows / caustics / wind / flicker)
+    const cloudShadowOn = gfx.volumetricClouds && gfx.cloudQuality >= 1 ? 1 : 0;
+    const cloudWind = this.clouds ? this.clouds.uniforms.uWind.value : 0;
+    const t = performance.now() / 1000;
+    // candle flame flutter: layered sines, never fully dies (0.90..1.10)
+    const flicker = 1 + (Math.sin(t * 11.3) + Math.sin(t * 17.7) * 0.5 + Math.sin(t * 7.1) * 0.35) * 0.055;
+    // breeze amplitude: calm → stormy, smoothly damped (no jump when toggling)
+    const windTarget = gfx.windSway ? 1 + storm * 0.9 : 0;
+    this.windAmpSmooth += (windTarget - this.windAmpSmooth) * Math.min(1, dt * 2.5);
+    // rain on water: smoothed so downpours fade in/out naturally
+    this.rainSmooth += (rain - this.rainSmooth) * Math.min(1, dt * 2);
+    for (const m of this.voxelMats()) {
+      if (m.uniforms.uWindAmp) m.uniforms.uWindAmp.value = this.windAmpSmooth;
+      if (m.uniforms.uTorchFlicker) m.uniforms.uTorchFlicker.value = flicker;
+      if (m.uniforms.uCaustics) m.uniforms.uCaustics.value = gfx.waterQuality >= 1 ? 1 : 0;
+      if (m.uniforms.uCloudShadow) m.uniforms.uCloudShadow.value = cloudShadowOn;
+      if (m.uniforms.uCloudWind) m.uniforms.uCloudWind.value = cloudWind;
+      if (m.uniforms.uCloudCover) m.uniforms.uCloudCover.value = cover;
+      if (m.uniforms.uRain) m.uniforms.uRain.value = this.rainSmooth;
+    }
+    this.grass.setEnv(this.lastSunColor, flicker, cloudShadowOn, cloudWind, cover);
 
     // fog snapshot for grass
     if (this.scene.fog) {
@@ -547,6 +580,14 @@ export class GraphicsSystem {
 
     // postfx per-frame uniforms
     if (this.postfx) {
+      // ── auto exposure (Unreal eye adaptation): the grade brightens smoothly
+      // toward night/sunset and underwater, so walking into a cave or dusk
+      // doesn't snap — it eases like a real camera iris. User exposure still
+      // multiplies on top.
+      const expoTarget = (1 + (1 - dayAmount) * 0.35 + sunsetAmount * 0.06) * (underwater ? 1.18 : 1);
+      this.expAdapt += (expoTarget - this.expAdapt) * Math.min(1, dt * 1.4);
+      this.postfx.setGrade(this.expAdapt * gfx.exposure, gfx.saturation, gfx.contrast, gfx.vignette);
+      this.postfx.setFlare(gfx.godRays ? 0.55 : 0, camera.aspect);
       // sun screen position for god rays
       let gx = -1, gy = -1, strength = 0;
       if (gfx.godRays && !underwater) {

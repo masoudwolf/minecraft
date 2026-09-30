@@ -28,6 +28,11 @@ const FACES: FaceDef[] = [
 
 const UV_CORNERS: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 1]];
 const AO_CURVE = [0.42, 0.62, 0.82, 1.0];
+/** wind-sway weight per block (leaves wobble; cross plants bend at the top).
+ *  The voxel vertex shader turns this into a live breeze — shader-pack
+ *  "waving foliage". 0 = rigid (terrain, torches, lily pads). */
+const SWAY_LEAVES = 0.5;
+const SWAY_CROSS = 0.9;
 
 /** sub-rectangle of a tile in pixel coords (y measured from top) -> uv rect [u0,v0,u1,v1] */
 function tileSub(tileIndex: number, x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
@@ -50,11 +55,12 @@ interface MeshBuffers {
   skies: number[];
   blocks: number[];
   tints: number[];
+  sways: number[];
   indices: number[];
 }
 
 function newBuffers(): MeshBuffers {
-  return { positions: [], normals: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], indices: [] };
+  return { positions: [], normals: [], uvs: [], shades: [], skies: [], blocks: [], tints: [], sways: [], indices: [] };
 }
 
 function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
@@ -85,10 +91,10 @@ function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
     console.warn(`[mesher] uv count ${b.uvs.length} != ${vertCount * 2} — padded`);
     while (b.uvs.length < vertCount * 2) b.uvs.push(0, 0);
   }
-  for (const [name, arr] of [['aShade', b.shades], ['aSky', b.skies], ['aBlock', b.blocks]] as const) {
+  for (const [name, arr] of [['aShade', b.shades], ['aSky', b.skies], ['aBlock', b.blocks], ['aSway', b.sways]] as const) {
     if (arr.length !== vertCount) {
       console.warn(`[mesher] ${name} count ${arr.length} != ${vertCount} — padded`);
-      while (arr.length < vertCount) arr.push(1);
+      while (arr.length < vertCount) arr.push(0);
     }
   }
 
@@ -100,6 +106,7 @@ function buildGeometry(b: MeshBuffers): THREE.BufferGeometry {
   geo.setAttribute('aSky', new THREE.Float32BufferAttribute(b.skies, 1));
   geo.setAttribute('aBlock', new THREE.Float32BufferAttribute(b.blocks, 1));
   geo.setAttribute('aTint', new THREE.Float32BufferAttribute(b.tints, 3));
+  geo.setAttribute('aSway', new THREE.Float32BufferAttribute(b.sways, 1));
   geo.setIndex(b.indices);
   geo.computeBoundingSphere();
   return geo;
@@ -204,6 +211,8 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               cutout.skies.push(sky);
               cutout.blocks.push(blk);
               pushTint(cutout, tint);
+              // sway weight = corner height: tops bend in the breeze, roots stay
+              cutout.sways.push(cr[1] * SWAY_CROSS);
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -246,6 +255,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               // out-of-bounds tint = BLACK canopy patches at any graphics
               // setting). Torch texture carries its own warm color; tint white.
               pushTint(cutout, TINT_WHITE);
+              cutout.sways.push(0); // torches are rigid
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -278,6 +288,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             // tint = short buffer = black chunk tail). Lilies share the cutout
             // buffer with leaves/canes, so one lily corrupted the whole tail.
             pushTint(cutout, TINT_WHITE);
+            cutout.sways.push(0); // lily pads float rigid
           }
           cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           continue;
@@ -383,12 +394,16 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           }
 
           const shade = face.shade;
+          // waving foliage: leaf cubes wobble rigidly in the breeze (phase comes
+          // from world position in the shader, so neighboring canopies desync)
+          const sway = (id === BLOCK.LEAVES || id === BLOCK.SPRUCE_LEAVES || id === BLOCK.JUNGLE_LEAVES) ? SWAY_LEAVES : 0;
           for (let c = 0; c < 4; c++) {
             target.normals.push(face.dir[0], face.dir[1], face.dir[2]);
             target.shades.push(shade * aoLevels[c]);
             target.skies.push(skyLevels[c]);
             target.blocks.push(blockLevels[c]);
             pushTint(target, tint);
+            target.sways.push(sway);
           }
 
           // flip quad diagonal for better AO interpolation

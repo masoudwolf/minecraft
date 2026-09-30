@@ -4,7 +4,7 @@
 // pipeline (applySkyFog) keeps working unchanged.
 
 import * as THREE from 'three';
-import { GLSL_NOISE, GLSL_SHADOW } from './glsl';
+import { GLSL_NOISE, GLSL_SHADOW, GLSL_CLOUD_SHADOW } from './glsl';
 import { SKY_COLOR_GLSL } from './atmosphere';
 
 /** world Y of the reflection plane (sea-level water surface) */
@@ -70,6 +70,8 @@ const FRAG = /* glsl */ `
   uniform mat4 uShadowMatrix;
   uniform vec2 uShadowTexel;
   uniform float uShadowStrength;
+  // weather + cloud shadows
+  uniform float uRain;
   varying vec2 vUv;
   varying float vShade;
   varying float vSky;
@@ -80,6 +82,7 @@ const FRAG = /* glsl */ `
   varying vec4 vMirrorCoord;
   ${GLSL_NOISE}
   ${GLSL_SHADOW}
+  ${GLSL_CLOUD_SHADOW}
   ${SKY_COLOR_GLSL}
 
   // animated wave height field (world xz)
@@ -106,6 +109,16 @@ const FRAG = /* glsl */ `
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
     bool under = !gl_FrontFacing;
 
+    // ── rain roughens the surface: momentary ring ripples scatter the wave
+    // normals, breaking the mirror into thousands of little splashes (BSL)
+    if (uRain > 0.01 && !under) {
+      vec2 cell = floor(p * 2.4);
+      float t8 = floor(uTime * 8.0);
+      float act = step(0.90, hash12(cell + t8 * 0.37));
+      nrm.xz += (vec2(vnoise(cell * 1.7 + t8), vnoise(cell.yx * 1.7 - t8)) - 0.5) * act * uRain * 1.8;
+      nrm = normalize(nrm);
+    }
+
     // ── shadowed voxel sky-light ──
     // A shadow blocks the DIRECT sun, but ambient sky light still reaches the
     // surface — and a mirror keeps reflecting the sky above it regardless of
@@ -118,7 +131,10 @@ const FRAG = /* glsl */ `
       sf = mix(1.0, sf, uShadowStrength);
     }
     float sunKeep = mix(sf, 1.0, 0.62);
-    float light = max(vBlock, vSky * uSunLevel * sunKeep);
+    // drifting cloud shadows also darken the water's direct-sun term — but
+    // like the sky mirror, ambient/reflection survive (see sunKeep above)
+    float cloudS = gfxCloudShadow(vWorldPos, uSunDirW);
+    float light = max(vBlock, vSky * uSunLevel * sunKeep * cloudS);
     light = clamp(light, 0.045, 1.0);
     float l = pow(light, 1.15);
     vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
@@ -210,6 +226,10 @@ export function createWaterMaterial(texture: THREE.Texture): THREE.ShaderMateria
       uAlphaTest: { value: 0.05 },
       uTime: { value: 0 },
       uWave: { value: 1 },
+      uRain: { value: 0 },
+      uCloudShadow: { value: 0 },
+      uCloudWind: { value: 0 },
+      uCloudCover: { value: 0.22 },
       ...extras,
     },
     transparent: true,
