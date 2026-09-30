@@ -1234,3 +1234,36 @@ Stage Summary:
 - The graphics stack now covers every headline feature of the big shader packs except the heavy/marginal ones deliberately skipped (SSAO, DoF, motion blur, TAA — low ROI on the voxel look and hostile to llvmpipe QA).
 - USER NOTE: their world save carried legacy cloudQuality=0/waterQuality=0 overrides — clicking any preset button (Medium/High/Ultra) in Graphics settings re-enables everything; new installs get the defaults with everything ON.
 - Pushed: origin/main = 4385df7 (v0.46.0). NEXT QUEUE: performance pass on real GPUs, mob sun-shadow tinting (lightF shadow-map aware), torch light/shadow realism pass, glass/open-block god-ray transparency, item frames/armor stands, brewing/potions, villager restock UI, cake from milk.
+
+---
+Task ID: 49
+Agent: Z.ai Code (main)
+Task: v0.47.0 — 用户三点图形反馈修复：室内看到太阳耀斑光斑 / 房屋无阳光入射（正午屋内不像正午）/ 水体写实度不足（要求对标 Unreal 与 BSL/SEUS 类光影包）
+
+Work Log:
+- restore 脚本确认 origin/main = v0.46.0 (a40d9cb)，无回退
+- 审查 postfx.ts / index.ts / world.ts / mesher.ts / waterGfx.ts 全部图形管线，定位三个问题根因：
+  (1) 耀斑（anamorphic streak + 3 ghosts + halo ring）是纯数学叠加层，仅依据太阳屏幕坐标绘制，无任何遮挡/朝向门控 → 屋内看墙也画光斑（用户截图1的巨大白色光斑）
+  (2) 体素 shader 把整个天空项乘以 shadow factor（sAmb = mix(sf,1,0.52)）→ 室内被二次惩罚（vSky 已因室内衰减 + sf 又压 52%）→ 正午屋内昏灰
+  (3) 水体无深度概念：全屏统一 72% 蓝染色 + 0.78-0.94 alpha，无浅滩→深水渐变
+- 修复A（耀斑门控）：GraphicsSystem 新增 sunOcclusion() 体素 DDA 光线投射（260 步，不透明=0，水×0.72/树叶×0.62/玻璃×0.96 衰减）+ 相机朝向因子 smoothstep(dot(fwd,sunDir))，二者乘积经新 uniform uVis 只门控耀斑叠加层；god rays 径向模糊保持帧采样驱动（窗光轴保留）
+- 修复B1（室内环境光拆分）：voxel fragment 拆成 direct = vSky·uSunLevel·sf·cloudS（阴影门控直射）与 ambient = vSky·uSunLevel·uShadowAmbient·cloudS（不再被 sf 压制；玻璃/门洞的 BFS 光照已在 vSky 中）取 max → 正午室内变亮、室外阴影强度不变（0.52→0.56/0.66 微调）；shadowTint 蓝移减淡 (0.80,0.86,1.08)→(0.85,0.90,1.06)
+- 修复B2（体积光轴/光影束）：god-rays pass 内新增 SEUS/PostFX 式 ray-march VLS：由场景深度（EffectComposer 双 RT 固定挂 DepthTexture A/B，RenderPass 写 readBuffer 的深度、VLS 采样它，写侧在另一 RT → 无反馈环路）重建世界坐标，从相机向像素步进（preset 分档 16/12/8/6 步，interleaved-gradient 抖动去色带），每步采样太阳阴影贴图（1-tap）→ 屋顶下空气=阴影、窗束空气=受光，沿视线累加散射 × HG 相位 × 高度衰减，HDR 加色（夜 autop 切月光方向/颜色，风暴/云量衰减）；shadows 关闭时喂 null 停用
+- 修复C（水体写实）：mesher 新增烘焙水深属性 aDepth（每水柱列缓存 floorY — y 循环自底向上故首遇水格=最低格，缓存列底 y 再按 (y-1-floorY)/9 归一）→ water shader 浅滩沙色半透 (alpha 0.55) → 深水浓郁蓝绿 (0.96) 吸收渐变 + 水线亮带 + 波法线距离衰减 exp(-depth·0.011) + 平面反射天空稀释 0.22→0.12（更硬的环境反射）
+- buildGeometry 硬性逐顶点不变量守卫扩展覆盖 aDepth — **首次运行即捕获真 bug**：cross/torch/lily 三个特殊模型漏推 aDepth（数十 chunk 告警 aDepth count != vertCount），补齐 3 处 depths.push(0) 后归零 — 守卫机制兑现设计价值，黑斑类回归被系统性阻断
+- 修 GLSL 编译错：水 frag 补 varying float vDepth 声明；god-rays 中 dist 提升到两个代码块共享作用域；uDepthTex != null 非法 GLSL 改为 uHasDepth float uniform
+- QA（agent-browser，llvmpipe 两次死锁均按 runbook 杀 chrome 重启恢复）：
+  * 耀斑：屋顶下/墙后 occl=0 flareVis=0 ✓；开阔地朝太阳 occl=1 flareVis=1 ✓（qa1/qa5 截图：户外太阳周围光环自然，无穿墙光斑；qa2/qa3/qa4 屋内看墙零光斑 ✓）
+  * 窗光：程序化搭 5x5 玻璃窗木板屋，天光 BFS 穿玻璃室内 sky=12/15 ✓；正午室内明亮暖色（qa2 — 对比用户截图2的昏灰）✓；直射/环境分离后窗侧地板亮斑对比清晰 ✓
+  * 水体：qa7/qa8/qa9 — 天空镜面反射+波纹扰动、浅滩见沙、深水浓郁、岸线亮带 ✓
+  * 控制台零 aDepth 告警、25 个 shader program 全部编译通过（renderer.info.programs 无 diagnostics）✓
+- QA 花絮（诚实记录）：一度怀疑测深坑破坏世界 — 追查约 1 小时发现挖坑脚本把 cz=178 写成了正值（漏负号），实际作用于 350+ 格外未加载 chunk = 全部 no-op，目标海洋 (168,-178) 经列读取验证完好无损（水36-40/沙35/土34-32/石31+，edits 空），世界零损伤；教训：QA 脚本坐标必须带符号校验
+- 世界状态还原：玩家 (234.7, 48, -196.3, yaw -0.75, pitch -0.10)，time 179.6 起（存档时自然推进），测试小屋已拆除（建在 (223,46,-196) 的 5x5 结构全部清空、地面恢复草块）、无残留；autosave PUT 200 确认
+- lint 通过；VERSION + version.ts → 0.47.0 "Window Light & Flare Sanity"；commit 3d65999 push origin/main（QA 后补充修复 aDepth+GLSL 的第二个 commit 待提交）
+
+Stage Summary:
+- v0.47.0 三项用户报告全部修复并有截图/数据佐证：耀斑不再穿墙（遮挡+朝向双门控）、正午室内明亮且有阳光斑/光束（环境光拆分 + 真体积光轴）、水体浅深渐变+硬反射
+- 新管线资产：场景深度纹理接入 postfx（后续 SSR/SSAO/景深可直接复用）、体素 DDA 太阳遮挡查询（可复用于天空光遮挡估计）
+- mesher 不变量守卫首次实战拦截回归（aDepth），证明 v0.45.1 引入的防线有效
+- 遗留：VLS 在中档 8 步下光束偏含蓄（高档 16 步更明显）；水体 SSR/折射未做（需逐帧额外 pass，llvmpipe 代价高，先观察用户反馈）；水的平面反射仍以天空为主（地形反射角度依赖）
+- NEXT QUEUE：向用户收集 v0.47.0 三项反馈的实机感受；之前遗留（创造模式连挖、mob 阳光阴影着色复查、云速调慢、性能 pass）；NEXT QUEUE 功能（brewing/potions、villager restock UI、item frames/armor stands、cake）

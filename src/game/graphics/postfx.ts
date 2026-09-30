@@ -77,6 +77,7 @@ const GodRaysShader = {
       // when the sun disk itself is well outside the frame
       bool sunOff = uStrength <= 0.001 && uVls <= 0.001;
       if (sunOff) { gl_FragColor = base; return; }
+      float dist = distance(vUv, uSunPos); // shared by god rays + halo ring
 
       // ── volumetric light shafts (ray-march, shadow-map gated) ──
       vec3 col = base.rgb;
@@ -130,7 +131,6 @@ const GodRaysShader = {
           w *= 0.955;
         }
         acc /= max(total, 1e-4);
-        float dist = distance(vUv, uSunPos);
         float falloff = smoothstep(1.55, 0.05, dist);
         col += acc * uStrength * falloff;
       }

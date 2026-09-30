@@ -217,6 +217,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               pushTint(cutout, tint);
               // sway weight = corner height: tops bend in the breeze, roots stay
               cutout.sways.push(cr[1] * SWAY_CROSS);
+              cutout.depths.push(0); // aDepth 1:1 invariant (water-only attribute)
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -260,6 +261,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               // setting). Torch texture carries its own warm color; tint white.
               pushTint(cutout, TINT_WHITE);
               cutout.sways.push(0); // torches are rigid
+              cutout.depths.push(0); // aDepth 1:1 invariant (water-only attribute)
             }
             cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           }
@@ -293,6 +295,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             // buffer with leaves/canes, so one lily corrupted the whole tail.
             pushTint(cutout, TINT_WHITE);
             cutout.sways.push(0); // lily pads float rigid
+            cutout.depths.push(0); // aDepth 1:1 invariant (water-only attribute)
           }
           cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
           continue;

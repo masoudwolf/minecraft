@@ -83,6 +83,7 @@ const FRAG = /* glsl */ `
   varying float vFogDepth;
   varying vec3 vWorldPos;
   varying vec4 vMirrorCoord;
+  varying float vDepth;
   ${GLSL_NOISE}
   ${GLSL_SHADOW}
   ${GLSL_CLOUD_SHADOW}
