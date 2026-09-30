@@ -6,7 +6,7 @@ import { TerrainGenerator } from './terrain';
 import { buildChunkMesh, disposeChunkMesh, ChunkMeshes } from './mesher';
 import { getAtlas } from '../textures/atlas';
 import { createWaterMaterial } from '../graphics/waterGfx';
-import { GLSL_SHADOW } from '../graphics/glsl';
+import { GLSL_SHADOW, GLSL_CUBE_SHADOW } from '../graphics/glsl';
 
 /** simple FIFO queue with head pointer (avoids O(n) shift) */
 class LightQueue {
@@ -598,6 +598,15 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform vec2 uShadowTexel;
     uniform float uShadowStrength;
     uniform vec3 uSunDirW;
+    uniform vec3 uTorchPos0;
+    uniform vec3 uTorchPos1;
+    uniform samplerCube uTorchMap0;
+    uniform samplerCube uTorchMap1;
+    uniform float uTorchFar0;
+    uniform float uTorchFar1;
+    uniform float uTorchRange0;
+    uniform float uTorchRange1;
+    uniform float uTorchCount;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
@@ -607,6 +616,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     varying vec3 vWorldPos;
     varying vec3 vNormalW;
     ${GLSL_SHADOW}
+    ${GLSL_CUBE_SHADOW}
     void main() {
       vec4 tex = texture2D(uAtlas, vUv);
       if (tex.a < uAlphaTest) discard;
@@ -620,7 +630,17 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       // never dies, so shadowed ground stays readable and blue-shifted via
       // shadowTint instead of collapsing to pitch black).
       float sAmb = mix(sf, 1.0, 0.45);
-      float light = max(vBlock, vSky * uSunLevel * sAmb);
+      // torch (block) light vs sun light are now SEPARATE terms: the torch term
+      // is modulated by the point-light cube shadow map, so fences / trees /
+      // mobs cast real radial shadows around torches. A small floor keeps
+      // bounced light alive inside geometric shadows (never pitch black).
+      float torchL = vBlock;
+      if (uTorchCount > 0.5 && torchL > 0.02) {
+        float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, uTorchFar0, uTorchRange0);
+        if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, uTorchFar1, uTorchRange1));
+        torchL *= mix(0.10, 1.0, ts);
+      }
+      float light = max(torchL, vSky * uSunLevel * sAmb);
       light = clamp(light, 0.045, 1.0);
       float l = pow(light, 1.15);
       vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
@@ -649,6 +669,15 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
         uShadowStrength: { value: 0 },
         uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
+        uTorchPos0: { value: new THREE.Vector3() },
+        uTorchPos1: { value: new THREE.Vector3() },
+        uTorchMap0: { value: null },
+        uTorchMap1: { value: null },
+        uTorchFar0: { value: 17 },
+        uTorchFar1: { value: 17 },
+        uTorchRange0: { value: 0 },
+        uTorchRange1: { value: 0 },
+        uTorchCount: { value: 0 },
       },
       transparent: opts.transparent,
       side: opts.side,

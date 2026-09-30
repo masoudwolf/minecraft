@@ -7,6 +7,7 @@ import { boxUV, type BoxUVOptions } from './vanillaSkins';
 import { buildKnight, animateKnight, getKnightRig } from './knightSkin';
 import { audio } from '../audio';
 import { ITEM } from '../items';
+import { shadowState } from '../graphics/shadowState';
 
 export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem' | 'knight';
 
@@ -1890,8 +1891,12 @@ export class MobManager {
         }
       }
 
-      // shadow (hidden while swimming — there is no ground under the mob)
-      m.parts.shadow.visible = !m.inWater;
+      // shadow blob — vanilla-style fallback. When the graphics pack renders
+      // REAL sun/moon shadow maps (shadowState.realShadows) it stays hidden:
+      // mobs then cast a true directional shadow and the flat circle underneath
+      // would just double it. (This used to fight the graphics sweep every
+      // frame — the blob re-showed itself and both shadows stacked.)
+      m.parts.shadow.visible = !m.inWater && !shadowState.realShadows;
       m.parts.shadow.position.set(m.x, m.y + 0.03, m.z);
       const shadowScale = m.onGround ? 1 : Math.max(0.4, 1 - Math.min(1, Math.abs(m.vy) * 0.06));
       m.parts.shadow.scale.setScalar(shadowScale);

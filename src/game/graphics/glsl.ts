@@ -77,3 +77,24 @@ export const GLSL_SHADOW = /* glsl */ `
     return lit * 0.25;
   }
 `;
+
+/** Point-light (torch) cube shadow sampling over the pack's OWN cube depth
+ *  passes (GraphicsSystem renders casters from the light into a 256px cube RT
+ *  with the same RGBA-packed depth). Returns 1.0 = LIT, 0.0 = shadowed.
+ *  camFar/range must match the CubeCamera that filled the map. Fragments very
+ *  close to the source always read lit (the torch stick itself never
+ *  self-shadows), and empty texels unpack to depth 1.0 → far → lit. */
+export const GLSL_CUBE_SHADOW = /* glsl */ `
+  float gfxCubeShadow(samplerCube map, vec3 lp, vec3 wp, float camFar, float range) {
+    vec3 d = wp - lp;
+    float dist = length(d);
+    if (dist >= range) return 1.0;
+    if (dist < 0.35) return 1.0;
+    float dn = gfxUnpackDepth(textureCube(map, normalize(d)));
+    // perspective linearization (cube face cameras all use near = 0.1)
+    float near = 0.1;
+    float viewZ = (2.0 * near * camFar) / (camFar + near - (dn * 2.0 - 1.0) * (camFar - near));
+    float biased = dist - 0.18;
+    return step(biased, viewZ);
+  }
+`;
