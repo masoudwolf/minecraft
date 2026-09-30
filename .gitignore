@@ -54,3 +54,5 @@ server.log
 /skills/upload/
 qa/
 upload/
+tool-results/
+qa/
