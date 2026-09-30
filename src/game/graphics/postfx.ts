@@ -33,7 +33,9 @@ const GodRaysShader = {
     varying vec2 vUv;
     void main() {
       vec4 base = texture2D(tDiffuse, vUv);
-      bool sunOff = uStrength <= 0.001 || uSunPos.x < -0.15 || uSunPos.x > 1.15 || uSunPos.y < -0.15 || uSunPos.y > 1.15;
+      // wide off-screen tolerance: indoor window/door shafts keep working even
+      // when the sun disk itself is well outside the frame
+      bool sunOff = uStrength <= 0.001 || uSunPos.x < -0.55 || uSunPos.x > 1.55 || uSunPos.y < -0.55 || uSunPos.y > 1.55;
       if (sunOff) { gl_FragColor = base; return; }
       vec2 dir = (uSunPos - vUv) / max(uSamples, 1.0);
       vec2 uv = vUv;
@@ -52,7 +54,7 @@ const GodRaysShader = {
       }
       acc /= max(total, 1e-4);
       float dist = distance(vUv, uSunPos);
-      float falloff = smoothstep(1.25, 0.1, dist);
+      float falloff = smoothstep(1.55, 0.05, dist);
       gl_FragColor = vec4(base.rgb + acc * uStrength * falloff, base.a);
     }
   `,

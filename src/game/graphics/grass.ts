@@ -91,21 +91,25 @@ const FRAG = /* glsl */ `
       float ndl = clamp(uSunDirW.y, 0.0, 1.0);
       sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vec3(0.0, 1.0, 0.0), ndl);
     }
-    float sAmb = mix(sf, 1.0, 0.45);
-    // torch light with point-light cube shadows (same formula as terrain)
+    float sAmb = mix(sf, 1.0, 0.52);
+    // torch light with point-light cube shadows (same formula as terrain,
+    // warm Unreal-style tint when the torch dominates)
+    float sunL = vSky * uSunLevel * sAmb;
     float torchL = vBlock;
     if (uTorchCount > 0.5 && torchL > 0.02) {
-      float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, uTorchFar0, uTorchRange0);
-      if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, uTorchFar1, uTorchRange1));
-      torchL *= mix(0.10, 1.0, ts);
+      float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vec3(0.0, 1.0, 0.0), uTorchFar0, uTorchRange0);
+      if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, vec3(0.0, 1.0, 0.0), uTorchFar1, uTorchRange1));
+      torchL *= mix(0.32, 1.0, ts);
     }
-    float light = clamp(max(torchL, vSky * uSunLevel * sAmb), 0.06, 1.0);
+    float light = clamp(max(torchL, sunL), 0.06, 1.0);
+    float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
+    vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
     float l = pow(light, 1.15);
     // vanilla plains-like tint with gentle per-tuft variation (darker base)
     vec3 tint = mix(vec3(0.40, 0.62, 0.22), vec3(0.54, 0.78, 0.30), vTintV);
     tint *= mix(0.82, 1.0, vY01);
     vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
-    vec3 col = t.rgb * tint * l * shadowTint;
+    vec3 col = t.rgb * tint * l * lightCol * shadowTint;
     float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
     col = mix(col, uFogColor, fogF);
     gl_FragColor = vec4(col, 1.0);

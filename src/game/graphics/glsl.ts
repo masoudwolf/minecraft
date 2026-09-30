@@ -53,7 +53,8 @@ export const GLSL_SHADOW = /* glsl */ `
   float gfxUnpackDepth(vec4 c) {
     return c.r + c.g / 255.0 + c.b / 65025.0 + c.a / 16581375.0;
   }
-  // Returns 1.0 when LIT, 0.0 when shadowed. 4-tap PCF.
+  // Returns 1.0 when LIT, 0.0 when shadowed. 4-tap PCF (offsets widened to
+  // 1.3 texels for a slightly softer, shader-pack-like penumbra).
   // ndl = dot(surface normal, direction TO the light) — drives slope-scaled bias.
   float gfxShadow(sampler2D map, mat4 shadowMat, vec2 texel, vec3 wp, vec3 nrm, float ndl) {
     vec4 sc = shadowMat * vec4(wp + nrm * 0.035, 1.0);
@@ -71,7 +72,7 @@ export const GLSL_SHADOW = /* glsl */ `
       vec2 off = vec2(
         (i == 1 ? -1.0 : (i == 2 ? 1.0 : 0.0)),
         (i == 3 ? -1.0 : (i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0)))
-      ) * texel;
+      ) * texel * 1.3;
       lit += step(depth, gfxUnpackDepth(texture2D(map, s.xy + off)));
     }
     return lit * 0.25;
@@ -79,22 +80,44 @@ export const GLSL_SHADOW = /* glsl */ `
 `;
 
 /** Point-light (torch) cube shadow sampling over the pack's OWN cube depth
- *  passes (GraphicsSystem renders casters from the light into a 256px cube RT
- *  with the same RGBA-packed depth). Returns 1.0 = LIT, 0.0 = shadowed.
- *  camFar/range must match the CubeCamera that filled the map. Fragments very
- *  close to the source always read lit (the torch stick itself never
- *  self-shadows), and empty texels unpack to depth 1.0 → far → lit. */
+ *  passes (GraphicsSystem renders casters from the light into a cube RT with
+ *  the same RGBA-packed depth). Returns 1.0 = LIT, 0.0 = shadowed.
+ *  Unreal-style softness: the sample position is pushed 4.5cm out along the
+ *  surface normal (kills self-shadow acne without a huge depth pull), the
+ *  compare bias grows on grazing angles, and a 4-tap PCF in the tangent plane
+ *  plus bilinear cube filtering soften the penumbra. Fragments very close to
+ *  the source always read lit (the torch stick never self-shadows), and empty
+ *  texels unpack to depth 1.0 → far → lit. */
 export const GLSL_CUBE_SHADOW = /* glsl */ `
-  float gfxCubeShadow(samplerCube map, vec3 lp, vec3 wp, float camFar, float range) {
+  float gfxCubeShadow(samplerCube map, vec3 lp, vec3 wp, vec3 nrm, float camFar, float range) {
     vec3 d = wp - lp;
     float dist = length(d);
     if (dist >= range) return 1.0;
-    if (dist < 0.35) return 1.0;
-    float dn = gfxUnpackDepth(textureCube(map, normalize(d)));
-    // perspective linearization (cube face cameras all use near = 0.1)
-    float near = 0.1;
-    float viewZ = (2.0 * near * camFar) / (camFar + near - (dn * 2.0 - 1.0) * (camFar - near));
-    float biased = dist - 0.18;
-    return step(biased, viewZ);
+    if (dist < 0.6) return 1.0;
+    vec3 n = normalize(nrm);
+    vec3 sp = wp + n * 0.045;
+    vec3 d2 = sp - lp;
+    float dist2 = length(d2);
+    vec3 dir = d2 / dist2;
+    float ndl = clamp(dot(n, -dir), 0.0, 1.0);
+    float bias = 0.03 + 0.14 * (1.0 - ndl);
+    // tangent-frame PCF: 4 taps ±1.5 cube texels (face = 90° / mapSize)
+    vec3 t = normalize(abs(dir.y) < 0.85 ? cross(dir, vec3(0.0, 1.0, 0.0)) : cross(dir, vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(dir, t);
+    float ang = 2.356 / 384.0; // 1.5 texel angle at 384px faces (≈0.35°)
+    float lit = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec2 o = vec2(
+        (i == 1 ? -1.0 : (i == 2 ? 1.0 : 0.0)),
+        (i == 3 ? -1.0 : (i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0)))
+      ) * ang;
+      vec3 di = normalize(dir + t * o.x + b * o.y);
+      float dn = gfxUnpackDepth(textureCube(map, di));
+      // perspective linearization (cube face cameras all use near = 0.1)
+      float near = 0.1;
+      float viewZ = (2.0 * near * camFar) / (camFar + near - (dn * 2.0 - 1.0) * (camFar - near));
+      lit += step(dist2 - bias, viewZ);
+    }
+    return lit * 0.25;
   }
 `;

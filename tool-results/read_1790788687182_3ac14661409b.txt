@@ -1,0 +1,697 @@
+     1→// ─── Chunk + World + Voxel lighting engine (sky & block light BFS) ───────────
+     2→import * as THREE from 'three';
+     3→import { BLOCK, getBlockDef, isOpaque, isWaterId, waterLevel, flowId, waterReplaceable, FLOW_MAX } from '../blocks';
+     4→import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex, chunkKey, CHUNK_AREA } from '../constants';
+     5→import { TerrainGenerator } from './terrain';
+     6→import { buildChunkMesh, disposeChunkMesh, ChunkMeshes } from './mesher';
+     7→import { getAtlas } from '../textures/atlas';
+     8→import { createWaterMaterial } from '../graphics/waterGfx';
+     9→import { GLSL_SHADOW, GLSL_CUBE_SHADOW } from '../graphics/glsl';
+    10→
+    11→/** simple FIFO queue with head pointer (avoids O(n) shift) */
+    12→class LightQueue {
+    13→  private items: LightNode[] = [];
+    14→  private head = 0;
+    15→  get length(): number { return this.items.length - this.head; }
+    16→  push(n: LightNode): void { this.items.push(n); }
+    17→  shift(): LightNode | undefined {
+    18→    if (this.head >= this.items.length) return undefined;
+    19→    const n = this.items[this.head];
+    20→    this.items[this.head] = undefined as unknown as LightNode;
+    21→    this.head++;
+    22→    if (this.head > 4096 && this.head === this.items.length) {
+    23→      this.items = []; this.head = 0;
+    24→    }
+    25→    return n;
+    26→  }
+    27→  clear(): void { this.items = []; this.head = 0; }
+    28→}
+    29→
+    30→export class Chunk {
+    31→  data: Uint8Array;
+    32→  light: Uint8Array;
+    33→  cx: number;
+    34→  cz: number;
+    35→  meshes: ChunkMeshes | null = null;
+    36→  needsMesh = true;
+    37→  hasData = false;
+    38→  /** torch positions (world coords) collected during meshing — used for flame particles */
+    39→  torches: [number, number, number][] = [];
+    40→
+    41→  constructor(cx: number, cz: number) {
+    42→    this.cx = cx;
+    43→    this.cz = cz;
+    44→    this.data = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+    45→    this.light = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+    46→  }
+    47→}
+    48→
+    49→interface LightNode { x: number; y: number; z: number; level: number }
+    50→
+    51→export class World {
+    52→  chunks = new Map<string, Chunk>();
+    53→  terrain: TerrainGenerator;
+    54→  edits = new Map<string, Map<number, number>>();
+    55→  group: THREE.Group;
+    56→  private materials: { opaque: THREE.ShaderMaterial; cutout: THREE.ShaderMaterial; water: THREE.ShaderMaterial };
+    57→  private skyAddQ = new LightQueue();
+    58→  private skyRemQ = new LightQueue();
+    59→  private blockAddQ = new LightQueue();
+    60→  private blockRemQ = new LightQueue();
+    61→  version = 0; // bumped on block edits (for save tracking)
+    62→  /** fluid update queue: key "x,y,z" -> due time (seconds, accumulating clock) */
+    63→  private fluidQ = new Map<string, number>();
+    64→  private fluidNow = 0;
+    65→  static readonly FLUID_DELAY = 0.28; // seconds between fluid updates per cell
+    66→
+    67→  constructor(seed: number, savedEdits?: Record<string, Record<number, number>>) {
+    68→    this.terrain = new TerrainGenerator(seed);
+    69→    this.group = new THREE.Group();
+    70→    this.materials = createVoxelMaterials();
+    71→    if (savedEdits) {
+    72→      for (const key of Object.keys(savedEdits)) {
+    73→        this.edits.set(key, new Map(Object.entries(savedEdits[key]).map(([k, v]) => [Number(k), v])));
+    74→      }
+    75→    }
+    76→  }
+    77→
+    78→  getMaterial(name: 'opaque' | 'cutout' | 'water'): THREE.ShaderMaterial {
+    79→    return this.materials[name];
+    80→  }
+    81→
+    82→  // ── Chunk management ───────────────────────────────────────────────────────
+    83→  getChunk(cx: number, cz: number): Chunk | undefined {
+    84→    return this.chunks.get(chunkKey(cx, cz));
+    85→  }
+    86→
+    87→  ensureChunk(cx: number, cz: number): Chunk {
+    88→    const key = chunkKey(cx, cz);
+    89→    let chunk = this.chunks.get(key);
+    90→    if (!chunk) {
+    91→      chunk = new Chunk(cx, cz);
+    92→      this.chunks.set(key, chunk);
+    93→      this.terrain.generateChunk(cx, cz, chunk.data);
+    94→      // apply saved edits
+    95→      const edits = this.edits.get(key);
+    96→      if (edits) for (const [idx, id] of edits) chunk.data[idx] = id;
+    97→      chunk.hasData = true;
+    98→      // resume any saved flowing water / plants (fluid queue is transient)
+    99→      if (edits) {
+   100→        for (const [idx, id] of edits) {
+   101→          if (isWaterId(id) || id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) {
+   102→            const lx = idx % CHUNK_SIZE;
+   103→            const lz = Math.floor(idx / CHUNK_SIZE) % CHUNK_SIZE;
+   104→            const y = Math.floor(idx / (CHUNK_SIZE * CHUNK_SIZE));
+   105→            this.scheduleFluidTick(cx * CHUNK_SIZE + lx, y, cz * CHUNK_SIZE + lz, 0.5 + Math.random() * 0.5);
+   106→          }
+   107→        }
+   108→      }
+   109→      this.computeInitialSkyLight(chunk);
+   110→      this.seedLightBorders(chunk);
+   111→      this.processLightQueues(200000);
+   112→    }
+   113→    return chunk;
+   114→  }
+   115→
+   116→  unloadChunk(cx: number, cz: number): void {
+   117→    const key = chunkKey(cx, cz);
+   118→    const chunk = this.chunks.get(key);
+   119→    if (chunk) {
+   120→      disposeChunkMesh(chunk, this.group);
+   121→      this.chunks.delete(key);
+   122→    }
+   123→  }
+   124→
+   125→  // ── Block access ───────────────────────────────────────────────────────────
+   126→  getBlock(wx: number, wy: number, wz: number): number {
+   127→    if (wy < 0 || wy >= WORLD_HEIGHT) return BLOCK.AIR;
+   128→    const cx = Math.floor(wx / CHUNK_SIZE);
+   129→    const cz = Math.floor(wz / CHUNK_SIZE);
+   130→    const chunk = this.chunks.get(chunkKey(cx, cz));
+   131→    if (!chunk || !chunk.hasData) return BLOCK.AIR;
+   132→    return chunk.data[blockIndex(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE)];
+   133→  }
+   134→
+   135→  /** schedule a fluid update at cell (called on edits near water) */
+   136→  scheduleFluidTick(wx: number, wy: number, wz: number, delay = World.FLUID_DELAY): void {
+   137→    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+   138→    const key = wx + ',' + wy + ',' + wz;
+   139→    if (!this.fluidQ.has(key)) this.fluidQ.set(key, this.fluidNow + delay);
+   140→  }
+   141→
+   142→  /** schedule fluid updates around an edited cell (self + 6 neighbors) */
+   143→  wakeFluidsAround(wx: number, wy: number, wz: number): void {
+   144→    this.scheduleFluidTick(wx, wy, wz);
+   145→    for (const [dx, dy, dz] of NEIGHBORS) this.scheduleFluidTick(wx + dx, wy + dy, wz + dz);
+   146→  }
+   147→
+   148→  /** process due fluid cells; budget caps work per call */
+   149→  tickFluids(dt: number, budget = 120): void {
+   150→    if (this.fluidQ.size === 0) return;
+   151→    this.fluidNow += dt;
+   152→    const due: [number, number, number][] = [];
+   153→    for (const [key, t] of this.fluidQ) {
+   154→      if (t <= this.fluidNow) {
+   155→        const [x, y, z] = key.split(',').map(Number);
+   156→        due.push([x, y, z]);
+   157→        this.fluidQ.delete(key);
+   158→        if (due.length >= budget) break;
+   159→      }
+   160→    }
+   161→    for (const [x, y, z] of due) this.fluidTickCell(x, y, z);
+   162→  }
+   163→
+   164→  get fluidQueueSize(): number { return this.fluidQ.size; }
+   165→
+   166→  /** one fluid update for a single cell */
+   167→  private fluidTickCell(x: number, y: number, z: number): void {
+   168→    const id = this.getBlock(x, y, z);
+   169→    if (isWaterId(id)) {
+   170→      this.tickWater(x, y, z, id);
+   171→      return;
+   172→    }
+   173→    // plant growth rides the same scheduler: sugarcane / cactus grow here
+   174→    if (id === BLOCK.SUGARCANE || id === BLOCK.CACTUS) this.tickPlant(x, y, z, id);
+   175→  }
+   176→
+   177→  private tickWater(x: number, y: number, z: number, id: number): void {
+   178→    const level = waterLevel(id);
+   179→    const belowId = this.getBlock(x, y - 1, z);
+   180→    const belowFlowable = belowId === BLOCK.AIR || waterReplaceable(belowId);
+   181→
+   182→    // ── infinite water: flowing cell beside 2+ sources becomes a source ──
+   183→    if (level > 0) {
+   184→      let srcNeighbors = 0;
+   185→      if (this.getBlock(x + 1, y, z) === BLOCK.WATER) srcNeighbors++;
+   186→      if (this.getBlock(x - 1, y, z) === BLOCK.WATER) srcNeighbors++;
+   187→      if (this.getBlock(x, y, z + 1) === BLOCK.WATER) srcNeighbors++;
+   188→      if (this.getBlock(x, y, z - 1) === BLOCK.WATER) srcNeighbors++;
+   189→      if (srcNeighbors >= 2) {
+   190→        this.setBlock(x, y, z, BLOCK.WATER);
+   191→        return;
+   192→      }
+   193→    }
+   194→
+   195→    if (level > 0) {
+   196→      // ── recede/recompute level: fed from above (falling = level 1) or nearest neighbor+1 ──
+   197→      let best = 99;
+   198→      if (isWaterId(this.getBlock(x, y + 1, z))) best = 0; // falling column targets level 1
+   199→      const horiz: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+   200→      for (const [dx, dz] of horiz) {
+   201→        const nId = this.getBlock(x + dx, y, z + dz);
+   202→        if (isWaterId(nId)) best = Math.min(best, waterLevel(nId));
+   203→      }
+   204→      const want = best + 1;
+   205→      if (want > FLOW_MAX) { this.setBlock(x, y, z, BLOCK.AIR); return; }
+   206→      if (want !== level) { this.setBlock(x, y, z, flowId(want)); return; }
+   207→    }
+   208→
+   209→    // ── flow down first (falling column keeps level 1) ──
+   210→    if (belowFlowable) {
+   211→      if (!isWaterId(belowId) || waterLevel(belowId) > 1) {
+   212→        this.setBlock(x, y - 1, z, flowId(1));
+   213→      }
+   214→      this.scheduleFluidTick(x, y - 1, z);
+   215→      return; // falling water doesn't spread sideways mid-air (MC-like)
+   216→    }
+   217→
+   218→    // ── spread horizontally when resting on solid ground / water ──
+   219→    if (level >= FLOW_MAX) return;
+   220→    const horiz: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+   221→    for (const [dx, dz] of horiz) {
+   222→      const nx = x + dx, nz = z + dz;
+   223→      const nId = this.getBlock(nx, y, nz);
+   224→      if (isWaterId(nId)) {
+   225→        const nl = waterLevel(nId);
+   226→        if (nId !== BLOCK.WATER && nl > level + 1) {
+   227→          this.setBlock(nx, y, nz, flowId(level + 1));
+   228→          this.scheduleFluidTick(nx, y, nz);
+   229→        }
+   230→      } else if (waterReplaceable(nId)) {
+   231→        this.setBlock(nx, y, nz, flowId(level + 1));
+   232→        this.scheduleFluidTick(nx, y, nz);
+   233→      }
+   234→    }
+   235→  }
+   236→
+   237→  /** grow sugarcane / cactus upward (max 3 tall) */
+   238→  private tickPlant(x: number, y: number, z: number, id: number): void {
+   239→    if (Math.random() > 0.18) return; // slow growth
+   240→    let base = y;
+   241→    while (base > 0 && this.getBlock(x, base - 1, z) === id) base--;
+   242→    if (y - base >= 2) return; // max 3 tall
+   243→    if (this.getBlock(x, y + 1, z) !== BLOCK.AIR) return;
+   244→    this.setBlock(x, y + 1, z, id);
+   245→  }
+   246→
+   247→  setBlock(wx: number, wy: number, wz: number, id: number): void {
+   248→    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+   249→    const cx = Math.floor(wx / CHUNK_SIZE);
+   250→    const cz = Math.floor(wz / CHUNK_SIZE);
+   251→    const chunk = this.chunks.get(chunkKey(cx, cz));
+   252→    if (!chunk || !chunk.hasData) return;
+   253→    const lx = wx - cx * CHUNK_SIZE;
+   254→    const lz = wz - cz * CHUNK_SIZE;
+   255→    const idx = blockIndex(lx, wy, lz);
+   256→    const old = chunk.data[idx];
+   257→    if (old === id) return;
+   258→    chunk.data[idx] = id;
+   259→
+   260→    const key = chunkKey(cx, cz);
+   261→    let edits = this.edits.get(key);
+   262→    if (!edits) { edits = new Map(); this.edits.set(key, edits); }
+   263→    edits.set(idx, id);
+   264→    this.version++;
+   265→
+   266→    chunk.needsMesh = true;
+   267→    // neighbor chunk meshes if on border
+   268→    if (lx === 0) this.markDirty(cx - 1, cz);
+   269→    if (lx === CHUNK_SIZE - 1) this.markDirty(cx + 1, cz);
+   270→    if (lz === 0) this.markDirty(cx, cz - 1);
+   271→    if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cz + 1);
+   272→
+   273→    // ── fluid wake: edited cell + neighbors re-tick (water flows in/out) ──
+   274→    this.wakeFluidsAround(wx, wy, wz);
+   275→
+   276→    // ── light updates ──
+   277→    const oldDef = getBlockDef(old);
+   278→    const newDef = getBlockDef(id);
+   279→    const wasOpaque = isOpaque(old);
+   280→    const nowOpaque = isOpaque(id);
+   281→    if (wasOpaque && !nowOpaque) {
+   282→      // opened up: pull light from neighbors
+   283→      for (const [dx, dy, dz] of NEIGHBORS) {
+   284→        this.seedSky(wx + dx, wy + dy, wz + dz);
+   285→        this.seedBlock(wx + dx, wy + dy, wz + dz);
+   286→      }
+   287→      if (wy === WORLD_HEIGHT - 1) this.seedSky(wx, wy, wz);
+   288→    } else if (!wasOpaque && nowOpaque) {
+   289→      // blocked: remove light here
+   290→      const l = chunk.light[idx];
+   291→      const sky = l >> 4, blk = l & 15;
+   292→      chunk.light[idx] = 0;
+   293→      this.markDirty(cx, cz);
+   294→      if (sky > 0) this.skyRemQ.push({ x: wx, y: wy, z: wz, level: sky });
+   295→      if (blk > 0) this.blockRemQ.push({ x: wx, y: wy, z: wz, level: blk });
+   296→    }
+   297→    // emission changes
+   298→    const oldEmit = oldDef?.lightEmit ?? 0;
+   299→    const newEmit = newDef?.lightEmit ?? 0;
+   300→    if (oldEmit > 0 && newEmit === 0) {
+   301→      const l = chunk.light[idx];
+   302→      const blk = l & 15;
+   303→      chunk.light[idx] = l & 0xf0;
+   304→      this.blockRemQ.push({ x: wx, y: wy, z: wz, level: blk });
+   305→    }
+   306→    if (newEmit > 0) {
+   307→      const l = chunk.light[idx];
+   308→      chunk.light[idx] = (l & 0xf0) | newEmit;
+   309→      this.blockAddQ.push({ x: wx, y: wy, z: wz, level: newEmit });
+   310→    }
+   311→    // re-propagate through non-opaque replacement (e.g. water->air)
+   312→    if (!nowOpaque && !wasOpaque && old !== id) {
+   313→      this.seedSky(wx, wy, wz);
+   314→      this.seedBlock(wx, wy, wz);
+   315→    }
+   316→    this.processLightQueues(100000);
+   317→  }
+   318→
+   319→  private markDirty(cx: number, cz: number): void {
+   320→    const c = this.chunks.get(chunkKey(cx, cz));
+   321→    if (c) c.needsMesh = true;
+   322→  }
+   323→
+   324→  // ── Light access ───────────────────────────────────────────────────────────
+   325→  getLight(wx: number, wy: number, wz: number): number {
+   326→    if (wy < 0) return 0;
+   327→    if (wy >= WORLD_HEIGHT) return 0xf0;
+   328→    const cx = Math.floor(wx / CHUNK_SIZE);
+   329→    const cz = Math.floor(wz / CHUNK_SIZE);
+   330→    const chunk = this.chunks.get(chunkKey(cx, cz));
+   331→    if (!chunk || !chunk.hasData) return -1; // unknown
+   332→    return chunk.light[blockIndex(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE)];
+   333→  }
+   334→
+   335→  /** for meshing: unknown chunks treated as full sky (avoids black borders) */
+   336→  getLightForMesh(wx: number, wy: number, wz: number): number {
+   337→    const l = this.getLight(wx, wy, wz);
+   338→    return l < 0 ? 0xf0 : l;
+   339→  }
+   340→
+   341→  /** biome name at a column (delegates to the generator; used by mob spawning) */
+   342→  biomeAt(wx: number, wz: number): string {
+   343→    return this.terrain.biomeAt(wx, wz);
+   344→  }
+   345→
+   346→  private setLightRaw(wx: number, wy: number, wz: number, val: number): void {
+   347→    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+   348→    const cx = Math.floor(wx / CHUNK_SIZE);
+   349→    const cz = Math.floor(wz / CHUNK_SIZE);
+   350→    const chunk = this.chunks.get(chunkKey(cx, cz));
+   351→    if (!chunk || !chunk.hasData) return;
+   352→    chunk.light[blockIndex(wx - cx * CHUNK_SIZE, wy, wz - cz * CHUNK_SIZE)] = val;
+   353→    chunk.needsMesh = true;
+   354→  }
+   355→
+   356→  // ── Initial sky light (column scan) ────────────────────────────────────────
+   357→  private computeInitialSkyLight(chunk: Chunk): void {
+   358→    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+   359→      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+   360→        let level = 15;
+   361→        for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
+   362→          const id = chunk.data[blockIndex(lx, y, lz)];
+   363→          if (isOpaque(id)) level = 0;
+   364→          else if (isWaterId(id)) level = Math.max(0, level - 2);
+   365→          else if (id === BLOCK.LEAVES || id === BLOCK.SPRUCE_LEAVES || id === BLOCK.JUNGLE_LEAVES) level = Math.max(0, level - 1);
+   366→          const emit = getBlockDef(id)?.lightEmit ?? 0;
+   367→          const idx = blockIndex(lx, y, lz);
+   368→          chunk.light[idx] = (level << 4) | emit;
+   369→          if (emit > 0) this.blockAddQ.push({ x: chunk.cx * CHUNK_SIZE + lx, y, z: chunk.cz * CHUNK_SIZE + lz, level: emit });
+   370→        }
+   371→      }
+   372→    }
+   373→  }
+   374→
+   375→  /** enqueue sky-lit cells that can spread + pull light from neighbor chunks */
+   376→  private seedLightBorders(chunk: Chunk): void {
+   377→    const x0 = chunk.cx * CHUNK_SIZE;
+   378→    const z0 = chunk.cz * CHUNK_SIZE;
+   379→    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+   380→      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+   381→        for (let y = 0; y < WORLD_HEIGHT; y++) {
+   382→          const idx = blockIndex(lx, y, lz);
+   383→          const sky = chunk.light[idx] >> 4;
+   384→          if (sky > 1) {
+   385→            // enqueue if any neighbor is transparent with lower light (cave mouths, overhangs)
+   386→            const wx = x0 + lx, wz = z0 + lz;
+   387→            for (const [dx, dy, dz] of NEIGHBORS) {
+   388→              const nx = wx + dx, ny = y + dy, nz = wz + dz;
+   389→              if (ny < 0 || ny >= WORLD_HEIGHT) continue;
+   390→              const nb = this.getBlock(nx, ny, nz);
+   391→              if (isOpaque(nb)) continue;
+   392→              const nl = this.getLight(nx, ny, nz);
+   393→              const nSky = nl < 0 ? 0 : nl >> 4;
+   394→              if (nSky < sky - 1) {
+   395→                this.skyAddQ.push({ x: wx, y, z: wz, level: sky });
+   396→                break;
+   397→              }
+   398→            }
+   399→          }
+   400→        }
+   401→      }
+   402→    }
+   403→  }
+   404→
+   405→  private seedSky(wx: number, wy: number, wz: number): void {
+   406→    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+   407→    const l = this.getLight(wx, wy, wz);
+   408→    if (l < 0) return;
+   409→    const id = this.getBlock(wx, wy, wz);
+   410→    if (isOpaque(id)) return;
+   411→    const sky = l >> 4;
+   412→    if (sky > 0) this.skyAddQ.push({ x: wx, y: wy, z: wz, level: sky });
+   413→  }
+   414→
+   415→  private seedBlock(wx: number, wy: number, wz: number): void {
+   416→    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+   417→    const l = this.getLight(wx, wy, wz);
+   418→    if (l < 0) return;
+   419→    const id = this.getBlock(wx, wy, wz);
+   420→    if (isOpaque(id)) return;
+   421→    const blk = l & 15;
+   422→    if (blk > 0) this.blockAddQ.push({ x: wx, y: wy, z: wz, level: blk });
+   423→  }
+   424→
+   425→  // ── BFS processing ─────────────────────────────────────────────────────────
+   426→  processLightQueues(maxOps: number): void {
+   427→    let ops = 0;
+   428→    // sky removal
+   429→    while (this.skyRemQ.length > 0 && ops < maxOps) {
+   430→      const n = this.skyRemQ.shift();
+   431→      if (!n) break;
+   432→      ops++;
+   433→      for (const [dx, dy, dz] of NEIGHBORS) {
+   434→        const nx = n.x + dx, ny = n.y + dy, nz = n.z + dz;
+   435→        const nl = this.getLight(nx, ny, nz);
+   436→        if (nl < 0) continue;
+   437→        const nSky = nl >> 4;
+   438→        if (nSky === 0) continue;
+   439→        const downward = dy === -1 && n.level === 15;
+   440→        if (nSky < n.level || (downward && nSky === 15)) {
+   441→          this.setLightRaw(nx, ny, nz, (nl & 0x0f) | (0 << 4));
+   442→          this.skyRemQ.push({ x: nx, y: ny, z: nz, level: nSky });
+   443→        } else if (nSky >= n.level) {
+   444→          this.skyAddQ.push({ x: nx, y: ny, z: nz, level: nSky });
+   445→        }
+   446→      }
+   447→    }
+   448→    // sky addition
+   449→    while (this.skyAddQ.length > 0 && ops < maxOps) {
+   450→      const n = this.skyAddQ.shift();
+   451→      if (!n) break;
+   452→      ops++;
+   453→      const cur = this.getLight(n.x, n.y, n.z);
+   454→      if (cur < 0 || (cur >> 4) > n.level) continue;
+   455→      const id = this.getBlock(n.x, n.y, n.z);
+   456→      if (isOpaque(id)) continue;
+   457→      for (const [dx, dy, dz] of NEIGHBORS) {
+   458→        const nx = n.x + dx, ny = n.y + dy, nz = n.z + dz;
+   459→        const nl = this.getLight(nx, ny, nz);
+   460→        if (nl < 0) continue;
+   461→        const nbId = this.getBlock(nx, ny, nz);
+   462→        if (isOpaque(nbId)) continue;
+   463→        const nSky = nl >> 4;
+   464→        let target = n.level - 1;
+   465→        if (dy === -1 && n.level === 15) target = 15;
+   466→        if (isWaterId(nbId)) target = Math.max(0, target - 2);
+   467→        if (nbId === BLOCK.LEAVES || nbId === BLOCK.SPRUCE_LEAVES || nbId === BLOCK.JUNGLE_LEAVES) target = Math.max(0, target - 1);
+   468→        if (nSky < target) {
+   469→          this.setLightRaw(nx, ny, nz, (nl & 0x0f) | (target << 4));
+   470→          this.skyAddQ.push({ x: nx, y: ny, z: nz, level: target });
+   471→        }
+   472→      }
+   473→    }
+   474→    // block light removal
+   475→    while (this.blockRemQ.length > 0 && ops < maxOps) {
+   476→      const n = this.blockRemQ.shift();
+   477→      if (!n) break;
+   478→      ops++;
+   479→      for (const [dx, dy, dz] of NEIGHBORS) {
+   480→        const nx = n.x + dx, ny = n.y + dy, nz = n.z + dz;
+   481→        const nl = this.getLight(nx, ny, nz);
+   482→        if (nl < 0) continue;
+   483→        const nBlk = nl & 15;
+   484→        if (nBlk === 0) continue;
+   485→        if (nBlk < n.level) {
+   486→          this.setLightRaw(nx, ny, nz, nl & 0xf0);
+   487→          this.blockRemQ.push({ x: nx, y: ny, z: nz, level: nBlk });
+   488→        } else if (nBlk >= n.level) {
+   489→          this.blockAddQ.push({ x: nx, y: ny, z: nz, level: nBlk });
+   490→        }
+   491→      }
+   492→    }
+   493→    // block light addition
+   494→    while (this.blockAddQ.length > 0 && ops < maxOps) {
+   495→      const n = this.blockAddQ.shift();
+   496→      if (!n) break;
+   497→      ops++;
+   498→      const cur = this.getLight(n.x, n.y, n.z);
+   499→      if (cur < 0 || (cur & 15) > n.level) continue;
+   500→      const id = this.getBlock(n.x, n.y, n.z);
+   501→      if (isOpaque(id)) continue;
+   502→      for (const [dx, dy, dz] of NEIGHBORS) {
+   503→        const nx = n.x + dx, ny = n.y + dy, nz = n.z + dz;
+   504→        const nl = this.getLight(nx, ny, nz);
+   505→        if (nl < 0) continue;
+   506→        const nbId = this.getBlock(nx, ny, nz);
+   507→        if (isOpaque(nbId)) continue;
+   508→        const nBlk = nl & 15;
+   509→        const target = n.level - 1;
+   510→        if (nBlk < target && target > 0) {
+   511→          this.setLightRaw(nx, ny, nz, (nl & 0xf0) | target);
+   512→          this.blockAddQ.push({ x: nx, y: ny, z: nz, level: target });
+   513→        }
+   514→      }
+   515→    }
+   516→  }
+   517→
+   518→  // ── Meshing ────────────────────────────────────────────────────────────────
+   519→  buildMesh(chunk: Chunk): void {
+   520→    buildChunkMesh(this, chunk, this.group, this.materials);
+   521→  }
+   522→
+   523→  /** topmost non-air solid y at column (for spawning) */
+   524→  surfaceY(wx: number, wz: number): number {
+   525→    for (let y = WORLD_HEIGHT - 1; y > 0; y--) {
+   526→      const id = this.getBlock(wx, y, wz);
+   527→      if (id !== BLOCK.AIR && !isWaterId(id)) return y;
+   528→    }
+   529→    return 1;
+   530→  }
+   531→
+   532→  getChunkCount(): number {
+   533→    return this.chunks.size;
+   534→  }
+   535→}
+   536→
+   537→export const NEIGHBORS: [number, number, number][] = [
+   538→  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+   539→];
+   540→
+   541→// ─── Voxel shader materials ──────────────────────────────────────────────────
+   542→export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: THREE.ShaderMaterial; water: THREE.ShaderMaterial } {
+   543→  const { texture } = getAtlas();
+   544→
+   545→  const vertexShader = /* glsl */ `
+   546→    attribute float aShade;
+   547→    attribute float aSky;
+   548→    attribute float aBlock;
+   549→    attribute vec3 aTint;
+   550→    attribute vec3 aNormal;
+   551→    varying vec2 vUv;
+   552→    varying float vShade;
+   553→    varying float vSky;
+   554→    varying float vBlock;
+   555→    varying vec3 vTint;
+   556→    varying float vFogDepth;
+   557→    varying vec3 vWorldPos;
+   558→    varying vec3 vNormalW;
+   559→    uniform float uTime;
+   560→    uniform float uWave;
+   561→    void main() {
+   562→      vUv = uv;
+   563→      vShade = aShade;
+   564→      vSky = aSky;
+   565→      vBlock = aBlock;
+   566→      vTint = aTint;
+   567→      vNormalW = aNormal;
+   568→      vec3 pos = position;
+   569→      if (uWave > 0.5) {
+   570→        // Wave phase MUST use world position (modelMatrix includes the chunk
+   571→        // offset): local position.x/z restart at 0 in every chunk, which made
+   572→        // phases disagree across chunk borders and tore visible seams in the
+   573→        // ocean surface (sand showing through the crack).
+   574→        vec4 wp = modelMatrix * vec4(position, 1.0);
+   575→        // Only bob the top-surface vertices (fract(y) ≈ 0.875 for sources);
+   576→        // bottom edges stay welded to the floor/shore so no underwater gaps.
+   577→        float isTop = step(0.8, fract(position.y));
+   578→        float wave = sin(uTime * 1.6 + wp.x * 0.9 + wp.z * 0.7) * 0.03
+   579→                   + sin(uTime * 2.7 + wp.x * 1.9 - wp.z * 1.4) * 0.015;
+   580→        pos.y += (wave - 0.045) * isTop;
+   581→      }
+   582→      vec4 wp2 = modelMatrix * vec4(pos, 1.0);
+   583→      vWorldPos = wp2.xyz;
+   584→      vec4 mv = viewMatrix * wp2;
+   585→      vFogDepth = -mv.z;
+   586→      gl_Position = projectionMatrix * mv;
+   587→    }
+   588→  `;
+   589→  const fragmentShader = /* glsl */ `
+   590→    uniform sampler2D uAtlas;
+   591→    uniform float uSunLevel;
+   592→    uniform vec3 uFogColor;
+   593→    uniform float uFogNear;
+   594→    uniform float uFogFar;
+   595→    uniform float uAlphaTest;
+   596→    uniform sampler2D uShadowMap;
+   597→    uniform mat4 uShadowMatrix;
+   598→    uniform vec2 uShadowTexel;
+   599→    uniform float uShadowStrength;
+   600→    uniform vec3 uSunDirW;
+   601→    uniform vec3 uTorchPos0;
+   602→    uniform vec3 uTorchPos1;
+   603→    uniform samplerCube uTorchMap0;
+   604→    uniform samplerCube uTorchMap1;
+   605→    uniform float uTorchFar0;
+   606→    uniform float uTorchFar1;
+   607→    uniform float uTorchRange0;
+   608→    uniform float uTorchRange1;
+   609→    uniform float uTorchCount;
+   610→    varying vec2 vUv;
+   611→    varying float vShade;
+   612→    varying float vSky;
+   613→    varying float vBlock;
+   614→    varying vec3 vTint;
+   615→    varying float vFogDepth;
+   616→    varying vec3 vWorldPos;
+   617→    varying vec3 vNormalW;
+   618→    ${GLSL_SHADOW}
+   619→    ${GLSL_CUBE_SHADOW}
+   620→    void main() {
+   621→      vec4 tex = texture2D(uAtlas, vUv);
+   622→      if (tex.a < uAlphaTest) discard;
+   623→      float sf = 1.0;
+   624→      if (uShadowStrength > 0.001) {
+   625→        float ndl = clamp(dot(normalize(vNormalW), uSunDirW), 0.0, 1.0);
+   626→        sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW, ndl);
+   627→        sf = mix(1.0, sf, uShadowStrength);
+   628→      }
+   629→      // Shadow keeps 45% sky ambient (shader-pack / Unreal convention: ambient
+   630→      // never dies, so shadowed ground stays readable and blue-shifted via
+   631→      // shadowTint instead of collapsing to pitch black).
+   632→      float sAmb = mix(sf, 1.0, 0.45);
+   633→      // torch (block) light vs sun light are now SEPARATE terms: the torch term
+   634→      // is modulated by the point-light cube shadow map, so fences / trees /
+   635→      // mobs cast real radial shadows around torches. A small floor keeps
+   636→      // bounced light alive inside geometric shadows (never pitch black).
+   637→      float torchL = vBlock;
+   638→      if (uTorchCount > 0.5 && torchL > 0.02) {
+   639→        float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, uTorchFar0, uTorchRange0);
+   640→        if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, uTorchFar1, uTorchRange1));
+   641→        torchL *= mix(0.10, 1.0, ts);
+   642→      }
+   643→      float light = max(torchL, vSky * uSunLevel * sAmb);
+   644→      light = clamp(light, 0.045, 1.0);
+   645→      float l = pow(light, 1.15);
+   646→      vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
+   647→      vec3 col = tex.rgb * vTint * vShade * l * shadowTint;
+   648→      float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
+   649→      col = mix(col, uFogColor, fogF);
+   650→      gl_FragColor = vec4(col, tex.a);
+   651→    }
+   652→  `;
+   653→
+   654→  const make = (opts: { transparent: boolean; alphaTest: number; wave: number; side: THREE.Side; depthWrite: boolean }): THREE.ShaderMaterial => {
+   655→    const m = new THREE.ShaderMaterial({
+   656→      vertexShader,
+   657→      fragmentShader,
+   658→      uniforms: {
+   659→        uAtlas: { value: texture },
+   660→        uSunLevel: { value: 1 },
+   661→        uFogColor: { value: new THREE.Color(0x9fc7ff) },
+   662→        uFogNear: { value: 60 },
+   663→        uFogFar: { value: 120 },
+   664→        uAlphaTest: { value: opts.alphaTest },
+   665→        uTime: { value: 0 },
+   666→        uWave: { value: opts.wave },
+   667→        uShadowMap: { value: null },
+   668→        uShadowMatrix: { value: new THREE.Matrix4() },
+   669→        uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
+   670→        uShadowStrength: { value: 0 },
+   671→        uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
+   672→        uTorchPos0: { value: new THREE.Vector3() },
+   673→        uTorchPos1: { value: new THREE.Vector3() },
+   674→        uTorchMap0: { value: null },
+   675→        uTorchMap1: { value: null },
+   676→        uTorchFar0: { value: 17 },
+   677→        uTorchFar1: { value: 17 },
+   678→        uTorchRange0: { value: 0 },
+   679→        uTorchRange1: { value: 0 },
+   680→        uTorchCount: { value: 0 },
+   681→      },
+   682→      transparent: opts.transparent,
+   683→      side: opts.side,
+   684→      depthWrite: opts.depthWrite,
+   685→    });
+   686→    return m;
+   687→  };
+   688→
+   689→  return {
+   690→    opaque: make({ transparent: false, alphaTest: 0.0, wave: 0, side: THREE.FrontSide, depthWrite: true }),
+   691→    cutout: make({ transparent: false, alphaTest: 0.5, wave: 0, side: THREE.DoubleSide, depthWrite: true }),
+   692→    water: createWaterMaterial(texture),
+   693→  };
+   694→}
+   695→
+   696→export { CHUNK_AREA };
+   697→

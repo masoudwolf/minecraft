@@ -1,0 +1,759 @@
+     1→// ─── GraphicsSystem — facade wiring the whole shader pack into the engine ─────
+     2→// atmosphere dome · volumetric clouds · planar-reflection water · real sun
+     3→// shadows (PCF, shadow-aware voxel shaders) · instanced grass · post FX stack.
+     4→// Engine touches this class only (init/attachWorld/applySettings/update/
+     5→// onChunkMeshed/render/dispose).
+     6→
+     7→import * as THREE from 'three';
+     8→import { SkySystem } from '../sky';
+     9→import type { World, Chunk } from '../world/world';
+    10→import { DAY_LENGTH } from '../constants';
+    11→import type { Settings } from '../state';
+    12→import { AtmosphereSky } from './atmosphere';
+    13→import { VolumetricClouds } from './cloudsVolumetric';
+    14→import { PostFX } from './postfx';
+    15→import { GrassManager } from './grass';
+    16→import { WATER_PLANE_Y } from './waterGfx';
+    17→import type { GfxSettings } from './settings';
+    18→import { shadowState } from './shadowState';
+    19→
+    20→const CLAMP = THREE.MathUtils.clamp;
+    21→/** clear color whose RGBA-unpack reads as depth 1.0 (far) → empty texels = lit */
+    22→const SHADOW_CLEAR = new THREE.Color(1, 0, 0);
+    23→
+    24→export class GraphicsSystem {
+    25→  private renderer: THREE.WebGLRenderer;
+    26→  private scene: THREE.Scene;
+    27→  private camera: THREE.PerspectiveCamera;
+    28→  private sunLight: THREE.DirectionalLight;
+    29→
+    30→  atmosphere: AtmosphereSky | null = null;
+    31→  clouds: VolumetricClouds | null = null;
+    32→  grass: GrassManager;
+    33→  postfx: PostFX | null = null;
+    34→
+    35→  private world: World | null = null;
+    36→  private waterMat: THREE.ShaderMaterial | null = null;
+    37→  private gfx: GfxSettings | null = null;
+    38→
+    39→  // planar reflection
+    40→  private reflRT: THREE.WebGLRenderTarget | null = null;
+    41→  private mirrorCam = new THREE.PerspectiveCamera();
+    42→  private reflMatrix = new THREE.Matrix4();
+    43→  private tmpV1 = new THREE.Vector3();
+    44→  private tmpV2 = new THREE.Vector3();
+    45→  private tmpV3 = new THREE.Vector3();
+    46→  private tmpV4 = new THREE.Vector3();
+    47→  private tmpPlane = new THREE.Plane();
+    48→  private tmpQ = new THREE.Vector4();
+    49→
+    50→  // ── OWNED sun-shadow pass ────────────────────────────────────────────────
+    51→  // three r186 renders shadow maps into a DepthTexture with compareFunction
+    52→  // (sampler2DShadow) plus a color attachment holding INVERTED byte depth —
+    53→  // neither matches the RGBA-packed sampler this pack was built on, and the
+    54→  // compare-sampler variant wedges software GL. So the pack renders its OWN
+    55→  // depth pass into a color RT (32-bit packed depth, plain sampler2D).
+    56→  //
+    57→  // DEPTH MATERIALS: per-mesh instead of a single scene.overrideMaterial, so
+    58→  // cutout casters (tall grass, flowers, wheat, sugarcane, leaves) sample their
+    59→  // real texture alpha in the shadow map — a plain override turned every cross
+    60→  // plant into a SOLID X-shaped quad occluder = the "grass squashed flat on the
+    61→  // ground" shadow blobs the user reported.
+    62→  private shadowRT: THREE.WebGLRenderTarget | null = null;
+    63→  private shadowCam = new THREE.OrthographicCamera(-56, 56, 56, -56, 1, 320);
+    64→  private shadowMatrix = new THREE.Matrix4();
+    65→  private depthMatPlain = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+    66→  /** source material → alpha-aware depth material (map + alphaTest carried over) */
+    67→  private depthFor = new Map<THREE.Material, THREE.MeshDepthMaterial>();
+    68→  /** meshes swapped to depth materials this pass (restored after render) */
+    69→  private matSwaps: Array<{ mesh: THREE.Mesh; mat: THREE.Material | THREE.Material[] }> = [];
+    70→  /** top-level visibility overrides this pass (restored after render) */
+    71→  private visSwaps: Array<{ o: THREE.Object3D; v: boolean }> = [];
+    72→  private shadowTarget = new THREE.Vector3();
+    73→  private shadowLightDir = new THREE.Vector3(0.5, 0.8, 0.2).normalize();
+    74→  private tmpClearColor = new THREE.Color();
+    75→
+    76→  // ── torch / dynamic point-light cube shadows ─────────────────────────────
+    77→  // The nearest 1-2 light sources (block torches from chunk.torches + scene
+    78→  // PointLights like the knight's sword) get their own 256px cube depth map;
+    79→  // the voxel shader multiplies the baked torch-light term by it, so fences /
+    80→  // trees / mobs cast real radial shadows around torches at night.
+    81→  private cubeRTs: THREE.WebGLCubeRenderTarget[] = [];
+    82→  private cubeCams: THREE.CubeCamera[] = [];
+    83→  private torchSources: Array<{ pos: THREE.Vector3; range: number; far: number }> = [];
+    84→  private scenePointLights: THREE.PointLight[] = [];
+    85→  private torchTimer = 0;
+    86→  private maxTorchShadows = 0;
+    87→
+    88→  private lastSunDir = new THREE.Vector3(0, 1, 0);
+    89→  private lastSunColor = new THREE.Color(1, 1, 1);
+    90→  private lastFogColor = new THREE.Color(0x9fc7ff);
+    91→  private lastFogNear = 60;
+    92→  private lastFogFar = 130;
+    93→  private underwaterCam = false;
+    94→
+    95→  private sweepTimer = 0;
+    96→  private grassSweepTimer = 0;
+    97→  /** true when GPU reports as software renderer (llvmpipe etc.) */
+    98→  isSoftware = false;
+    99→
+   100→  constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunLight: THREE.DirectionalLight) {
+   101→    this.renderer = renderer;
+   102→    this.scene = scene;
+   103→    this.camera = camera;
+   104→    this.sunLight = sunLight;
+   105→    this.grass = new GrassManager(scene);
+   106→
+   107→    // software-GL detection → default preset guard
+   108→    try {
+   109→      const gl = renderer.getContext();
+   110→      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+   111→      const gpu = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+   112→      this.isSoftware = /llvmpipe|swiftshader|software|ANGLE \(/i.test(gpu);
+   113→    } catch { this.isSoftware = false; }
+   114→
+   115→    this.mirrorCam.layers = this.camera.layers;
+   116→    // dev/QA introspection hook (harmless in prod; used by agent-browser checks)
+   117→    if (typeof window !== 'undefined') (window as unknown as Record<string, unknown>).__gfxDebug = this;
+   118→  }
+   119→
+   120→  // ── world wiring ────────────────────────────────────────────────────────────
+   121→  attachWorld(world: World): void {
+   122→    this.world = world;
+   123→    this.waterMat = world.getMaterial('water');
+   124→  }
+   125→
+   126→  // ── settings ────────────────────────────────────────────────────────────────
+   127→  applySettings(settings: Settings): void {
+   128→    // work on a COPY — never mutate the zustand store object (the software-GL
+   129→    // downgrade used to leak into saved settings and fight the UI toggles)
+   130→    const gfx: GfxSettings = { ...settings.gfx };
+   131→    if (gfx.preset === 'medium' && !gfx.presetUser && this.isSoftware) {
+   132→      // software GL: keep the fancy look but drop heavy features automatically
+   133→      gfx.renderScale = Math.min(gfx.renderScale, 0.66);
+   134→      gfx.shadows = Math.min(gfx.shadows, 1);
+   135→      gfx.waterQuality = Math.min(gfx.waterQuality, 0);
+   136→      gfx.cloudQuality = Math.min(gfx.cloudQuality, 0);
+   137→      gfx.grassDensity = Math.min(gfx.grassDensity, 0.22);
+   138→    }
+   139→    this.gfx = gfx;
+   140→
+   141→    // internal resolution scale
+   142→    const base = Math.min(window.devicePixelRatio, 2);
+   143→    this.renderer.setPixelRatio(base * CLAMP(gfx.renderScale, 0.4, 1));
+   144→    this.resize();
+   145→
+   146→    // post-processing
+   147→    if (gfx.postfx) {
+   148→      if (!this.postfx) {
+   149→        this.postfx = new PostFX(this.renderer, this.scene, this.camera, {
+   150→          bloom: gfx.bloom, godRays: gfx.godRays, grade: true, fxaa: gfx.fxaa,
+   151→        });
+   152→      }
+   153→      this.postfx.setBloomEnabled(gfx.bloom);
+   154→      this.postfx.setGodRaysEnabled(gfx.godRays);
+   155→      this.postfx.setFxaaEnabled(gfx.fxaa);
+   156→      this.postfx.setGrade(gfx.exposure, gfx.saturation, gfx.contrast, gfx.vignette);
+   157→    }
+   158→
+   159→    // sky + clouds
+   160→    if (!this.atmosphere) this.atmosphere = new AtmosphereSky(this.scene);
+   161→    if (!this.clouds) this.clouds = new VolumetricClouds(this.scene);
+   162→    this.atmosphere.mesh.visible = true;
+   163→    this.clouds.mesh.visible = gfx.volumetricClouds;
+   164→
+   165→    // shadows
+   166→    this.setShadowQuality(gfx.shadows);
+   167→
+   168→    // water quality
+   169→    if (this.waterMat) {
+   170→      this.waterMat.uniforms.uWaterQ.value = gfx.waterQuality;
+   171→      this.waterMat.uniforms.uHasRefl.value = gfx.waterQuality >= 1 ? 1 : 0;
+   172→    }
+   173→    if (gfx.waterQuality >= 1) this.ensureReflRT(gfx.waterQuality);
+   174→
+   175→    // grass
+   176→    if (this.grass.density !== gfx.grassDensity || !this.grass.enabled) {
+   177→      this.grass.enabled = gfx.grassDensity > 0.02;
+   178→      if (this.world) this.grass.setDensity(gfx.grassDensity, this.world);
+   179→      else this.grass.density = gfx.grassDensity;
+   180→    }
+   181→  }
+   182→
+   183→  // ── shadows ─────────────────────────────────────────────────────────────────
+   184→  setShadowQuality(q: number): void {
+   185→    const sizes = [0, 1024, 2048, 4096];
+   186→    shadowState.realShadows = q > 0; // mobs/engine read this to hide blob circles
+   187→    if (q <= 0) {
+   188→      if (this.shadowRT) { this.shadowRT.dispose(); this.shadowRT = null; }
+   189→      this.renderer.shadowMap.enabled = false;
+   190→      this.setShadowStrength(0);
+   191→      this.maxTorchShadows = 0;
+   192→      this.refreshChunkShadowFlags();
+   193→      return;
+   194→    }
+   195→    const size = sizes[q] ?? 2048;
+   196→    // three's own shadow pipeline stays OFF (no casting light) — shadowMap.enabled
+   197→    // only drives the vanilla blob-shadow suppression + receiver flag semantics;
+   198→    // the REAL depth map is our own pass (runShadowPass).
+   199→    this.renderer.shadowMap.enabled = true;
+   200→    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+   201→    this.sunLight.castShadow = false;
+   202→    if (!this.shadowRT) {
+   203→      this.shadowRT = new THREE.WebGLRenderTarget(size, size, {
+   204→        minFilter: THREE.NearestFilter,
+   205→        magFilter: THREE.NearestFilter,
+   206→        depthBuffer: true,
+   207→      });
+   208→    } else if (this.shadowRT.width !== size) {
+   209→      this.shadowRT.setSize(size, size);
+   210→    }
+   211→    // torch cube shadows: 1 source on High, 2 on Ultra (each = 6 tiny renders)
+   212→    this.maxTorchShadows = q >= 3 ? 2 : 1;
+   213→    while (this.cubeRTs.length < this.maxTorchShadows) {
+   214→      const rt = new THREE.WebGLCubeRenderTarget(256, {
+   215→        minFilter: THREE.NearestFilter,
+   216→        magFilter: THREE.NearestFilter,
+   217→        generateMipmaps: false,
+   218→      });
+   219→      this.cubeRTs.push(rt);
+   220→      this.cubeCams.push(new THREE.CubeCamera(0.1, 24, rt));
+   221→    }
+   222→    const half = CLAMP((this.gfx?.renderScale ?? 4) * 0 + 56, 48, 96);
+   223→    const cam = this.shadowCam;
+   224→    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+   225→    cam.near = 1; cam.far = 320;
+   226→    cam.updateProjectionMatrix();
+   227→    this.setShadowStrength(1);
+   228→    if (this.scene.getObjectById(this.sunLight.target.id) == null) this.scene.add(this.sunLight.target);
+   229→    this.refreshChunkShadowFlags();
+   230→  }
+   231→
+   232→  /** re-apply caster/receiver flags to ALREADY-BUILT chunk meshes (they were
+   233→   *  flagged at mesh time — toggling shadows later leaves stale flags and the
+   234→   *  world would stop casting shadows until every chunk remeshed) */
+   235→  private refreshChunkShadowFlags(): void {
+   236→    if (!this.world) return;
+   237→    const shadowsOn = this.renderer.shadowMap.enabled;
+   238→    for (const chunk of this.world.chunks.values()) {
+   239→      const m = chunk.meshes;
+   240→      if (!m) continue;
+   241→      if (m.opaque) { m.opaque.castShadow = shadowsOn; m.opaque.receiveShadow = shadowsOn; }
+   242→      if (m.cutout) { m.cutout.castShadow = shadowsOn; m.cutout.receiveShadow = shadowsOn; }
+   243→      if (m.water) { m.water.castShadow = false; m.water.receiveShadow = true; }
+   244→    }
+   245→  }
+   246→
+   247→  /** true when the object (or any descendant ≤5 levels down) wants to cast —
+   248→   *  covers top-level chunk meshes and entity Groups with mesh children
+   249→   *  (player model nests Group→pivot→Mesh at depth 2-3; depth 5 is headroom) */
+   250→  private isShadowCaster(o: THREE.Object3D, depth = 0): boolean {
+   251→    if (o.castShadow === true) return true;
+   252→    if (depth >= 5) return false;
+   253→    for (const c of o.children) {
+   254→      if (this.isShadowCaster(c, depth + 1)) return true;
+   255→    }
+   256→    return false;
+   257→  }
+   258→
+   259→  /** alpha-aware depth material for a source material: cutout casters keep
+   260→   *  their texture alpha in the shadow map (cross plants / leaves / hats),
+   261→   *  everything else uses the plain packed-depth material */
+   262→  private depthMatFor(src: THREE.Material): THREE.MeshDepthMaterial {
+   263→    let d = this.depthFor.get(src);
+   264→    if (!d) {
+   265→      const lm = src as THREE.MeshLambertMaterial;
+   266→      if (lm.alphaTest > 0 && lm.map) {
+   267→        d = new THREE.MeshDepthMaterial({
+   268→          depthPacking: THREE.RGBADepthPacking,
+   269→          side: THREE.DoubleSide,
+   270→          map: lm.map,
+   271→          alphaTest: lm.alphaTest,
+   272→        });
+   273→      } else {
+   274→        d = this.depthMatPlain;
+   275→      }
+   276→      this.depthFor.set(src, d);
+   277→    }
+   278→    return d;
+   279→  }
+   280→
+   281→  private voxelDepthSeeded = false;
+   282→  /** the voxel cutout material is a ShaderMaterial (no .map property) — seed
+   283→   *  its depth variant with the ATLAS texture + its alphaTest explicitly, so
+   284→   *  tall grass / flowers / wheat / leaves cut real holes in the shadow map
+   285→   *  instead of occluding as solid quads (the "grass squashed flat" blobs) */
+   286→  private seedVoxelDepthMats(): void {
+   287→    if (this.voxelDepthSeeded || !this.world) return;
+   288→    const cut = this.world.getMaterial('cutout');
+   289→    if (cut) {
+   290→      const atlas = cut.uniforms.uAtlas?.value as THREE.Texture | undefined;
+   291→      if (atlas) {
+   292→        this.depthFor.set(cut, new THREE.MeshDepthMaterial({
+   293→          depthPacking: THREE.RGBADepthPacking,
+   294→          side: THREE.DoubleSide,
+   295→          map: atlas,
+   296→          alphaTest: (cut.uniforms.uAlphaTest?.value as number) ?? 0.5,
+   297→        }));
+   298→        this.voxelDepthSeeded = true;
+   299→      }
+   300→    }
+   301→  }
+   302→
+   303→  /** walk the visible part of the scene under `root`, swapping every
+   304→   *  castShadow mesh to its depth material (recorded for restore) */
+   305→  private swapToDepthMaterials(root: THREE.Object3D, parentVisible: boolean): void {
+   306→    const visible = parentVisible && root.visible;
+   307→    if (!visible) return;
+   308→    if (root instanceof THREE.Mesh && root.castShadow === true) {
+   309→      this.matSwaps.push({ mesh: root, mat: root.material });
+   310→      if (Array.isArray(root.material)) {
+   311→        root.material = root.material.map((mm) => this.depthMatFor(mm));
+   312→      } else {
+   313→        root.material = this.depthMatFor(root.material);
+   314→      }
+   315→    }
+   316→    for (const c of root.children) this.swapToDepthMaterials(c, visible);
+   317→  }
+   318→
+   319→  /** stash + toggle top-level visibility so only casters render, then swap
+   320→   *  caster meshes to depth materials. Returns a restore closure. */
+   321→  private beginCasterSession(): () => void {
+   322→    this.visSwaps.length = 0;
+   323→    this.matSwaps.length = 0;
+   324→    const list = this.scene.children;
+   325→    for (let i = 0; i < list.length; i++) {
+   326→      const o = list[i];
+   327→      this.visSwaps.push({ o, v: o.visible });
+   328→      o.visible = o.visible !== false && this.isShadowCaster(o);
+   329→    }
+   330→    this.swapToDepthMaterials(this.scene, true);
+   331→    const restore = (): void => {
+   332→      for (const s of this.matSwaps) s.mesh.material = s.mat;
+   333→      for (const s of this.visSwaps) s.o.visible = s.v;
+   334→    };
+   335→    return restore;
+   336→  }
+   337→
+   338→  /** render the scene from the sun into our RGBA-packed depth RT */
+   339→  private runShadowPass(): void {
+   340→    if (!this.shadowRT) return;
+   341→    this.seedVoxelDepthMats();
+   342→    const cam = this.shadowCam;
+   343→    const t = this.shadowTarget;
+   344→    const d = this.shadowLightDir;
+   345→    const h = d.y > 0.18 ? d.y : 0.18;
+   346→    cam.position.set(t.x + d.x * 90, t.y + h * 90, t.z + d.z * 90);
+   347→    cam.up.set(0, 1, 0);
+   348→    cam.lookAt(t);
+   349→    cam.updateMatrixWorld();
+   350→
+   351→    const prevRT = this.renderer.getRenderTarget();
+   352→    this.renderer.getClearColor(this.tmpClearColor);
+   353→    const prevClearAlpha = this.renderer.getClearAlpha();
+   354→
+   355→    const restore = this.beginCasterSession();
+   356→    this.renderer.setRenderTarget(this.shadowRT);
+   357→    this.renderer.setClearColor(SHADOW_CLEAR, 0);
+   358→    this.renderer.clear();
+   359→    this.renderer.render(this.scene, cam);
+   360→
+   361→    // torch / dynamic point-light cube depth maps (same caster session — the
+   362→    // material swaps and visibility stashes stay valid for every face)
+   363→    if (this.maxTorchShadows > 0 && this.torchSources.length > 0) {
+   364→      for (let i = 0; i < this.torchSources.length && i < this.maxTorchShadows; i++) {
+   365→        const src = this.torchSources[i];
+   366→        const cube = this.cubeCams[i];
+   367→        if (!cube) continue;
+   368→        cube.position.copy(src.pos);
+   369→        cube.updateMatrixWorld();
+   370→        // the 6 face cameras are CubeCamera's children — near/far live THERE
+   371→        // (the CubeCamera wrapper has no updateProjectionMatrix of its own)
+   372→        for (const face of cube.children) {
+   373→          const fc = face as THREE.PerspectiveCamera;
+   374→          if (fc.isPerspectiveCamera) {
+   375→            fc.near = 0.1;
+   376→            fc.far = src.far;
+   377→            fc.updateProjectionMatrix();
+   378→          }
+   379→        }
+   380→        this.renderer.setRenderTarget(null);
+   381→        this.renderer.setClearColor(SHADOW_CLEAR, 0);
+   382→        cube.update(this.renderer, this.scene);
+   383→      }
+   384→    }
+   385→
+   386→    restore();
+   387→    this.renderer.setClearColor(this.tmpClearColor, prevClearAlpha);
+   388→    this.renderer.setRenderTarget(prevRT);
+   389→
+   390→    // texture matrix: raw proj*view — gfxShadow adds the NDC bias itself
+   391→    this.shadowMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+   392→    const sz = this.shadowRT.width;
+   393→    const texel = new THREE.Vector2(1 / sz, 1 / sz);
+   394→    for (const m of this.voxelMats()) {
+   395→      m.uniforms.uShadowMap.value = this.shadowRT.texture;
+   396→      m.uniforms.uShadowMatrix.value.copy(this.shadowMatrix);
+   397→      (m.uniforms.uShadowTexel.value as THREE.Vector2).set(1 / sz, 1 / sz);
+   398→    }
+   399→    this.grass.setShadowUniforms(this.shadowRT.texture, this.shadowMatrix, texel);
+   400→    // torch cube uniforms → opaque + cutout (+ grass mat via GrassManager)
+   401→    for (let i = 0; i < 2; i++) {
+   402→      const src = this.torchSources[i];
+   403→      const active = i < this.maxTorchShadows && !!src && !!this.cubeRTs[i];
+   404→      const tex = active ? this.cubeRTs[i].texture : null;
+   405→      for (const m of this.voxelMats()) {
+   406→        if (!m.uniforms.uTorchCount) continue;
+   407→        (m.uniforms[`uTorchPos${i}`].value as THREE.Vector3).copy(src ? src.pos : this.shadowTarget);
+   408→        m.uniforms[`uTorchMap${i}`].value = tex;
+   409→        m.uniforms[`uTorchFar${i}`].value = src ? src.far : 24;
+   410→        m.uniforms[`uTorchRange${i}`].value = src ? src.range : 0;
+   411→      }
+   412→      this.grass.setTorchUniforms(i, src ? src.pos : null, tex, src ? src.far : 24, src ? src.range : 0);
+   413→    }
+   414→    for (const m of this.voxelMats()) {
+   415→      if (m.uniforms.uTorchCount) m.uniforms.uTorchCount.value = this.maxTorchShadows > 0 && this.torchSources.length > 0 ? Math.min(this.maxTorchShadows, this.torchSources.length) : 0;
+   416→    }
+   417→    this.grass.setTorchCount(this.torchSources.length > 0 ? Math.min(this.maxTorchShadows, this.torchSources.length) : 0);
+   418→  }
+   419→
+   420→  private setShadowStrength(s: number): void {
+   421→    for (const m of this.voxelMats()) {
+   422→      if (m.uniforms.uShadowStrength) m.uniforms.uShadowStrength.value = s;
+   423→    }
+   424→  }
+   425→
+   426→  /** all voxel materials that participate in sun shadows (terrain + water) */
+   427→  private voxelMats(): THREE.ShaderMaterial[] {
+   428→    if (!this.world) return [];
+   429→    return [
+   430→      this.world.getMaterial('opaque'),
+   431→      this.world.getMaterial('cutout'),
+   432→      this.world.getMaterial('water'),
+   433→    ].filter((m): m is THREE.ShaderMaterial => !!m);
+   434→  }
+   435→
+   436→  // ── chunk hooks ─────────────────────────────────────────────────────────────
+   437→  onChunkMeshed(chunk: Chunk, world: World): void {
+   438→    if (this.gfx && this.gfx.grassDensity > 0.02) this.grass.updateChunk(chunk, world);
+   439→    const m = chunk.meshes;
+   440→    if (!m) return;
+   441→    const shadowsOn = this.renderer.shadowMap.enabled;
+   442→    if (m.opaque) { m.opaque.castShadow = shadowsOn; m.opaque.receiveShadow = shadowsOn; }
+   443→    if (m.cutout) { m.cutout.castShadow = shadowsOn; m.cutout.receiveShadow = shadowsOn; }
+   444→    if (m.water) { m.water.castShadow = false; m.water.receiveShadow = true; }
+   445→  }
+   446→
+   447→  // ── per-frame update ────────────────────────────────────────────────────────
+   448→  update(dt: number, camera: THREE.PerspectiveCamera, sky: SkySystem, playerX: number, playerY: number, playerZ: number, underwater: boolean): void {
+   449→    if (!this.gfx || !this.atmosphere) return;
+   450→    const gfx = this.gfx;
+   451→
+   452→    // sun direction (same formula as SkySystem)
+   453→    const dayFrac = sky.time / DAY_LENGTH;
+   454→    const angle = (dayFrac - 0.25) * Math.PI * 2;
+   455→    const sunDir = this.tmpV1.set(Math.cos(angle), Math.sin(angle), 0.18).normalize();
+   456→    const sunHeight = Math.sin(angle);
+   457→    const dayAmount = CLAMP((sunHeight + 0.12) / 0.32, 0, 1);
+   458→    const sunsetAmount = CLAMP(1 - Math.abs(sunHeight) / 0.28, 0, 1) * (dayAmount > 0.02 ? 1 : 0.35);
+   459→    this.lastSunDir.copy(sunDir);
+   460→
+   461→    // cloud coverage: base scattered + weather
+   462→    const cover = CLAMP(0.22 + sky.weatherDarkness * 1.1, 0, 1);
+   463→    const storm = sky.weatherDarkness;
+   464→
+   465→    // sun color: warm at low sun, white at noon, moon-dim at night
+   466→    const lightDir = this.tmpV4.copy(sunDir); // the ACTUAL light source (moon at night)
+   467→    const sunCol = this.tmpV2;
+   468→    const warmth = sunsetAmount;
+   469→    sunCol.set(
+   470→      1.0,
+   471→      0.92 - warmth * 0.28,
+   472→      0.82 - warmth * 0.55,
+   473→    ).multiplyScalar(0.14 + 0.86 * dayAmount * (1 - storm * 0.55));
+   474→    if (dayAmount < 0.08) {
+   475→      // moonlight — dim cool directional light from the moon's position
+   476→      sunCol.set(0.35, 0.42, 0.62).multiplyScalar(0.28);
+   477→      lightDir.multiplyScalar(-1);
+   478→    }
+   479→    this.lastSunColor.setRGB(sunCol.x, sunCol.y, sunCol.z);
+   480→
+   481→    this.atmosphere.update(camera, sunDir, dayAmount, sunsetAmount, storm, sky.lightningFlash, cover);
+   482→    if (this.clouds?.mesh.visible) {
+   483→      this.clouds.update(camera, dt, lightDir, this.lastSunColor, dayAmount, cover, storm);
+   484→    }
+   485→
+   486→    // fog snapshot for grass
+   487→    if (this.scene.fog) {
+   488→      const fog = this.scene.fog as THREE.Fog;
+   489→      this.lastFogColor.copy(fog.color);
+   490→      this.lastFogNear = fog.near;
+   491→      this.lastFogFar = fog.far;
+   492→    }
+   493→    this.grass.update(performance.now() / 1000, sky.sunLevel, this.lastFogColor, this.lastFogNear, this.lastFogFar);
+   494→
+   495→    // voxel sun/shadow uniforms — sun dir + strength; the MAP itself is filled
+   496→    // by runShadowPass() every frame (terrain opaque/cutout AND water share it)
+   497→    const shadowOn = (gfx.shadows ?? 0) > 0 && this.shadowRT !== null;
+   498→    for (const m of this.voxelMats()) {
+   499→      if (m.uniforms.uSunDirW) m.uniforms.uSunDirW.value.copy(lightDir);
+   500→      if (m.uniforms.uSunColorW) m.uniforms.uSunColorW.value.copy(this.lastSunColor);
+   501→      if (m.uniforms.uShadowStrength) m.uniforms.uShadowStrength.value = shadowOn ? 1 : 0;
+   502→    }
+   503→    this.grass.setShadowStrength(shadowOn ? 1 : 0, lightDir);
+   504→
+   505→    // shadow target follows the player (snapped to block grid — no shimmer)
+   506→    if (shadowOn) {
+   507→      const px = Math.round(playerX);
+   508→      const py = Math.round(playerY);
+   509→      const pz = Math.round(playerZ);
+   510→      this.shadowTarget.set(px, py, pz);
+   511→      this.shadowLightDir.copy(lightDir).normalize();
+   512→      // nearest torch/dynamic-light sources for the cube shadow slots
+   513→      this.torchTimer -= dt;
+   514→      if (this.torchTimer <= 0) {
+   515→        this.torchTimer = 0.3;
+   516→        this.pickTorchSources(playerX, playerY, playerZ);
+   517→      }
+   518→    }
+   519→    // sun light still follows the player for entity Lambert shading
+   520→    if (this.renderer.shadowMap.enabled) {
+   521→      const px = Math.round(playerX);
+   522→      const py = Math.round(playerY);
+   523→      const pz = Math.round(playerZ);
+   524→      this.sunLight.target.position.set(px, py, pz);
+   525→      this.sunLight.target.updateMatrixWorld();
+   526→      const h = lightDir.y > 0.18 ? lightDir.y : 0.18;
+   527→      this.sunLight.position.set(px + lightDir.x * 90, py + h * 90, pz + lightDir.z * 90);
+   528→    }
+   529→
+   530→    this.underwaterCam = underwater;
+   531→
+   532→    // entity sweeps (cheap, throttled)
+   533→    this.sweepTimer += dt;
+   534→    if (this.sweepTimer > 0.5) {
+   535→      this.sweepTimer = 0;
+   536→      this.sweepEntities();
+   537→    }
+   538→    this.grassSweepTimer += dt;
+   539→    if (this.grassSweepTimer > 2) {
+   540→      this.grassSweepTimer = 0;
+   541→      if (this.world) this.grass.sweep(this.world);
+   542→    }
+   543→
+   544→    // postfx per-frame uniforms
+   545→    if (this.postfx) {
+   546→      // sun screen position for god rays
+   547→      let gx = -1, gy = -1, strength = 0;
+   548→      if (gfx.godRays && !underwater) {
+   549→        const sd = this.tmpV3.copy(sunDir).multiplyScalar(600).add(camera.position);
+   550→        sd.project(camera);
+   551→        if (sd.z < 1) {
+   552→          gx = (sd.x + 1) / 2;
+   553→          gy = (sd.y + 1) / 2;
+   554→          const onScreen = gx > -0.15 && gx < 1.15 && gy > -0.15 && gy < 1.15;
+   555→          const dayBoost = CLAMP(sunHeight * 4 + 0.35, 0, 1); // strongest near horizon
+   556→          strength = onScreen ? gfx.godRaysStrength * dayBoost * (1 - storm * 0.85) * (1 - cover * 0.55) : 0;
+   557→        }
+   558→      }
+   559→      const samples = gfx.preset === 'ultra' || gfx.preset === 'high' ? 48 : gfx.preset === 'medium' ? 36 : 24;
+   560→      this.postfx.setSunScreen(gx, gy, strength, samples);
+   561→      this.postfx.setUnderwater(underwater ? 1 : 0, performance.now() / 1000);
+   562→    }
+   563→  }
+   564→
+   565→  // ── entity shadow flags + blob-shadow suppression ──────────────────────────
+   566→  // RECURSIVE walk: the old version only inspected TOP-LEVEL scene children,
+   567→  // so entity Groups (player model, mob models, boats, drops) were never
+   568→  // flagged castShadow and nothing but terrain ever rendered into the depth
+   569→  // map — mobs/player kept their vanilla blob circles and cast no light-based
+   570→  // shadow at all (user report). Now every MeshLambertMaterial mesh anywhere
+   571→  // gets flagged, and scene PointLights are collected as torch-shadow sources.
+   572→  private sweepEntities(): void {
+   573→    const shadowsOn = this.renderer.shadowMap.enabled;
+   574→    this.scenePointLights.length = 0;
+   575→    const walk = (o: THREE.Object3D): void => {
+   576→      // the camera subtree holds the FIRST-PERSON HAND — it must never cast
+   577→      // (it lives at the eye position; a depth-pass entry would paint a
+   578→      // floating box shadow right under the player)
+   579→      if (o === this.camera) return;
+   580→      if (o instanceof THREE.PointLight && o.visible && this.scenePointLights.length < 8) {
+   581→        this.scenePointLights.push(o);
+   582→      }
+   583→      if (o instanceof THREE.Mesh) {
+   584→        const lm = o.material as THREE.Material | THREE.Material[];
+   585→        const first = Array.isArray(lm) ? lm[0] : lm;
+   586→        // blob shadows (vanilla-style dark circles) → hidden while real
+   587→        // shadows render (mobs.ts also consults shadowState every frame)
+   588→        if (first && (first as THREE.MeshBasicMaterial).isMeshBasicMaterial) {
+   589→          const geo = o.geometry;
+   590→          if (geo instanceof THREE.CircleGeometry && (first as THREE.MeshBasicMaterial).color.getHex() === 0x000000) {
+   591→            o.visible = !shadowsOn && o.visible !== false;
+   592→            return;
+   593→          }
+   594→        }
+   595→        if (first && (first as THREE.MeshLambertMaterial).isMeshLambertMaterial && !o.userData.__gfxShadow) {
+   596→          o.userData.__gfxShadow = true;
+   597→          o.castShadow = true;
+   598→          o.receiveShadow = true;
+   599→        }
+   600→      }
+   601→      for (const c of o.children) walk(c);
+   602→    };
+   603→    for (const o of this.scene.children) walk(o);
+   604→  }
+   605→
+   606→  /** nearest torch/point-light sources for the cube-shadow slots */
+   607→  private pickTorchSources(px: number, py: number, pz: number): void {
+   608→    this.torchSources.length = 0;
+   609→    if (this.maxTorchShadows <= 0 || !this.world) return;
+   610→    const cands: Array<{ pos: THREE.Vector3; range: number; far: number; d2: number }> = [];
+   611→    // block torches (chunk.torches is rebuilt by the mesher — always current)
+   612→    for (const chunk of this.world.chunks.values()) {
+   613→      const arr = chunk.torches;
+   614→      if (!arr || arr.length === 0) continue;
+   615→      // cheap chunk-level reject
+   616→      if (Math.abs(chunk.cx * 16 + 8 - px) > 40 || Math.abs(chunk.cz * 16 + 8 - pz) > 40) continue;
+   617→      for (const t of arr) {
+   618→        const dx = t[0] - px, dy = t[1] - py, dz = t[2] - pz;
+   619→        const d2 = dx * dx + dy * dy + dz * dz;
+   620→        if (d2 < 26 * 26) cands.push({ pos: new THREE.Vector3(t[0], t[1], t[2]), range: 14, far: 17, d2 });
+   621→      }
+   622→    }
+   623→    // dynamic scene point lights (knight sword glow, future lanterns…)
+   624→    for (const l of this.scenePointLights) {
+   625→      const p = l.getWorldPosition(new THREE.Vector3());
+   626→      const d2 = p.distanceToSquared(this.tmpV1.set(px, py, pz));
+   627→      const dist = l.distance > 0 ? l.distance : 14;
+   628→      if (d2 < 26 * 26) cands.push({ pos: p, range: Math.min(dist, 20), far: Math.min(dist, 20) + 3, d2 });
+   629→    }
+   630→    cands.sort((a, b) => a.d2 - b.d2);
+   631→    for (let i = 0; i < cands.length && i < this.maxTorchShadows; i++) {
+   632→      this.torchSources.push(cands[i]);
+   633→    }
+   634→  }
+   635→
+   636→  // ── reflection RT ───────────────────────────────────────────────────────────
+   637→  private ensureReflRT(quality: number): void {
+   638→    const w = Math.floor(window.innerWidth * (quality >= 2 ? 0.75 : 0.5));
+   639→    const h = Math.floor(window.innerHeight * (quality >= 2 ? 0.75 : 0.5));
+   640→    if (!this.reflRT) {
+   641→      this.reflRT = new THREE.WebGLRenderTarget(w, h, {
+   642→        type: THREE.HalfFloatType,
+   643→        depthBuffer: true,
+   644→      });
+   645→    } else if (this.reflRT.width !== w || this.reflRT.height !== h) {
+   646→      this.reflRT.setSize(w, h);
+   647→    }
+   648→  }
+   649→
+   650→  private renderReflection(): void {
+   651→    if (!this.world || !this.reflRT || !this.waterMat) return;
+   652→    const cam = this.camera;
+   653→
+   654→    // hide all water meshes
+   655→    for (const chunk of this.world.chunks.values()) {
+   656→      if (chunk.meshes?.water) chunk.meshes.water.visible = false;
+   657→    }
+   658→
+   659→    // mirror camera about the horizontal plane y = WATER_PLANE_Y
+   660→    const n = this.tmpV1.set(0, 1, 0);
+   661→    const pos = this.tmpV2.copy(cam.position);
+   662→    const refl = this.tmpV3.copy(pos).addScaledVector(n, -2 * (pos.y - WATER_PLANE_Y));
+   663→    this.mirrorCam.position.copy(refl);
+   664→    const dir = cam.getWorldDirection(new THREE.Vector3());
+   665→    dir.y = -dir.y; // reflect view direction about the horizontal plane
+   666→    const target = refl.clone().add(dir);
+   667→    this.mirrorCam.up.set(0, 1, 0);
+   668→    this.mirrorCam.up.y = -1; // reflected up vector keeps texture orientation
+   669→    this.mirrorCam.lookAt(target);
+   670→    this.mirrorCam.fov = cam.fov;
+   671→    this.mirrorCam.aspect = cam.aspect;
+   672→    this.mirrorCam.near = cam.near;
+   673→    this.mirrorCam.far = cam.far;
+   674→    this.mirrorCam.updateProjectionMatrix();
+   675→    this.mirrorCam.updateMatrixWorld();
+   676→
+   677→    // oblique near-plane clipping — everything below the water plane is cut
+   678→    this.tmpPlane.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(0, WATER_PLANE_Y, 0));
+   679→    this.tmpPlane.applyMatrix4(this.mirrorCam.matrixWorldInverse);
+   680→    const clip = this.tmpPlane.normal.clone().multiplyScalar(-1);
+   681→    const constant = -this.tmpPlane.constant;
+   682→    const clipPlane = new THREE.Vector4(clip.x, clip.y, clip.z, constant);
+   683→    const pm = this.mirrorCam.projectionMatrix;
+   684→    this.tmpQ.x = (Math.sign(clipPlane.x) + pm.elements[8]) / pm.elements[0];
+   685→    this.tmpQ.y = (Math.sign(clipPlane.y) + pm.elements[9]) / pm.elements[5];
+   686→    this.tmpQ.z = -1;
+   687→    this.tmpQ.w = (1 + pm.elements[10]) / pm.elements[14];
+   688→    clipPlane.multiplyScalar(2 / clipPlane.dot(this.tmpQ));
+   689→    pm.elements[2] = clipPlane.x;
+   690→    pm.elements[6] = clipPlane.y;
+   691→    pm.elements[10] = clipPlane.z + 1;
+   692→    pm.elements[14] = clipPlane.w;
+   693→
+   694→    // texture matrix: NDC-bias * proj * view
+   695→    this.reflMatrix.set(
+   696→      0.5, 0, 0, 0.5,
+   697→      0, 0.5, 0, 0.5,
+   698→      0, 0, 0.5, 0.5,
+   699→      0, 0, 0, 1,
+   700→    );
+   701→    this.reflMatrix.multiply(pm);
+   702→    this.reflMatrix.multiply(this.mirrorCam.matrixWorldInverse);
+   703→    this.waterMat.uniforms.uReflMatrix.value.copy(this.reflMatrix);
+   704→    this.waterMat.uniforms.uReflMap.value = this.reflRT.texture;
+   705→
+   706→    const prevRT = this.renderer.getRenderTarget();
+   707→    this.renderer.setRenderTarget(this.reflRT);
+   708→    this.renderer.clear();
+   709→    this.renderer.render(this.scene, this.mirrorCam);
+   710→    this.renderer.setRenderTarget(prevRT);
+   711→
+   712→    // restore water visibility
+   713→    for (const chunk of this.world.chunks.values()) {
+   714→      if (chunk.meshes?.water) chunk.meshes.water.visible = true;
+   715→    }
+   716→  }
+   717→
+   718→  // ── render ──────────────────────────────────────────────────────────────────
+   719→  render(_dt: number): void {
+   720→    if (this.gfx && this.gfx.shadows > 0 && this.shadowRT) {
+   721→      this.runShadowPass();
+   722→    }
+   723→    const useComposer = this.gfx?.postfx === true && this.postfx !== null;
+   724→    if (useComposer && this.gfx!.waterQuality >= 1 && !this.underwaterCam) {
+   725→      this.renderReflection();
+   726→    }
+   727→    // truthful triangle stats: composer passes would reset info per pass
+   728→    this.renderer.info.autoReset = false;
+   729→    this.renderer.info.reset();
+   730→    if (useComposer) {
+   731→      this.postfx!.render(_dt);
+   732→    } else {
+   733→      this.renderer.render(this.scene, this.camera);
+   734→    }
+   735→    this.renderer.info.autoReset = true;
+   736→  }
+   737→
+   738→  resize(): void {
+   739→    const w = window.innerWidth;
+   740→    const h = window.innerHeight;
+   741→    this.postfx?.setSize(w, h);
+   742→  }
+   743→
+   744→  dispose(): void {
+   745→    this.atmosphere?.dispose();
+   746→    this.clouds?.dispose();
+   747→    this.grass.dispose();
+   748→    this.postfx?.dispose();
+   749→    this.reflRT?.dispose();
+   750→    this.shadowRT?.dispose();
+   751→    for (const rt of this.cubeRTs) rt.dispose();
+   752→    this.cubeRTs.length = 0;
+   753→    this.cubeCams.length = 0;
+   754→    for (const d of this.depthFor.values()) if (d !== this.depthMatPlain) d.dispose();
+   755→    this.depthFor.clear();
+   756→    this.depthMatPlain.dispose();
+   757→  }
+   758→}
+   759→

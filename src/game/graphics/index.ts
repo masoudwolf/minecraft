@@ -211,9 +211,11 @@ export class GraphicsSystem {
     // torch cube shadows: 1 source on High, 2 on Ultra (each = 6 tiny renders)
     this.maxTorchShadows = q >= 3 ? 2 : 1;
     while (this.cubeRTs.length < this.maxTorchShadows) {
-      const rt = new THREE.WebGLCubeRenderTarget(256, {
-        minFilter: THREE.NearestFilter,
-        magFilter: THREE.NearestFilter,
+      const rt = new THREE.WebGLCubeRenderTarget(384, {
+        // LinearFilter: free bilinear softening of the cube penumbra (the
+        // shader adds a tangent-frame 4-tap PCF on top of this)
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
         generateMipmaps: false,
       });
       this.cubeRTs.push(rt);
@@ -551,7 +553,10 @@ export class GraphicsSystem {
         if (sd.z < 1) {
           gx = (sd.x + 1) / 2;
           gy = (sd.y + 1) / 2;
-          const onScreen = gx > -0.15 && gx < 1.15 && gy > -0.15 && gy < 1.15;
+          // wide window: shafts still work indoors when the sun sits well
+          // off-screen behind a window/door (light keeps streaming through
+          // the bright opening pixels toward the sun direction)
+          const onScreen = gx > -0.55 && gx < 1.55 && gy > -0.55 && gy < 1.55;
           const dayBoost = CLAMP(sunHeight * 4 + 0.35, 0, 1); // strongest near horizon
           strength = onScreen ? gfx.godRaysStrength * dayBoost * (1 - storm * 0.85) * (1 - cover * 0.55) : 0;
         }

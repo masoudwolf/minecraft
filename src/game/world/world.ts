@@ -626,25 +626,29 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW, ndl);
         sf = mix(1.0, sf, uShadowStrength);
       }
-      // Shadow keeps 45% sky ambient (shader-pack / Unreal convention: ambient
+      // Shadow keeps 52% sky ambient (shader-pack / Unreal convention: ambient
       // never dies, so shadowed ground stays readable and blue-shifted via
       // shadowTint instead of collapsing to pitch black).
-      float sAmb = mix(sf, 1.0, 0.45);
-      // torch (block) light vs sun light are now SEPARATE terms: the torch term
-      // is modulated by the point-light cube shadow map, so fences / trees /
-      // mobs cast real radial shadows around torches. A small floor keeps
-      // bounced light alive inside geometric shadows (never pitch black).
+      float sAmb = mix(sf, 1.0, 0.52);
+      // torch (block) light vs sun light are SEPARATE terms: the torch term is
+      // modulated by the point-light cube shadow map (fences/trees/mobs cast
+      // real radial shadows), and torch-dominant areas get a warm Unreal-style
+      // tint while sun-dominant areas stay neutral daylight.
+      float sunL = vSky * uSunLevel * sAmb;
       float torchL = vBlock;
       if (uTorchCount > 0.5 && torchL > 0.02) {
-        float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, uTorchFar0, uTorchRange0);
-        if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, uTorchFar1, uTorchRange1));
-        torchL *= mix(0.10, 1.0, ts);
+        float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vNormalW, uTorchFar0, uTorchRange0);
+        if (uTorchCount > 1.5) ts = min(ts, gfxCubeShadow(uTorchMap1, uTorchPos1, vWorldPos, vNormalW, uTorchFar1, uTorchRange1));
+        // 32% bounce floor: point-light shadows stay soft and warm, never black
+        torchL *= mix(0.32, 1.0, ts);
       }
-      float light = max(torchL, vSky * uSunLevel * sAmb);
+      float light = max(torchL, sunL);
       light = clamp(light, 0.045, 1.0);
+      float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
+      vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
       float l = pow(light, 1.15);
       vec3 shadowTint = mix(vec3(0.80, 0.86, 1.08), vec3(1.0), sf);
-      vec3 col = tex.rgb * vTint * vShade * l * shadowTint;
+      vec3 col = tex.rgb * vTint * vShade * l * lightCol * shadowTint;
       float fogF = smoothstep(uFogNear, uFogFar, vFogDepth);
       col = mix(col, uFogColor, fogF);
       gl_FragColor = vec4(col, tex.a);
