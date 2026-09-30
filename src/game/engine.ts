@@ -96,6 +96,8 @@ export class Game {
   private mineTarget: RayHit | null = null;
   private placeCooldown = 0;
   private attackCooldown = 0;
+  /** creative hold-to-break cadence (MC: ~4 blocks/s held; 1 click = 1 block) */
+  private creativeBreakCd = 0;
   private eatCooldown = 0;
   private hungerRegenTimer = 0;
   private starveTimer = 0;
@@ -699,7 +701,7 @@ export class Game {
     if (useGameStore.getState().screen !== 'playing') return;
     if (document.pointerLockElement !== this.canvas) { this.requestLock(); return; }
     audio.resume();
-    if (e.button === 0) { this.mining = true; this.startSwing(); }
+    if (e.button === 0) { this.mining = true; this.creativeBreakCd = 0; this.startSwing(); }
     else if (e.button === 2) { this.rightClick(); }
     else if (e.button === 1) { e.preventDefault(); this.pickBlock(); }
   };
@@ -1707,7 +1709,14 @@ export class Game {
     if (!this.mining || !this.target) { this.crackMesh.visible = false; return; }
     const t = this.target;
     // ── creative: instant break, no drops, no XP, no tool wear ──
+    // CADENCE (user report: one click broke 3-4 blocks in a burst): the old
+    // code broke a block EVERY FRAME while the button was down — the raycast
+    // then passed through the fresh hole and destroyed the blocks behind it.
+    // MC behavior: a single click breaks exactly ONE block; holding breaks
+    // continuously at ~4 blocks/s. The cooldown resets on mousedown (edge),
+    // so every fresh click is instant while held-down breaking is throttled.
     if (this.player.isCreative) {
+      if (this.creativeBreakCd > 0) { this.crackMesh.visible = false; return; }
       const cdef = getBlockDef(t.id);
       if (!cdef) return;
       const col = tileAvgColor(Array.isArray(cdef.tiles) ? cdef.tiles[2] : cdef.tiles);
@@ -1715,6 +1724,7 @@ export class Game {
       audio.breakBlock((cdef.sound ?? 'stone') as MaterialSound);
       if (containerOf(t.id)) this.blockEnts.destroy(t.x, t.y, t.z);
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+      this.creativeBreakCd = 0.25;
       // pop unsupported blocks above (torch, flowers, bed) + plant stacks
       let py = t.y + 1;
       let guard = 0;
@@ -3145,12 +3155,13 @@ export class Game {
     this.sprintFov += ((sprintingNow ? 7 : 0) - this.sprintFov) * Math.min(1, dt * 9);
     p.applyCamera(this.settings.fov + this.sprintFov + (this.bowCharging ? -10 * this.bowCharge : 0), 8, dt);
 
-    // player world-light factor (shared by 3rd-person model + held item): same
-    // formula as mobs/terrain — max(blockLight, skyLight × sunLevel), so the hand
-    // and Steve go dark at night and light up near torches
+    // player world-light factor (shared by 3rd-person model + held item):
+    // local voxel light NORMALIZED by the sun factor (see mobs.ts — the raw
+    // value double-darkened at night on top of the scene lights)
     if (this.world && this.sky) {
       const lb = this.world.getLightForMesh(Math.floor(p.x), Math.floor(p.y + 1.4), Math.floor(p.z));
-      const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * this.sky.sunLevel));
+      const local = Math.max((lb & 15) / 15, ((lb >> 4) / 15) * this.sky.sunLevel);
+      const target = Math.max(0.1, Math.min(1, local / Math.max(this.sky.sunLevel, 0.3)));
       this.playerLightF += (target - this.playerLightF) * Math.min(1, dt * 6);
     }
 
@@ -3175,6 +3186,7 @@ export class Game {
     // cooldowns
     this.placeCooldown -= dt;
     this.attackCooldown -= dt;
+    this.creativeBreakCd -= dt;
     this.eatCooldown -= dt;
 
     // hunger regen / starve

@@ -131,9 +131,13 @@ export class SkySystem {
     this.moon.lookAt(camPos);
 
     const sunHeight = Math.sin(angle);
-    // sunLevel: smooth transition, min 0.14 at night (moonlight)
+    // sunLevel: smooth transition; night floor 0.30 = moonlight (MC night sky
+    // light ≈ level 4/15). The old 0.14 floor made terrain AND mobs collapse
+    // to near-black at night (user report: "at night mobs and objects turn
+    // very black"). 0.30 keeps hostiles spawning (15×0.30 = 4.5 < 6 light
+    // threshold) while the night stays readable like vanilla moonlight.
     const dayAmount = THREE.MathUtils.clamp((sunHeight + 0.12) / 0.32, 0, 1);
-    this.sunLevel = 0.14 + 0.86 * dayAmount;
+    this.sunLevel = 0.30 + 0.70 * dayAmount;
 
     // star opacity
     const starMat = this.stars.material as THREE.PointsMaterial;

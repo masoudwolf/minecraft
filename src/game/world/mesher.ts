@@ -155,6 +155,15 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
               const px2 = cr[0] === 0 ? 0.08 : 0.92;
               const pz2 = cr[2] === 0 ? 0.08 : 0.92;
               cutout.positions.push(lx + px2, y + cr[1], lz + pz2);
+              // aNormal MUST stay 1:1 with positions — the voxel shadow shader
+              // reads vNormalW for the sun/torch shadow lookups. Cross quads
+              // used to skip normals entirely, leaving the aNormal buffer
+              // SHORTER than the draw range → out-of-bounds/garbage normals →
+              // random BLACK patches on cane/grass/flowers whenever shadows
+              // were ON (uShadowStrength guard made it shadows-only). An up
+              // normal also lifts the shadow sample 3.5cm above the thin quad
+              // — no self-shadow acne, same trick as the grass tufts.
+              cutout.normals.push(0, 1, 0);
               const uvc = UV_CORNERS[c];
               cutout.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
               cutout.shades.push(0.95);
@@ -177,19 +186,22 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           const l = world.getLightForMesh(wx, y, wz);
           const sky = (l >> 4) / 15;
           const blk = Math.max((l & 15) / 15, 0.92);
-          const boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number }[] = [
-            { c: [[b, 0, b], [b, 0, a], [b, h, a], [b, h, b]], uv: sideUV, sh: 0.95 }, // +X
-            { c: [[a, 0, a], [a, 0, b], [a, h, b], [a, h, a]], uv: sideUV, sh: 0.95 }, // -X
-            { c: [[a, h, b], [b, h, b], [b, h, a], [a, h, a]], uv: topUV, sh: 1.0 },   // +Y
-            { c: [[a, 0, a], [b, 0, a], [b, 0, b], [a, 0, b]], uv: sideUV, sh: 0.7 },  // -Y
-            { c: [[a, 0, b], [b, 0, b], [b, h, b], [a, h, b]], uv: sideUV, sh: 0.95 }, // +Z
-            { c: [[b, 0, a], [a, 0, a], [a, h, a], [b, h, a]], uv: sideUV, sh: 0.95 }, // -Z
+          const boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number; n: [number, number, number] }[] = [
+            { c: [[b, 0, b], [b, 0, a], [b, h, a], [b, h, b]], uv: sideUV, sh: 0.95, n: [1, 0, 0] },  // +X
+            { c: [[a, 0, a], [a, 0, b], [a, h, b], [a, h, a]], uv: sideUV, sh: 0.95, n: [-1, 0, 0] }, // -X
+            { c: [[a, h, b], [b, h, b], [b, h, a], [a, h, a]], uv: topUV, sh: 1.0, n: [0, 1, 0] },    // +Y
+            { c: [[a, 0, a], [b, 0, a], [b, 0, b], [a, 0, b]], uv: sideUV, sh: 0.7, n: [0, -1, 0] },  // -Y
+            { c: [[a, 0, b], [b, 0, b], [b, h, b], [a, h, b]], uv: sideUV, sh: 0.95, n: [0, 0, 1] },  // +Z
+            { c: [[b, 0, a], [a, 0, a], [a, h, a], [b, h, a]], uv: sideUV, sh: 0.95, n: [0, 0, -1] }, // -Z
           ];
           for (const f of boxFaces) {
             const basePos = cutout.positions.length / 3;
             for (let c = 0; c < 4; c++) {
               const cr = f.c[c];
               cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+              // real face normals — see the cross-model comment: aNormal must
+              // stay 1:1 with positions or the shadow lookups read garbage
+              cutout.normals.push(f.n[0], f.n[1], f.n[2]);
               const uvc = UV_CORNERS[c];
               cutout.uvs.push(f.uv[0] + (f.uv[2] - f.uv[0]) * uvc[0], f.uv[1] + (f.uv[3] - f.uv[1]) * uvc[1]);
               cutout.shades.push(f.sh);
@@ -214,6 +226,10 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           for (let c = 0; c < 4; c++) {
             const cr = quad[c];
             cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+            // up normal (lily pads are horizontal quads) — aNormal must stay
+            // 1:1 with positions (see the cross-model comment: missing normals
+            // = garbage shadow lookups = black lily pads when shadows are on)
+            cutout.normals.push(0, 1, 0);
             const uvc = UV_CORNERS[c];
             cutout.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
             cutout.shades.push(0.96);

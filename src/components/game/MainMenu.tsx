@@ -3,6 +3,7 @@
 // ─── Main menu (Minecraft-style) ─────────────────────────────────────────────
 import { useGameStore } from '@/game/state';
 import { audio } from '@/game/audio';
+import { GAME_VERSION_LABEL } from '@/game/version';
 import { McButton, Splash, useMenuBackground } from './ui';
 
 export function MainMenu() {
@@ -63,7 +64,7 @@ export function MainMenu() {
 
       {/* footer */}
       <div className="absolute bottom-3 left-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
-        VoxelCraft 0.44.1 — Soft Torch Shadows + Warm Light
+        VoxelCraft {GAME_VERSION_LABEL}
       </div>
       <div className="absolute bottom-3 right-3 text-[10px] text-[#999]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
         Fan project — not affiliated with Mojang

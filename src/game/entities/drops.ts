@@ -155,9 +155,11 @@ export class DropManager {
       d.mesh.rotation.y = d.age * 1.4;
       if (isItemId(d.stack.blockId)) d.mesh.rotation.y = Math.sin(d.age * 1.4) * 0.6;
 
-      // world-light shading (same formula as terrain: dark at night, torch-lit areas stay bright)
+      // world-light shading — normalized like mobs.ts (raw value double-
+      // darkened at night on top of the scene lights)
       const lb = this.world.getLightForMesh(Math.floor(d.x), Math.floor(d.y + 0.4), Math.floor(d.z));
-      const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel));
+      const local = Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel);
+      const target = Math.max(0.1, Math.min(1, local / Math.max(sunLevel, 0.3)));
       d.lightF += (target - d.lightF) * Math.min(1, dt * 6);
       if (Math.abs(d.lightF - d.lastAppliedF) > 0.004) {
         (d.mesh.material as THREE.MeshLambertMaterial).color.setScalar(d.lightF);

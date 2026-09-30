@@ -2,13 +2,14 @@
 
 // ─── F3 debug overlay (Minecraft-style) ──────────────────────────────────────
 import { useGameStore } from '@/game/state';
+import { GAME_VERSION } from '@/game/version';
 
 export function DebugOverlay() {
   const debug = useGameStore((s) => s.debug);
   const showFps = useGameStore((s) => s.settings.showFps);
 
   const lines = [
-    `VoxelCraft 0.41.0 — ${debug.fps} fps`,
+    `VoxelCraft ${GAME_VERSION} — ${debug.fps} fps`,
     `XYZ: ${debug.x.toFixed(2)} / ${debug.y.toFixed(2)} / ${debug.z.toFixed(2)}`,
     `Chunk: ${debug.chunkX} ${debug.chunkZ}  (${debug.chunks} loaded)`,
     `Biome: minecraft:${debug.biome}`,

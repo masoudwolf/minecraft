@@ -184,10 +184,12 @@ export class BoatManager {
         b.group.position.y += Math.sin(performance.now() / 900 + b.x) * 0.025;
       }
 
-      // world-light shading (mobs/drops formula)
+      // world-light shading — normalized like mobs.ts (raw value double-
+      // darkened at night on top of the scene lights)
       const lx = Math.floor(b.x), ly = Math.floor(b.y + 0.4), lz = Math.floor(b.z);
       const l = this.lightAt(lx, ly, lz);
-      const target = Math.max(0.1, Math.max((l & 15) / 15, ((l >> 4) / 15) * sunLevel));
+      const local = Math.max((l & 15) / 15, ((l >> 4) / 15) * sunLevel);
+      const target = Math.max(0.1, Math.min(1, local / Math.max(sunLevel, 0.3)));
       b.lightF += (target - b.lightF) * Math.min(1, dt * 6);
       for (const m of b.mats) {
         const ud = m.userData as { baseC?: THREE.Color };

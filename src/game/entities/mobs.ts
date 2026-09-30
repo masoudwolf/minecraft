@@ -1877,12 +1877,17 @@ export class MobManager {
       }
 
       // ── world-light shading: entities obey voxel light (night realism) ──
-      // same formula as the terrain shader: brightness = max(blockLight, skyLight × sunLevel).
-      // Mobs go dark on the surface at night, stay visible near torches, and are
-      // near-black in unlit caves — instead of glowing under scene lights.
+      // local light = max(blockLight, skyLight × sunLevel). The result is then
+      // NORMALIZED by the global sun factor: the scene lights (ambient +
+      // directional) already darken with sunLevel, so multiplying the raw
+      // night value on top double-darkened (zombie/cow = 0.30 × 0.475 ≈ 0.14
+      // effective → pitch-black mobs at night, user report). The normalized
+      // tint only encodes LOCAL variation (torches bright, caves dark) while
+      // the scene lights carry day/night.
       {
         const lb = this.world.getLightForMesh(Math.floor(m.x), Math.floor(m.y + m.height * 0.7), Math.floor(m.z));
-        const target = Math.max(0.1, Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel));
+        const local = Math.max((lb & 15) / 15, ((lb >> 4) / 15) * sunLevel);
+        const target = Math.max(0.1, Math.min(1, local / Math.max(sunLevel, 0.3)));
         m.lightF += (target - m.lightF) * Math.min(1, dt * 6);
         if (Math.abs(m.lightF - m.lastAppliedF) > 0.004) {
           const f = m.lightF;
