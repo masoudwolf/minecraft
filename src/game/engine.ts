@@ -175,7 +175,25 @@ export class Game {
     this.canvas = canvas;
     // decode vanilla entity textures up front → sync tinted skins (sheep dye etc.)
     void preloadEntityTextures();
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    // WebGL context with graceful fallbacks: software-GL sandboxes (llvmpipe/
+    // swiftshader) reject 'high-performance' contexts — retry plain, then
+    // low-power without the perf caveat, before giving up
+    const attempts: THREE.WebGLRendererParameters[] = [
+      { canvas, antialias: false, powerPreference: 'high-performance' },
+      { canvas, antialias: false },
+      { canvas, antialias: false, powerPreference: 'low-power', failIfMajorPerformanceCaveat: false },
+    ];
+    let renderer: THREE.WebGLRenderer | null = null;
+    for (const opts of attempts) {
+      try {
+        renderer = new THREE.WebGLRenderer(opts);
+        break;
+      } catch {
+        // next fallback
+      }
+    }
+    if (!renderer) throw new Error('WebGL is not available in this browser');
+    this.renderer = renderer;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1598,8 +1616,9 @@ export class Game {
     const def = getBlockDef(t.id);
     if (!def) { this.crackMesh.visible = false; return; }
     const bi = breakInfo(def, heldTool);
-    // Efficiency: faster mining on the matching tool (−30%/lvl)
-    const effF = heldTool && heldSlot?.ench ? efficiencyFactor(heldSlot.ench) : 1;
+    // Efficiency: faster mining, but only when the held tool is the block's
+    // matching class (MC behavior — a sword's Efficiency never digs faster)
+    const effF = heldTool && heldSlot?.ench && heldTool.type === def.tool ? efficiencyFactor(heldSlot.ench) : 1;
     const time = this.instantBreak ? 0.04 : bi.time * effF; // cheat: instant break
     const harvest = bi.harvest;
     if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
@@ -1983,6 +2002,7 @@ export class Game {
   }
 
   private tryPickup(stack: ItemStack): boolean {
+    const pickupCount = stack.count; // captured before mutation (toast shows the real amount)
     const leftover = this.addToInventory(stack.blockId, stack.count);
     if (leftover < stack.count) {
       audio.pop();
@@ -1994,6 +2014,7 @@ export class Game {
       if (stack.blockId === ITEM.DIAMOND) this.achievements.unlock('diamonds');
       if (stack.blockId === ITEM.LEATHER) this.achievements.unlock('cowTipper');
       if (stack.blockId === ITEM.STEAK) this.achievements.unlock('ironBelly');
+      if (stack.blockId === ITEM.RAW_COD || stack.blockId === ITEM.RAW_SALMON) this.achievements.unlock('fisherman');
     }
     if (leftover === stack.count) return false;
     stack.count = leftover;
@@ -3141,7 +3162,7 @@ export class Game {
         const name = isItemId(stack.blockId)
           ? (getItemDef(stack.blockId)?.name ?? 'Item')
           : (getBlockDef(stack.blockId)?.name ?? 'Block');
-        this.showToast(name + ' ×' + stack.count);
+        this.showToast(name + ' ×' + pickupCount);
       }
       return picked;
     });
