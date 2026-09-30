@@ -11,6 +11,7 @@ import { HUD } from './HUD';
 import { DebugOverlay } from './DebugOverlay';
 import { PauseMenu, SettingsScreen, DeathScreen, LoadingScreen, TradePanel } from './Overlays';
 import { InventoryScreen } from './InventoryScreen';
+import { EnchantPanel } from './EnchantPanel';
 import AssetViewer from './AssetViewer';
 import { CreatorTools } from './CreatorTools';
 
@@ -20,6 +21,7 @@ export default function GameRoot() {
   const prevScreen = useGameStore((s) => s.prevScreen);
   const invOpen = useGameStore((s) => s.inv.open);
   const tradeOpen = useGameStore((s) => s.tradeOpen);
+  const enchantOpen = useGameStore((s) => s.enchantOpen);
   const debugVisible = useGameStore((s) => s.debugVisible);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export default function GameRoot() {
       {screen === 'playing' && invOpen && <InventoryScreen />}
       {screen === 'playing' && <CreatorTools />}
       {screen === 'playing' && tradeOpen && !invOpen && <TradePanel />}
+      {screen === 'playing' && enchantOpen && !invOpen && <EnchantPanel />}
       {screen === 'menu' && <MainMenu />}
       {screen === 'worlds' && <WorldSelectScreen />}
       {screen === 'createWorld' && <CreateWorldScreen />}

@@ -294,6 +294,53 @@ class AudioManager {
     this.noiseBurst(300, 0.18, 0.05, 'bandpass', 4, 1.3);
   }
 
+  // ─── fishing ─────────────────────────────────────────────────────────────────
+  /** cast: line whirr + light flick */
+  rodCast(): void {
+    this.noiseBurst(1800, 0.16, 0.16, 'bandpass', 2.4, 0.5);
+    this.tone(720, 0.1, 0.1, 'sine', 380);
+  }
+
+  /** bobber plops into water */
+  rodSplash(dist = 5): void {
+    const v = 0.22 * Math.max(0.2, 1 - dist / 18);
+    this.noiseBurst(1000, 0.24, v, 'lowpass', 0.7, 0.4);
+  }
+
+  /** fish bite: short watery bloop + tug */
+  fishBite(): void {
+    this.tone(420, 0.12, 0.24, 'sine', 180);
+    setTimeout(() => this.noiseBurst(800, 0.12, 0.2, 'bandpass', 1.2, 0.6), 60);
+  }
+
+  /** reel click (spinning reel ratchet) */
+  rodReel(): void {
+    this.noiseBurst(2400, 0.05, 0.1, 'highpass', 3);
+    setTimeout(() => this.noiseBurst(2400, 0.04, 0.08, 'highpass', 3), 55);
+  }
+
+  /** fish caught: happy pop + splash */
+  fishCaught(): void {
+    this.pop();
+    setTimeout(() => this.rodSplash(3), 90);
+  }
+
+  // ─── shears ──────────────────────────────────────────────────────────────────
+  /** shear a sheep: double snip */
+  shear(): void {
+    this.noiseBurst(2200, 0.07, 0.22, 'highpass', 2);
+    setTimeout(() => this.noiseBurst(2000, 0.08, 0.2, 'highpass', 2), 120);
+  }
+
+  // ─── enchanting ──────────────────────────────────────────────────────────────
+  /** enchant apply: mystical rising arpeggio + shimmer */
+  enchant(): void {
+    this.tone(520, 0.14, 0.16, 'sine', 780);
+    setTimeout(() => this.tone(660, 0.14, 0.15, 'sine', 990), 110);
+    setTimeout(() => this.tone(880, 0.26, 0.16, 'sine', 1320), 220);
+    setTimeout(() => this.noiseBurst(3200, 0.3, 0.08, 'highpass', 1, 1.4), 240);
+  }
+
   // ─── weather ────────────────────────────────────────────────────────────────
   private rainSrc: AudioBufferSourceNode | null = null;
   private rainGain: GainNode | null = null;

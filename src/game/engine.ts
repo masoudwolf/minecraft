@@ -12,10 +12,11 @@ import { BoatManager, type Boat } from './entities/boats';
 import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
-import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, ITEM } from './items';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, ITEM } from './items';
 import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
 import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
+import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
 import { BlockEntityManager } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
@@ -127,6 +128,13 @@ export class Game {
   private bowCharging = false;
   private bowCharge = 0;
   private bowDrawSoundT = 0;
+  /** fishing: active bobber state (cast while holding a fishing rod) */
+  private fishing: { state: 'fly' | 'float' | 'bite'; x: number; y: number; z: number; vx: number; vy: number; vz: number; nextBite: number; biteT: number } | null = null;
+  private bobberMesh: THREE.Group | null = null;
+  private fishLine: THREE.Line | null = null;
+  /** enchanting: current table session (held item + deterministic offers) */
+  private enchantTarget: { slotRef: HotbarSlot; options: EnchantOption[] } | null = null;
+  private enchantEpoch = 0;
   /** latest mob callbacks (mining attack → hurt→teleport chain) */
   private mobCb: MobCallbacks | null = null;
   /** active lightning bolts (thunderstorm visuals) */
@@ -138,7 +146,7 @@ export class Game {
   private craftOut: HotbarSlot | null = null;
   private cursor: HotbarSlot | null = null;
   private invTable = false;
-  private invHover: { area: 'hotbar' | 'main' | 'craft' | 'container'; idx: number } | null = null;
+  private invHover: { area: 'hotbar' | 'main' | 'craft' | 'container' | 'armor'; idx: number } | null = null;
   private lastInvHash = '';
   private containerKey: string | null = null; // "x,y,z" of open chest/furnace
   private furnaceSyncTimer = 0;
@@ -399,6 +407,7 @@ export class Game {
     this.player.gameMode = save?.gameMode ?? gameMode;
     this.player.flying = save?.flying ?? false;
     this.spawnPoint = save?.spawn ?? null;
+    if (this.spawnPoint) this.mobs.spawnGuard = { x: this.spawnPoint.x, z: this.spawnPoint.z, r: 20 };
     if (save?.blockEntities) this.blockEnts.load(save.blockEntities);
 
     // spawn position
@@ -599,6 +608,11 @@ export class Game {
       if (e.code === 'Escape' || e.code === 'KeyE') { e.preventDefault(); this.closeTrade(); return; }
       return;
     }
+    // enchanting panel open: Escape closes it
+    if (st.enchantOpen && st.screen === 'playing') {
+      if (e.code === 'Escape' || e.code === 'KeyE') { e.preventDefault(); this.closeEnchant(); return; }
+      return;
+    }
     if (st.screen !== 'playing') return;
     this.keys.add(e.code);
     if (e.code === 'F4') {
@@ -683,6 +697,7 @@ export class Game {
     // flash-engage/disengage cycles (headless, alt-tab quirks) must not pause the game.
     if (useGameStore.getState().inv.open) return; // inventory open: world keeps running
     if (useGameStore.getState().tradeOpen) return; // villager trade panel: world keeps running
+    if (useGameStore.getState().enchantOpen) return; // enchanting panel: world keeps running
     if (useGameStore.getState().creatorOpen) return; // cheat panel (F4): world keeps running
     if (
       this.hadLock &&
@@ -704,8 +719,10 @@ export class Game {
 
   private onContextMenu = (e: Event): void => e.preventDefault();
 
-  /** RMB press: bow charge / villager trade / bone meal fertilize / block interaction / place */
+  /** RMB press: bow charge / villager trade / shears / fishing rod / bone meal fertilize / block interaction / place */
   private rightClick(): void {
+    const st = useGameStore.getState();
+    if (st.tradeOpen || st.enchantOpen || st.inv.open) return;
     const held = this.player.hotbar[this.player.selected];
     if (held && held.count > 0 && isBowItem(held.blockId)) {
       if (!this.bowCharging) {
@@ -729,6 +746,45 @@ export class Game {
         this.openTrade(hit.mob);
         return;
       }
+    }
+    // shears: shear a sheep in reach (drops its color's wool)
+    if (held && held.count > 0 && isShearsItem(held.blockId) && this.mobs) {
+      const p = this.player;
+      const eye = { x: p.x, y: p.eyeY(), z: p.z };
+      const dir = p.forwardVector();
+      const hit = this.ridingBoat ? null : this.mobs.raycastMob(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 3.4);
+      if (hit && hit.mob.type === 'sheep') {
+        const res = this.mobs.shearSheep(hit.mob);
+        if (res) {
+          for (let i = 0; i < res.count; i++) this.drops.spawn(res.woolId, hit.mob.x, hit.mob.y + 0.6, hit.mob.z, 1);
+          audio.shear();
+          this.achievements.unlock('shearBrilliance');
+          // shears wear (Unbreaking-aware like tools)
+          const sdef = getShearsDef(held.blockId);
+          if (sdef && !this.player.isCreative) {
+            if (!unbreakingKeep(held.ench?.unbreaking ?? 0)) {
+              held.dur = (held.dur ?? sdef.dur) - 1;
+              if (held.dur <= 0) {
+                this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+                audio.breakBlock('glass');
+                this.showToast('Your shears broke!');
+                this.updateHandMesh(true);
+              }
+            }
+          }
+          this.syncHUD();
+          this.syncInventory();
+          this.updateHandMesh();
+          this.placeCooldown = 0.3;
+          this.startSwing();
+          return;
+        }
+      }
+    }
+    // fishing rod: cast / reel / catch
+    if (held && held.count > 0 && isRodItem(held.blockId)) {
+      this.rodInteract();
+      return;
     }
     // mount a nearby boat (before placing a new one)
     if (!this.player.sneaking && !this.ridingBoat) {
@@ -1068,6 +1124,229 @@ export class Game {
     return isItemId(id) ? (getItemDef(id)?.name ?? 'item') : (getBlockDef(id)?.name ?? 'block');
   }
 
+  // ── fishing (fishing rod: cast → wait → bite window → catch) ────────────────
+  /** RMB with a fishing rod: cast, or reel in (catch when biting) */
+  private rodInteract(): void {
+    if (!this.fishing) {
+      const p = this.player;
+      const fwd = p.forwardVector();
+      this.fishing = {
+        state: 'fly',
+        x: p.x + fwd.x * 0.6, y: p.eyeY() - 0.2 + fwd.y * 0.6, z: p.z + fwd.z * 0.6,
+        vx: fwd.x * 11, vy: fwd.y * 11 + 2.2, vz: fwd.z * 11,
+        nextBite: 0, biteT: 0,
+      };
+      this.ensureBobberVisual();
+      audio.rodCast();
+      this.startSwing();
+      return;
+    }
+    if (this.fishing.state === 'bite') {
+      this.catchFish();
+    } else {
+      this.endFishing();
+      audio.rodReel();
+    }
+  }
+
+  private ensureBobberVisual(): void {
+    if (this.bobberMesh) return;
+    const g = new THREE.Group();
+    const red = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), new THREE.MeshLambertMaterial({ color: 0xd8382e }));
+    red.position.y = 0.04;
+    const white = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.14), new THREE.MeshLambertMaterial({ color: 0xf4f4f4 }));
+    white.position.y = -0.04;
+    g.add(red, white);
+    this.scene.add(g);
+    this.bobberMesh = g;
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    this.fishLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xdddddd }));
+    this.scene.add(this.fishLine);
+  }
+
+  private endFishing(): void {
+    if (this.fishLine) {
+      this.scene.remove(this.fishLine);
+      this.fishLine.geometry.dispose();
+      (this.fishLine.material as THREE.Material).dispose();
+      this.fishLine = null;
+    }
+    if (this.bobberMesh) {
+      this.scene.remove(this.bobberMesh);
+      this.bobberMesh = null;
+    }
+    this.fishing = null;
+  }
+
+  private updateFishing(dt: number): void {
+    const f = this.fishing;
+    if (!f || !this.bobberMesh || !this.fishLine) return;
+    const held = this.player.hotbar[this.player.selected];
+    if (!held || held.count <= 0 || !isRodItem(held.blockId) || this.player.dead) { this.endFishing(); return; }
+    const dist = Math.hypot(f.x - this.player.x, f.z - this.player.z);
+    if (dist > 26) { this.endFishing(); return; }
+
+    if (f.state === 'fly') {
+      // projectile arc toward the aim point
+      f.vy -= 18 * dt;
+      f.x += f.vx * dt; f.y += f.vy * dt; f.z += f.vz * dt;
+      const bx = Math.floor(f.x), by = Math.floor(f.y), bz = Math.floor(f.z);
+      const bid = this.world.getBlock(bx, by, bz);
+      if (isWaterId(bid)) {
+        f.state = 'float';
+        f.y = by + 0.9;
+        f.vx = 0; f.vy = 0; f.vz = 0;
+        const lure = lureFactor(held.ench);
+        const rain = this.weather.raining ? 0.75 : 1; // MC: rain bites faster
+        f.nextBite = (5 + Math.random() * 14) * lure * rain;
+        audio.rodSplash(dist);
+        this.particles.burstLand(f.x, by + 1, f.z, [0.55, 0.7, 0.95], 8);
+      } else if (bid !== BLOCK.AIR) {
+        // snagged on land: the line snaps back (no cost)
+        this.endFishing();
+        return;
+      }
+    } else {
+      // floating: bob gently; bite window after the wait
+      if (f.state === 'bite') {
+        f.biteT -= dt;
+        if (f.biteT <= 0) {
+          f.state = 'float';
+          f.nextBite = 4 + Math.random() * 10; // missed — fish may return
+        }
+      } else {
+        f.nextBite -= dt;
+        if (f.nextBite <= 0) {
+          f.state = 'bite';
+          f.biteT = 1.4;
+          audio.fishBite();
+          this.particles.burstLand(f.x, f.y, f.z, [0.55, 0.7, 0.95], 5);
+        }
+      }
+    }
+
+    // visuals: bobber (dips while biting) + line from the rod hand
+    this.bobberMesh.position.set(f.x, f.y + (f.state === 'bite' ? -0.12 : Math.sin(performance.now() / 300) * 0.02), f.z);
+    this.bobberMesh.rotation.y += dt * 2;
+    const p = this.player;
+    const hand = new THREE.Vector3(p.x, p.eyeY() - 0.32, p.z);
+    hand.x += -Math.cos(p.yaw) * 0.34 - Math.sin(p.yaw) * 0.24;
+    hand.z += Math.sin(p.yaw) * 0.34 - Math.cos(p.yaw) * 0.24;
+    const posAttr = this.fishLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+    posAttr.setXYZ(0, hand.x, hand.y, hand.z);
+    posAttr.setXYZ(1, this.bobberMesh.position.x, this.bobberMesh.position.y, this.bobberMesh.position.z);
+    posAttr.needsUpdate = true;
+  }
+
+  /** fish on! loot roll (fish / junk / treasure, Luck of the Sea shifts treasure) */
+  private catchFish(): void {
+    const f = this.fishing;
+    if (!f || f.state !== 'bite') return;
+    const held = this.player.hotbar[this.player.selected];
+    const luck = luckBonus(held?.ench);
+    const roll = Math.random();
+    const treasureShare = 0.10 + luck;
+    const junkShare = 0.18;
+    let loot: { id: number; count: number };
+    if (roll < treasureShare) {
+      const t = Math.random();
+      loot = t < 0.4 ? { id: ITEM.IRON_INGOT, count: 1 } : t < 0.7 ? { id: ITEM.GOLD_INGOT, count: 1 } : t < 0.85 ? { id: ITEM.ARROW, count: 3 } : t < 0.95 ? { id: ITEM.BOOK, count: 1 } : { id: ITEM.DIAMOND, count: 1 };
+    } else if (roll < treasureShare + junkShare) {
+      const t = Math.random();
+      loot = t < 0.35 ? { id: ITEM.STICK, count: 2 } : t < 0.6 ? { id: ITEM.STRING, count: 1 } : t < 0.8 ? { id: ITEM.BONE, count: 1 } : t < 0.92 ? { id: ITEM.LEATHER, count: 1 } : { id: ITEM.ROTTEN_FLESH, count: 1 };
+    } else {
+      loot = Math.random() < 0.65 ? { id: ITEM.RAW_COD, count: 1 } : { id: ITEM.RAW_SALMON, count: 1 };
+    }
+    const left = this.addToInventory(loot.id, loot.count);
+    if (left > 0) this.drops.spawn(loot.id, this.player.x, this.player.y + 1, this.player.z, left);
+    this.showToast('Caught ' + this.itemLabel(loot.id) + (loot.count > 1 ? ' ×' + loot.count : ''));
+    audio.fishCaught();
+    this.achievements.unlock('fisherman');
+    if (loot.id === ITEM.RAW_COD || loot.id === ITEM.RAW_SALMON) this.addXP(1 + Math.floor(Math.random() * 3));
+    // rod durability (1 per catch, MC-style; Unbreaking works)
+    if (held && !this.player.isCreative) {
+      const rdef = getRodDef(held.blockId);
+      if (rdef && !unbreakingKeep(held.ench?.unbreaking ?? 0)) {
+        held.dur = (held.dur ?? rdef.dur) - 1;
+        if (held.dur <= 0) {
+          this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+          audio.breakBlock('glass');
+          this.showToast('Your fishing rod broke!');
+          this.updateHandMesh(true);
+        }
+      }
+    }
+    this.endFishing();
+    this.syncHUD();
+    this.syncInventory();
+    this.updateHandMesh();
+  }
+
+  // ── enchanting table (MC-like: held item + 3 lapis/XP offers) ────────────────
+  openEnchant(): void {
+    const st = useGameStore.getState();
+    if (st.screen !== 'playing' || st.inv.open || st.tradeOpen || st.enchantOpen) return;
+    const slot = this.player.hotbar[this.player.selected];
+    if (!slot || slot.count <= 0 || !isEnchantable(slot.blockId)) {
+      this.showToast('Hold an enchantable item!');
+      return;
+    }
+    audio.click();
+    this.enchantEpoch++;
+    this.enchantTarget = { slotRef: slot, options: enchantOptions(slot.blockId, this.enchantEpoch) };
+    st.setEnchantOpen(true);
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  closeEnchant(): void {
+    const st = useGameStore.getState();
+    if (!st.enchantOpen) return;
+    st.setEnchantOpen(false);
+    this.enchantTarget = null;
+    if (st.screen === 'playing') this.requestLock();
+  }
+
+  /** snapshot for the panel: held item + offers + lapis/XP resources */
+  getEnchantState(): { itemId: number; options: EnchantOption[]; lapis: number; xpLevel: number; canEnchant: boolean } | null {
+    const t = this.enchantTarget;
+    if (!t) return null;
+    const held = this.player.hotbar[this.player.selected];
+    if (!held || held.count <= 0) return null;
+    return { itemId: held.blockId, options: t.options, lapis: this.countItem(ITEM.LAPIS_LAZULI), xpLevel: this.player.level, canEnchant: isEnchantable(held.blockId) };
+  }
+
+  /** public read of the currently held hotbar slot (enchant panel, QA) */
+  getHeldSlot(): HotbarSlot | null {
+    const s = this.player.hotbar[this.player.selected];
+    return s && s.count > 0 ? s : null;
+  }
+
+  /** apply offer idx to the held item (lapis + XP cost; offers reroll after) */
+  applyEnchant(idx: number): void {
+    const t = this.enchantTarget;
+    if (!t) return;
+    const opt = t.options[idx];
+    if (!opt) return;
+    const slot = t.slotRef;
+    if (!slot || slot.count <= 0) return;
+    if (this.countItem(ITEM.LAPIS_LAZULI) < opt.lapis) { this.showToast('Not enough Lapis Lazuli!'); return; }
+    if (this.player.level < opt.levels) { this.showToast(`Needs ${opt.levels} XP levels!`); return; }
+    const cur = { ...(slot.ench ?? {}) };
+    cur[opt.enchId] = Math.max(cur[opt.enchId] ?? 0, opt.level);
+    slot.ench = cur;
+    this.consumeItem(ITEM.LAPIS_LAZULI, opt.lapis);
+    this.player.level = Math.max(0, this.player.level - opt.levels);
+    audio.enchant();
+    this.achievements.unlock('enchanter');
+    this.showToast(opt.label + ' applied!');
+    // MC rerolls the offers after each enchant
+    this.enchantEpoch++;
+    t.options = enchantOptions(slot.blockId, this.enchantEpoch);
+    this.syncHUD(true);
+    this.syncInventory(true);
+    this.updateHandMesh();
+  }
+
   // ── lightning (weather thunderstorm callback) ─────────────────────────────
   private spawnLightningBolt(x: number, y: number, z: number): void {
     const group = new THREE.Group();
@@ -1156,10 +1435,12 @@ export class Game {
     }
     const fwd = p.forwardVector();
     const speed = 14 + 40 * Math.min(1, charge);
-    const dmg = Math.max(1, Math.round(2 + 7 * Math.min(1, charge)));
+    // Power: +1 dmg per level on the drawn bow
+    const heldSlot = p.hotbar[p.selected];
+    const dmg = Math.max(1, Math.round(2 + 7 * Math.min(1, charge) + powerBonus(heldSlot?.ench)));
     this.mobs.shootPlayerArrow(p.x, p.eyeY() - 0.08, p.z, fwd.x, fwd.y, fwd.z, speed, dmg);
     // bow durability
-    const slot = p.hotbar[p.selected];
+    const slot = heldSlot;
     const bow = slot ? getBowDef(slot.blockId) : undefined;
     if (bow && !p.isCreative) {
       slot.dur = (slot.dur ?? bow.dur) - 1;
@@ -1272,7 +1553,9 @@ export class Game {
         this.startSwing();
         const kx = hit.mob.x - this.player.x;
         const kz = hit.mob.z - this.player.z;
-        const killed = this.mobs.hurtMob(hit.mob, heldTool ? heldTool.dmg : 2, kx, kz, this.mobCb ?? undefined);
+        // Sharpness: +1 dmg per level (sword/axe)
+        const melee = (heldTool ? heldTool.dmg : 2) + (heldTool ? sharpnessBonus(heldSlot?.ench) : 0);
+        const killed = this.mobs.hurtMob(hit.mob, melee, kx, kz, this.mobCb ?? undefined);
         if (killed && hit.mob.def.hostile) this.achievements.unlock('monsterHunter');
         this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
         this.damageTool(heldTool && heldTool.type !== 'sword' ? 2 : 1);
@@ -1315,7 +1598,9 @@ export class Game {
     const def = getBlockDef(t.id);
     if (!def) { this.crackMesh.visible = false; return; }
     const bi = breakInfo(def, heldTool);
-    const time = this.instantBreak ? 0.04 : bi.time; // cheat: instant break
+    // Efficiency: faster mining on the matching tool (−30%/lvl)
+    const effF = heldTool && heldSlot?.ench ? efficiencyFactor(heldSlot.ench) : 1;
+    const time = this.instantBreak ? 0.04 : bi.time * effF; // cheat: instant break
     const harvest = bi.harvest;
     if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
     this.mineProgress += dt / time;
@@ -1343,6 +1628,17 @@ export class Game {
       if (harvest && t.id === BLOCK.TALL_GRASS && Math.random() < 0.2) actualDrop = ITEM.SEEDS;
       if (harvest && actualDrop && actualDrop > 0) {
         this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+        // Fortune: chance of an extra gem (MC-lite)
+        const fl = heldSlot?.ench?.fortune ?? 0;
+        if (fl > 0 && (t.id === BLOCK.COAL_ORE || t.id === BLOCK.DIAMOND_ORE || t.id === BLOCK.LAPIS_ORE) && Math.random() < fortuneChance(fl)) {
+          this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+        }
+      }
+      // lapis ore drops 4-8 gems (+Fortune), MC-style (the default drop is 1)
+      if (harvest && t.id === BLOCK.LAPIS_ORE) {
+        const fl = heldSlot?.ench?.fortune ?? 0;
+        const extra = 3 + Math.floor(Math.random() * 5) + (fl > 0 ? Math.floor(Math.random() * (fl + 1)) : 0);
+        for (let i2 = 0; i2 < extra; i2++) this.drops.spawn(ITEM.LAPIS_LAZULI, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
       }
       // mature wheat: grain + seeds for replanting
       if (harvest && t.id === BLOCK.WHEAT_STAGE3) {
@@ -1352,7 +1648,7 @@ export class Game {
         this.achievements.unlock('harvest');
       }
       // XP from ores
-      const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
+      const oreXp = t.id === BLOCK.COAL_ORE ? 1 : t.id === BLOCK.IRON_ORE ? 1 : t.id === BLOCK.LAPIS_ORE ? 3 : t.id === BLOCK.GOLD_ORE ? 2 : t.id === BLOCK.DIAMOND_ORE ? 5 : 0;
       if (oreXp > 0) {
         const n = 1 + Math.floor(Math.random() * oreXp);
         for (let i = 0; i < n; i++) this.xpOrbs.spawn(t.x + 0.5, t.y + 0.4, t.z + 0.5, oreXp);
@@ -1401,6 +1697,7 @@ export class Game {
     const targetId = this.world.getBlock(this.target.x, this.target.y, this.target.z);
     if (!this.player.sneaking) {
       if (targetId === BLOCK.CRAFTING_TABLE) { this.openInventory(true); return; }
+      if (targetId === BLOCK.ENCHANTING_TABLE) { this.openEnchant(); return; }
       const cont = containerOf(targetId);
       if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
       if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
@@ -1643,6 +1940,7 @@ export class Game {
   /** right-click on bed: set spawn + skip night */
   private sleepInBed(x: number, y: number, z: number): void {
     this.spawnPoint = { x: x + 0.5, y: y + 0.6, z: z + 0.5 };
+    if (this.mobs) this.mobs.spawnGuard = { x: this.spawnPoint.x, z: this.spawnPoint.z, r: 20 };
     const dayFrac = this.sky.time / DAY_LENGTH; // 0=midnight .25=sunrise .5=noon .75=sunset
     const night = dayFrac > 0.72 || dayFrac < 0.22;
     if (night) {
@@ -1703,9 +2001,9 @@ export class Game {
   }
 
   /** add to hotbar first, then main inventory. Returns leftover count. */
-  private addToInventory(id: number, count: number, dur?: number): number {
-    let left = addToSlots(this.player.hotbar, id, count, dur);
-    if (left > 0) left = addToSlots(this.player.main, id, left, dur);
+  private addToInventory(id: number, count: number, dur?: number, ench?: Record<string, number>): number {
+    let left = addToSlots(this.player.hotbar, id, count, dur, ench);
+    if (left > 0) left = addToSlots(this.player.main, id, left, dur, ench);
     return left;
   }
 
@@ -1964,8 +2262,8 @@ export class Game {
   private shiftFromContainer(list: HotbarSlot[], idx: number): void {
     const slot = list[idx];
     if (isEmptySlot(slot)) return;
-    let left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur);
-    if (left > 0) left = addToSlots(this.player.main, slot.blockId, left, slot.dur);
+    let left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur, slot.ench);
+    if (left > 0) left = addToSlots(this.player.main, slot.blockId, left, slot.dur, slot.ench);
     if (left <= 0) list[idx] = emptySlot();
     else slot.count = left;
     audio.pop();
@@ -2081,11 +2379,11 @@ export class Game {
     }
     let left: number;
     if (area === 'hotbar') {
-      left = addToSlots(this.player.main, slot.blockId, slot.count, slot.dur);
+      left = addToSlots(this.player.main, slot.blockId, slot.count, slot.dur, slot.ench);
     } else {
       // main/craft -> hotbar first, then main (craft items go home)
-      left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur);
-      if (left > 0 && area === 'main') left = addToSlots(this.player.main, slot.blockId, left, slot.dur);
+      left = addToSlots(this.player.hotbar, slot.blockId, slot.count, slot.dur, slot.ench);
+      if (left > 0 && area === 'main') left = addToSlots(this.player.main, slot.blockId, left, slot.dur, slot.ench);
     }
     if (left <= 0) list[idx] = emptySlot();
     else slot.count = left;
@@ -2159,6 +2457,8 @@ export class Game {
     if (!slot || slot.count <= 0 || !isItemId(slot.blockId)) return;
     const tool = getToolDef(slot.blockId);
     if (!tool) return;
+    // Unbreaking: the wear tick is ignored with MC's keep chance
+    if (unbreakingKeep(slot.ench?.unbreaking ?? 0)) return;
     slot.dur = (slot.dur ?? tool.dur) - n;
     if (slot.dur <= 0) {
       this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
@@ -2778,6 +3078,8 @@ export class Game {
 
     // block entities (furnace smelting etc.)
     this.blockEnts.tick(dt);
+    // fishing bobber physics + bite timing
+    this.updateFishing(dt);
     // primed TNT fuses + explosions
     this.updatePrimedTnt(dt);
     // lightning bolt visuals (thunderstorm)

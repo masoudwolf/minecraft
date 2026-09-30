@@ -29,6 +29,10 @@ export const ACHIEVEMENTS: Record<string, AchievementDef> = {
   plowman: { id: 'plowman', title: 'Plowman', desc: 'Till the earth with a hoe', iconTile: 67 },
   harvest: { id: 'harvest', title: 'The Harvest', desc: 'Harvest fully-grown wheat', iconTile: 72 },
   bakeBread: { id: 'bakeBread', title: 'Bake Bread', desc: 'Craft bread from three wheat', iconTile: 5 },
+  // phase 11: fishing / shears / enchanting
+  fisherman: { id: 'fisherman', title: 'Fisherman', desc: 'Catch a fish with a fishing rod', iconTile: 12 },
+  shearBrilliance: { id: 'shearBrilliance', title: 'Shear Brilliance', desc: 'Shear a sheep with shears', iconTile: 48 },
+  enchanter: { id: 'enchanter', title: 'Enchanter', desc: 'Enchant an item at the table', iconTile: 76 },
 };
 
 export class AchievementManager {

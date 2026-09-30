@@ -36,6 +36,8 @@ export interface MobParts {
   arms: THREE.Mesh[];
   materials: THREE.MeshLambertMaterial[];
   shadow: THREE.Mesh;
+  /** sheep fleece layer meshes — hidden while sheared (regrows over time) */
+  fleece?: THREE.Mesh[];
 }
 
 interface Mob extends AABBEntity {
@@ -63,6 +65,10 @@ interface Mob extends AABBEntity {
   waterHurtT: number;
   /** sheep wool color variant ('' = default white) */
   variant: string;
+  /** sheep: fleece has been sheared off (regrows after woolRegrowT) */
+  sheared?: boolean;
+  /** sheep: seconds until the fleece grows back */
+  woolRegrowT?: number;
   dead: boolean;
   deathT: number;
   wanderX: number;
@@ -84,6 +90,8 @@ export interface SavedMob {
   yaw: number;
   /** sheep wool color variant (white/light_gray/gray/brown/black) */
   variant?: string;
+  /** sheep: fleece sheared off (regrows on its own after load) */
+  sheared?: boolean;
 }
 
 interface Arrow {
@@ -153,7 +161,7 @@ function collectMatsDeep(obj: THREE.Object3D, list: THREE.MeshLambertMaterial[],
  * optionally adds an inflated fleece box (sheep) that rides the swing; like
  * vanilla, the fleece leg wraps only the UPPER HALF of the leg.
  */
-function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }): THREE.Group {
+function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number, hipY: number, hipZ: number, side = 0, furPart?: { part: MobSkinPart; inflate: number }, furOut?: THREE.Mesh[]): THREE.Group {
   const pivot = new THREE.Group();
   pivot.position.set(hipX, hipY, hipZ);
   pivot.userData.side = side;
@@ -166,6 +174,7 @@ function legPivot(p: MobSkinPart, w: number, h: number, d: number, hipX: number,
     const fur = boxPart(furPart.part, w + f * 2, furH, d + f * 2, 'fur');
     leg.add(fur);
     fur.position.y = h / 2 - furH / 2 + f * 0.5; // top-aligned wrap
+    furOut?.push(fur);
   }
   return pivot;
 }
@@ -239,6 +248,7 @@ function quadruped(skins: MobSkins, opts: {
   const px = 1 / 16;
   const group = new THREE.Group();
   const mats: THREE.MeshLambertMaterial[] = [];
+  const fleece: THREE.Mesh[] = [];
   // VANILLA body construction (CowModel/PigModel/SheepModel): the body box is
   // built VERTICAL (lay.w × lay.h × lay.d) with its UV cross laid out for that
   // orientation, then rotated 90° about X. Reproducing the rotation puts every
@@ -263,6 +273,7 @@ function quadruped(skins: MobSkins, opts: {
     const furBody = boxPart(opts.fur.body, (fl.w + 3.5) * px, (fl.h + 3.5) * px, (fl.d + 3.5) * px, 'fur');
     body.add(furBody);
     collectMats(mats, furBody);
+    fleece.push(furBody);
   }
   if (opts.udder) {
     // vanilla CowModel udder: a 4×6×1 box ON the body part's local front face;
@@ -286,6 +297,7 @@ function quadruped(skins: MobSkins, opts: {
     furHead.position.set(0, 0, -1 * px);
     head.add(furHead);
     collectMats(mats, furHead);
+    fleece.push(furHead);
   }
   if (opts.horns) {
     // vanilla cow horns: 1×3×1 boxes at the head's upper corners
@@ -302,13 +314,13 @@ function quadruped(skins: MobSkins, opts: {
     // the leg hangs exactly to the ground — no gap, swings from the top
     const z = sz === -1 ? opts.legZFront : opts.legZHind;
     const pivot = legPivot(skins.limb, opts.legW, opts.legH, opts.legW, sx * opts.legX, opts.legH, z, sx,
-      opts.fur ? { part: opts.fur.limb, inflate: opts.fur.inflate } : undefined);
+      opts.fur ? { part: opts.fur.limb, inflate: opts.fur.inflate } : undefined, fleece);
     group.add(pivot);
     legs.push(pivot as unknown as THREE.Mesh);
   }
   for (const mesh of [body, head]) collectMats(mats, mesh);
   for (const pv of legs) collectMatsDeep(pv, mats);
-  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh };
+  return { group, head, legs, arms: [], materials: mats, shadow: null as unknown as THREE.Mesh, fleece: opts.fur ? fleece : undefined };
 }
 
 function humanoid(skins: MobSkins, thin = false): MobParts {
@@ -903,6 +915,8 @@ export class MobManager {
   private time = 0;
   /** most recent callbacks (for hurt→teleport outside update loop) */
   private lastCb: MobCallbacks | null = null;
+  /** world spawn safety zone: no hostile spawns inside (engine sets from spawnPoint) */
+  spawnGuard: { x: number; z: number; r: number } | null = null;
 
   constructor(scene: THREE.Scene, world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string }) {
     this.scene = scene;
@@ -944,6 +958,22 @@ export class MobManager {
     return best;
   }
 
+  /** show/hide the sheep's fleece layer (sheared look) */
+  private setSheared(m: Mob, sheared: boolean): void {
+    m.sheared = sheared;
+    for (const mesh of m.parts.fleece ?? []) mesh.visible = !sheared;
+  }
+
+  /** shear a sheep with shears → wool matching its color; null when not shearable */
+  shearSheep(m: Mob): { woolId: number; count: number } | null {
+    if (m.type !== 'sheep' || m.dead || m.sheared) return null;
+    const woolId = sheepWoolId(m.variant);
+    const count = 1 + Math.floor(Math.random() * 3); // MC: 1-3 wool
+    this.setSheared(m, true);
+    m.woolRegrowT = 45 + Math.random() * 45; // fleece regrows in 45-90s
+    return { woolId, count };
+  }
+
   /** serialize live mobs for the world save (excludes dying) */
   serialize(): SavedMob[] {
     const out: SavedMob[] = [];
@@ -955,6 +985,7 @@ export class MobManager {
         health: Math.max(1, Math.round(m.health)),
         yaw: +m.yaw.toFixed(2),
         ...(m.variant ? { variant: m.variant } : {}),
+        ...(m.sheared ? { sheared: true } : {}),
       });
       if (out.length >= 28) break;
     }
@@ -971,6 +1002,7 @@ export class MobManager {
         m.health = Math.max(1, Math.min(m.def.health, Math.round(s.health)));
         m.yaw = Number.isFinite(s.yaw) ? s.yaw : m.yaw;
         m.targetYaw = m.yaw;
+        if (s.sheared && m.type === 'sheep') this.setSheared(m, true);
       }
     }
     this.spawnTimer = 6;
@@ -1024,6 +1056,8 @@ export class MobManager {
       fuse: -1, dead: false, deathT: 0,
       provoked: false, teleportCd: 0, waterHurtT: 0,
       variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : type === 'knight' ? (variant || 'cyber') : '',
+      sheared: false,
+      woolRegrowT: 0,
       wanderX: x, wanderZ: z,
       tintR: 1, tintG: 1, tintB: 1,
       lightF: 1, lastAppliedF: 1,
@@ -1068,6 +1102,11 @@ export class MobManager {
     const blkL = l & 15;
     const effLight = Math.max(blkL, skyL * sunLevel);
 
+    // world-spawn safety zone: hostiles never roll inside it (keeps the
+    // spawn area playable at night — MC has a similar peaceful spawn radius)
+    const g = this.spawnGuard;
+    const nearSpawn = g ? Math.hypot(x - g.x, z - g.z) < g.r : false;
+
     // villagers live on village grounds (planks / cobblestone); mooshrooms on mycelium
     if (groundId === BLOCK.PLANKS || groundId === BLOCK.COBBLESTONE) {
       // swamp planks/cobble = witch hut grounds: keep a witch around (day or night)
@@ -1100,7 +1139,7 @@ export class MobManager {
       return;
     }
 
-    const wantHostile = hostileCount < 12 && (effLight < 6);
+    const wantHostile = hostileCount < 12 && effLight < 6 && !nearSpawn;
     const wantPassive = passiveCount < 10 && skyL >= 9 && sunLevel > 0.55 && (groundId === BLOCK.GRASS || groundId === BLOCK.SNOW_GRASS);
 
     if (wantHostile && (!wantPassive || Math.random() < 0.65)) {
@@ -1310,6 +1349,12 @@ export class MobManager {
       if (m.ambientCd <= 0 && distToPlayer < 18) {
         m.ambientCd = 5 + Math.random() * 9;
         audio.mobAmbient(m.def.sound, distToPlayer);
+      }
+
+      // sheep fleece regrowth (sheared wool grows back over time)
+      if (m.type === 'sheep' && m.sheared) {
+        m.woolRegrowT = (m.woolRegrowT ?? 0) - dt;
+        if (m.woolRegrowT <= 0) this.setSheared(m, false);
       }
 
       // ── AI ──

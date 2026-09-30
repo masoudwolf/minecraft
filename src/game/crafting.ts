@@ -1,6 +1,6 @@
 // ─── Crafting: recipe registry + shaped/shapeless matcher ────────────────────
 import { BLOCK } from './blocks';
-import { ITEM, isToolItem, isArmorItem, isBowItem, getToolDef, getArmorDef, getBowDef } from './items';
+import { ITEM, isToolItem, isArmorItem, isBowItem, isRodItem, isShearsItem, getToolDef, getArmorDef, getBowDef, getRodDef, getShearsDef } from './items';
 
 export interface CraftResult {
   id: number;
@@ -35,6 +35,8 @@ const W = BLOCK.WOOL;
 const ST = ITEM.STRING;
 const F = ITEM.FLINT;
 const FE = ITEM.FEATHER;
+const O = BLOCK.OBSIDIAN;
+const CANE = BLOCK.SUGARCANE;
 
 function shaped(w: number, h: number, cells: number[], id: number, count = 1): ShapedRecipe {
   return { kind: 'shaped', w, h, cells, out: { id, count } };
@@ -91,6 +93,19 @@ export const RECIPES: Recipe[] = [
   shaped(1, 3, [F, S, FE], ITEM.ARROW, 4),
   // bone meal: 1 bone → 3 (shapeless, MC ratio)
   shapeless([ITEM.BONE], ITEM.BONEMEAL, 3),
+  // shears: 2 iron ingots (MC pattern, diagonal)
+  shaped(2, 2, [I, 0, 0, I], ITEM.SHEARS),
+  // fishing rod: sticks diagonal + 2 strings on the right (MC pattern)
+  shaped(3, 3, [0, 0, S, 0, S, ST, S, 0, ST], ITEM.FISHING_ROD),
+  // ── enchanting (paper → book → bookshelf / table) ──
+  // paper: 3 sugarcane in a row → 3 (MC)
+  shaped(3, 1, [CANE, CANE, CANE], ITEM.PAPER, 3),
+  // book: paper / paper / leather column (MC)
+  shaped(1, 3, [ITEM.PAPER, ITEM.PAPER, L], ITEM.BOOK),
+  // bookshelf: planks / books / planks (MC, needs table)
+  shaped(3, 3, [P, P, P, ITEM.BOOK, ITEM.BOOK, ITEM.BOOK, P, P, P], BLOCK.BOOKSHELF),
+  // enchanting table: book / diamonds / obsidian (MC pattern)
+  shaped(3, 3, [0, ITEM.BOOK, 0, D, D, D, O, O, O], BLOCK.ENCHANTING_TABLE),
   // ── wooden tools ──
   pickaxe(P, ITEM.WOOD_PICKAXE),
   axe(P, ITEM.WOOD_AXE),
@@ -211,10 +226,12 @@ export function needsTable(recipe: Recipe): boolean {
   return recipe.kind === 'shaped' ? recipe.w > 2 || recipe.h > 2 : recipe.ids.length > 4;
 }
 
-/** full durability for a fresh tool, bow or armor piece (0 when neither) */
+/** full durability for a fresh tool, bow, rod, shears or armor piece (0 when neither) */
 export function freshDur(id: number): number | undefined {
   if (isToolItem(id)) return getToolDef(id)?.dur ?? 0;
   if (isArmorItem(id)) return getArmorDef(id)?.dur ?? 0;
   if (isBowItem(id)) return getBowDef(id)?.dur ?? 0;
+  if (isRodItem(id)) return getRodDef(id)?.dur ?? 0;
+  if (isShearsItem(id)) return getShearsDef(id)?.dur ?? 0;
   return undefined;
 }

@@ -1,11 +1,13 @@
 'use client';
 
 // ─── Inventory screen (E): creative palette, 2x2 crafting, table 3x3, chest 27, furnace ─
-// Minecraft-style: live 3D player preview (head tracks the cursor), recipe book.
+// Minecraft-style: live 3D player preview (head tracks the cursor), recipe book,
+// enchant glint + purple enchant tooltip lines.
 import { useEffect, useMemo, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { getEngine } from '@/game/engine';
 import { getToolDef, getArmorDef, isItemId } from '@/game/items';
+import { enchantLine } from '@/game/enchanting';
 import { creativePalette, creativeTabs, type CreativeCat } from '@/game/creativeItems';
 import type { InvSlot } from '@/game/inventory';
 import { slotIconUrl, slotName } from './slotIcon';
@@ -57,6 +59,13 @@ function Slot({
           className="h-[36px] w-[36px]"
           style={{ imageRendering: 'pixelated' }}
           draggable={false}
+        />
+      )}
+      {slot?.ench && Object.keys(slot.ench).length > 0 && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'linear-gradient(135deg, rgba(220,160,255,0.65), rgba(130,60,210,0.35))', mixBlendMode: 'screen' }}
+          aria-hidden
         />
       )}
       {slot && slot.count > 1 && (
@@ -125,7 +134,7 @@ function Flame({ level }: { level: number }) {
 export function InventoryScreen() {
   const inv = useGameStore((s) => s.inv);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
-  const [hoverInfo, setHoverInfo] = useState<{ id: number; x: number; y: number; name: string } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ id: number; x: number; y: number; name: string; ench?: Record<string, number> } | null>(null);
   const [palette] = useState(() => creativePalette());
   const [tabs] = useState(() => creativeTabs());
   const [tab, setTab] = useState<CreativeCat>('all');
@@ -156,13 +165,14 @@ export function InventoryScreen() {
     else eng?.setInvHover(null);
     if (a) {
       let id = 0;
-      if (a === 'hotbar') id = inv.hotbar[i]?.blockId ?? 0;
-      else if (a === 'main') id = inv.main[i]?.blockId ?? 0;
-      else if (a === 'craft') id = inv.craft[i]?.blockId ?? 0;
-      else if (a === 'container') id = inv.containerSlots[i]?.blockId ?? 0;
-      else if (a === 'armor') id = inv.armor[i]?.blockId ?? 0;
-      else if (a === 'out') id = inv.craftOut?.blockId ?? 0;
-      setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y, name: slotName(id) } : null);
+      let ench: Record<string, number> | undefined;
+      if (a === 'hotbar') { id = inv.hotbar[i]?.blockId ?? 0; ench = inv.hotbar[i]?.ench; }
+      else if (a === 'main') { id = inv.main[i]?.blockId ?? 0; ench = inv.main[i]?.ench; }
+      else if (a === 'craft') { id = inv.craft[i]?.blockId ?? 0; ench = inv.craft[i]?.ench; }
+      else if (a === 'container') { id = inv.containerSlots[i]?.blockId ?? 0; ench = inv.containerSlots[i]?.ench; }
+      else if (a === 'armor') { id = inv.armor[i]?.blockId ?? 0; ench = inv.armor[i]?.ench; }
+      else if (a === 'out') { id = inv.craftOut?.blockId ?? 0; }
+      setHoverInfo(id > 0 ? { id, x: mouse.x, y: mouse.y, name: slotName(id), ench } : null);
     } else {
       setHoverInfo(null);
     }
@@ -302,6 +312,18 @@ export function InventoryScreen() {
               <span className="text-[11px]" style={{ fontFamily: 'var(--font-mc)', color: '#5a5a5a' }}>
                 Click an item to grab a stack · X slot destroys
               </span>
+              {/* live 3D player preview in creative mode too (MC shows it) */}
+              <div
+                className="ml-auto hidden items-end justify-center rounded-sm sm:flex"
+                style={{
+                  width: 92,
+                  height: 158,
+                  background: 'radial-gradient(ellipse at 50% 30%, #a9c4cf 0%, #8fa8b4 70%, #7e96a3 100%)',
+                  boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff',
+                }}
+              >
+                <InventoryPlayer3D width={86} />
+              </div>
             </div>
           </div>
         )}
@@ -367,7 +389,7 @@ export function InventoryScreen() {
                 )}
               </div>
 
-              {/* live 3D player + armor column (2x2 mode only, like MC) */}
+              {/* live 3D player + armor column (2x2 + 3x3 table mode, like MC's grid screens) */}
               {!inv.table && (
                 <div className="ml-2 flex items-start gap-3">
                   <div className="flex flex-col gap-[2px]">
@@ -386,6 +408,19 @@ export function InventoryScreen() {
                   >
                     <InventoryPlayer3D width={108} />
                   </div>
+                </div>
+              )}
+              {inv.table && (
+                <div
+                  className="ml-2 hidden items-end justify-center rounded-sm sm:flex"
+                  style={{
+                    width: 118,
+                    height: 196,
+                    background: 'radial-gradient(ellipse at 50% 30%, #a9c4cf 0%, #8fa8b4 70%, #7e96a3 100%)',
+                    boxShadow: 'inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff',
+                  }}
+                >
+                  <InventoryPlayer3D width={108} />
                 </div>
               )}
             </div>
@@ -491,7 +526,7 @@ export function InventoryScreen() {
         </div>
       )}
 
-      {/* tooltip */}
+      {/* tooltip (name + purple enchant lines, MC style) */}
       {hoverInfo && !inv.cursor && (
         <div
           className="pointer-events-none fixed z-50 px-2 py-1 text-[13px] text-white"
@@ -505,6 +540,11 @@ export function InventoryScreen() {
           }}
         >
           {hoverInfo.name || slotName(hoverInfo.id)}
+          {hoverInfo.ench && Object.entries(hoverInfo.ench).map(([id, lvl]) => (
+            <div key={id} className="text-[12px] italic" style={{ color: '#b18aff' }}>
+              {enchantLine(id, lvl)}
+            </div>
+          ))}
         </div>
       )}
     </div>

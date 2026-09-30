@@ -614,6 +614,8 @@ export class TerrainGenerator {
     const r2 = ((hash >>> 8) ^ (y * 2654435761)) >>> 0;
     if (y < 15 && r < 0.0016) return BLOCK.DIAMOND_ORE;
     if (y < 30 && r < 0.0028) return BLOCK.GOLD_ORE;
+    // lapis: deeper than iron, rarer than coal (MC-ish band y<32)
+    if (y < 32 && r >= 0.0028 && r < 0.0035 && (r2 & 3) === 0) return BLOCK.LAPIS_ORE;
     if (y < 56 && r < 0.0075 && (r2 & 3) === 0) return BLOCK.IRON_ORE;
     if (r < 0.011) return BLOCK.COAL_ORE;
     if (r > 0.994 && y < 40) return BLOCK.GRAVEL;

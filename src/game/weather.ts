@@ -66,6 +66,8 @@ export class WeatherSystem {
   flash = 0;
   /** is it snowing at the player's position (biome-dependent) */
   snowing = false;
+  /** is it raining at the player's position (updated every frame; fishing lure) */
+  raining = false;
 
   private rain: THREE.Points;
   private snow: THREE.Points;
@@ -173,6 +175,7 @@ export class WeatherSystem {
     const active = this.intensity > 0.02 && !dry;
     const raining = active && !this.snowing;
     const snowing = active && this.snowing;
+    this.raining = raining;
 
     // audio (rain loop handles fade itself)
     if (raining && this.intensity > 0.5) audio.startRain();

@@ -24,12 +24,26 @@ export interface ItemDef {
   armor?: ArmorDef;
   /** ranged weapon stats (bow only) */
   bow?: BowDef;
+  /** fishing rod stats */
+  rod?: RodDef;
+  /** shears stats */
+  shears?: ShearsDef;
   /** draw 16x16 pixel-art icon; returns canvas */
   icon: (ctx: CanvasRenderingContext2D) => void;
 }
 
 export interface BowDef {
   /** durability (shots) */
+  dur: number;
+}
+
+/** fishing rod stats (MC rod durability 64) */
+export interface RodDef {
+  dur: number;
+}
+
+/** shears stats (MC shears durability 238) */
+export interface ShearsDef {
   dur: number;
 }
 
@@ -114,6 +128,16 @@ export const ITEM = {
   BOAT: 330,
   // snow golem drops
   SNOWBALL: 331,
+  // ── phase 11: shears / fishing / enchanting materials ──
+  SHEARS: 332,
+  FISHING_ROD: 333,
+  RAW_COD: 334,
+  RAW_SALMON: 335,
+  COOKED_COD: 336,
+  COOKED_SALMON: 337,
+  PAPER: 338,
+  BOOK: 339,
+  LAPIS_LAZULI: 340,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -688,6 +712,164 @@ export const ITEMS: Record<number, ItemDef> = {
       px(ctx, 11, 4, '#7c5a32', 1, 3); px(ctx, 10, 3, '#9c7848', 2, 2);
     },
   },
+  [ITEM.SHEARS]: {
+    id: ITEM.SHEARS, name: 'Shears',
+    shears: { dur: 238 },
+    icon: (ctx) => {
+      // two crossing blades with bow handles (MC style)
+      // blade 1 (top-left to bottom-right)
+      for (let i = 0; i < 7; i++) px(ctx, 3 + i, 4 + i, '#d8d8d8', 2, 1);
+      px(ctx, 3, 4, '#f0f0f0', 1, 1);
+      // blade 2 (bottom-left to top-right)
+      for (let i = 0; i < 7; i++) px(ctx, 3 + i, 11 - i, '#b8b8b8', 2, 1);
+      px(ctx, 9, 5, '#f0f0f0', 1, 1);
+      // pivot screw
+      px(ctx, 7, 7, '#6e6e6e', 2, 2);
+      px(ctx, 7, 7, '#9a9a9a', 1, 1);
+      // handles (dark loops bottom)
+      px(ctx, 2, 12, '#8a4a2a', 2, 2);
+      px(ctx, 4, 13, '#6e3a20', 2, 1);
+      px(ctx, 11, 12, '#8a4a2a', 2, 2);
+      px(ctx, 10, 13, '#6e3a20', 2, 1);
+    },
+  },
+  [ITEM.FISHING_ROD]: {
+    id: ITEM.FISHING_ROD, name: 'Fishing Rod',
+    rod: { dur: 64 },
+    icon: (ctx) => {
+      // diagonal rod (bottom-left to top-right)
+      for (let i = 0; i < 10; i++) px(ctx, 3 + i, 12 - i, '#8a683c', 2, 1);
+      for (let i = 0; i < 9; i++) px(ctx, 3 + i, 12 - i, '#9c7848', 1, 1);
+      // rod tip highlight
+      px(ctx, 12, 2, '#b8955c', 2, 1);
+      // fishing line hanging from the tip
+      px(ctx, 14, 3, '#e8e8e8', 1, 1);
+      px(ctx, 14, 4, '#e8e8e8', 1, 2);
+      px(ctx, 13, 6, '#e8e8e8', 1, 2);
+      px(ctx, 13, 8, '#d8d8d8', 1, 2);
+      // red-white bobber at the end
+      px(ctx, 12, 10, '#d8382e', 2, 2);
+      px(ctx, 12, 12, '#f4f4f4', 2, 1);
+    },
+  },
+  [ITEM.RAW_COD]: {
+    id: ITEM.RAW_COD, name: 'Raw Cod', food: 2,
+    icon: (ctx) => {
+      // gray-blue fish facing left with tail right
+      noiseRect(ctx, ['#a8b5a0', '#98a592', '#b8c2ae'], 2, 5, 9, 6, 91);
+      // tail
+      ctx.fillStyle = '#8a9a84';
+      ctx.fillRect(11, 5, 2, 1); ctx.fillRect(12, 6, 2, 4); ctx.fillRect(11, 10, 2, 1);
+      // belly
+      ctx.fillStyle = '#c8d0c2';
+      ctx.fillRect(3, 10, 7, 1);
+      // eye + gill
+      px(ctx, 4, 6, '#2a2a2a', 1, 1);
+      px(ctx, 3, 6, '#f4f4f4', 1, 1);
+      ctx.fillStyle = '#788870';
+      ctx.fillRect(7, 6, 1, 4);
+      // fin
+      px(ctx, 6, 4, '#8a9a84', 3, 1);
+    },
+  },
+  [ITEM.RAW_SALMON]: {
+    id: ITEM.RAW_SALMON, name: 'Raw Salmon', food: 2,
+    icon: (ctx) => {
+      // reddish fish facing left
+      noiseRect(ctx, ['#c46a5a', '#b85a4c', '#d07a68'], 2, 5, 9, 6, 95);
+      ctx.fillStyle = '#a04c40';
+      ctx.fillRect(11, 5, 2, 1); ctx.fillRect(12, 6, 2, 4); ctx.fillRect(11, 10, 2, 1);
+      ctx.fillStyle = '#e8a890';
+      ctx.fillRect(3, 10, 7, 1);
+      px(ctx, 4, 6, '#2a2a2a', 1, 1);
+      px(ctx, 3, 6, '#f4f4f4', 1, 1);
+      ctx.fillStyle = '#9c4838';
+      ctx.fillRect(7, 6, 1, 4);
+      px(ctx, 6, 4, '#a04c40', 3, 1);
+    },
+  },
+  [ITEM.COOKED_COD]: {
+    id: ITEM.COOKED_COD, name: 'Cooked Cod', food: 5,
+    icon: (ctx) => {
+      // toasted beige fish
+      noiseRect(ctx, ['#c8a878', '#bc9a6a', '#d4b488'], 2, 5, 9, 6, 99);
+      ctx.fillStyle = '#a8885a';
+      ctx.fillRect(11, 5, 2, 1); ctx.fillRect(12, 6, 2, 4); ctx.fillRect(11, 10, 2, 1);
+      ctx.fillStyle = '#e8d0a8';
+      ctx.fillRect(3, 10, 7, 1);
+      px(ctx, 4, 6, '#3a2a1a', 1, 1);
+      ctx.fillStyle = '#9a7a4e';
+      ctx.fillRect(7, 6, 1, 4);
+      px(ctx, 6, 4, '#a8885a', 3, 1);
+    },
+  },
+  [ITEM.COOKED_SALMON]: {
+    id: ITEM.COOKED_SALMON, name: 'Cooked Salmon', food: 6,
+    icon: (ctx) => {
+      // roasted orange-pink fish
+      noiseRect(ctx, ['#c8823c', '#bc7632', '#d49250'], 2, 5, 9, 6, 103);
+      ctx.fillStyle = '#a8682c';
+      ctx.fillRect(11, 5, 2, 1); ctx.fillRect(12, 6, 2, 4); ctx.fillRect(11, 10, 2, 1);
+      ctx.fillStyle = '#e8b878';
+      ctx.fillRect(3, 10, 7, 1);
+      px(ctx, 4, 6, '#3a2a1a', 1, 1);
+      ctx.fillStyle = '#9c5e26';
+      ctx.fillRect(7, 6, 1, 4);
+      px(ctx, 6, 4, '#a8682c', 3, 1);
+    },
+  },
+  [ITEM.PAPER]: {
+    id: ITEM.PAPER, name: 'Paper',
+    icon: (ctx) => {
+      // slightly crumpled white sheet
+      px(ctx, 4, 3, '#f4f4f4', 8, 10);
+      ctx.fillStyle = '#e0e0e0';
+      ctx.fillRect(4, 3, 8, 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(5, 4, 6, 8);
+      // fold shading
+      ctx.fillStyle = '#d4d4d4';
+      ctx.fillRect(10, 5, 1, 6);
+      ctx.fillRect(5, 11, 7, 1);
+      ctx.fillStyle = '#b8b8b8';
+      ctx.fillRect(3, 13, 9, 1);
+    },
+  },
+  [ITEM.BOOK]: {
+    id: ITEM.BOOK, name: 'Book',
+    icon: (ctx) => {
+      // red-brown cover with white pages
+      px(ctx, 3, 3, '#8a4a2a', 10, 10);
+      ctx.fillStyle = '#6e3a20';
+      ctx.fillRect(3, 3, 10, 1);
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(4, 4, 8, 8);
+      ctx.fillStyle = '#e0e0e0';
+      ctx.fillRect(4, 11, 8, 1);
+      // cover rim + clasp
+      ctx.fillStyle = '#8a4a2a';
+      ctx.fillRect(4, 4, 2, 8);
+      px(ctx, 11, 7, '#d8c860', 2, 2);
+      // title band
+      ctx.fillStyle = '#c8b8a8';
+      ctx.fillRect(7, 6, 4, 1);
+    },
+  },
+  [ITEM.LAPIS_LAZULI]: {
+    id: ITEM.LAPIS_LAZULI, name: 'Lapis Lazuli',
+    icon: (ctx) => {
+      // deep azure gem chunks (vanilla lapis is unmistakably blue)
+      noiseRect(ctx, ['#2a52c8', '#1e42b0', '#3a64d8'], 4, 5, 8, 6, 111);
+      // facets
+      ctx.fillStyle = '#6a92ec';
+      ctx.fillRect(5, 6, 2, 1); ctx.fillRect(9, 8, 2, 1);
+      ctx.fillStyle = '#122a78';
+      ctx.fillRect(7, 9, 2, 1); ctx.fillRect(4, 9, 1, 1);
+      // top shard
+      px(ctx, 6, 3, '#3a64d8', 3, 2);
+      px(ctx, 6, 3, '#6a92ec', 1, 1);
+    },
+  },
 };
 
 // register bow
@@ -784,9 +966,21 @@ export function getBowDef(id: number): BowDef | undefined {
 export function isBowItem(id: number): boolean {
   return !!ITEMS[id]?.bow;
 }
+export function getRodDef(id: number): RodDef | undefined {
+  return ITEMS[id]?.rod;
+}
+export function isRodItem(id: number): boolean {
+  return !!ITEMS[id]?.rod;
+}
+export function getShearsDef(id: number): ShearsDef | undefined {
+  return ITEMS[id]?.shears;
+}
+export function isShearsItem(id: number): boolean {
+  return !!ITEMS[id]?.shears;
+}
 /** max stack size for an item or block id */
 export function maxStack(id: number): number {
-  return isToolItem(id) || isArmorItem(id) || isBowItem(id) ? 1 : 64;
+  return isToolItem(id) || isArmorItem(id) || isBowItem(id) || isRodItem(id) || isShearsItem(id) ? 1 : 64;
 }
 
 // ─── mining model ─────────────────────────────────────────────────────────────

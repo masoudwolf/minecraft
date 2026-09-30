@@ -5,6 +5,8 @@ export interface InvSlot {
   blockId: number; // 0 = empty
   count: number;
   dur?: number; // remaining durability (tools)
+  /** enchantments (e.g. { sharpness: 3 }) — present on enchanted items */
+  ench?: Record<string, number>;
 }
 
 export function emptySlot(): InvSlot {
@@ -19,8 +21,8 @@ export function cloneSlots(list: InvSlot[]): InvSlot[] {
   return list.map((s) => ({ ...s }));
 }
 
-/** add (id,count,dur) into slot list; returns leftover count (mutates list) */
-export function addToSlots(list: InvSlot[], id: number, count: number, dur?: number): number {
+/** add (id,count,dur,ench) into slot list; returns leftover count (mutates list) */
+export function addToSlots(list: InvSlot[], id: number, count: number, dur?: number, ench?: Record<string, number>): number {
   const max = maxStack(id);
   if (max > 1) {
     for (const s of list) {
@@ -35,7 +37,7 @@ export function addToSlots(list: InvSlot[], id: number, count: number, dur?: num
   for (let i = 0; i < list.length; i++) {
     if (!isEmptySlot(list[i])) continue;
     const take = Math.min(count, max);
-    list[i] = { blockId: id, count: take, dur };
+    list[i] = { blockId: id, count: take, dur, ench };
     count -= take;
     if (count <= 0) return 0;
   }

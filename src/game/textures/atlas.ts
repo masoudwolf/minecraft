@@ -763,6 +763,46 @@ export function getAtlas(): AtlasData {
     px(ctx, p[0] + 8, p[1] + 11, '#1e3d22'); px(ctx, p[0] + 7, p[1] + 6, '#1e3d22');
   }
 
+  // ── phase 11: enchanting tiles 75-77 ──
+  p = T(75); drawOre(ctx, p[0], p[1], ['#2a52c8', '#1e42b0', '#3a64d8'], rnd);                          // lapis ore
+  p = T(76);                                                                                             // enchanting table top (open book on obsidian)
+  {
+    // obsidian base field
+    noiseFill(ctx, p[0], p[1], 16, 16, OBSID, rnd);
+    // open book: two pages with a spine
+    ctx.fillStyle = '#5c1a14';
+    ctx.fillRect(p[0] + 1, p[1] + 3, 14, 9);
+    ctx.fillStyle = '#e8e0d0';
+    ctx.fillRect(p[0] + 2, p[1] + 4, 5, 7);
+    ctx.fillRect(p[0] + 9, p[1] + 4, 5, 7);
+    ctx.fillStyle = '#c8bca4';
+    ctx.fillRect(p[0] + 7, p[1] + 4, 2, 7);
+    // page text squiggles
+    for (let i = 0; i < 8; i++) {
+      px(ctx, p[0] + 3 + (i % 3), p[1] + 5 + i, '#a89c84');
+      px(ctx, p[0] + 10 + (i % 3), p[1] + 5 + i, '#a89c84');
+    }
+    // magic glints
+    px(ctx, p[0] + 3, p[1] + 2, '#c8a8ff'); px(ctx, p[0] + 12, p[1] + 1, '#c8a8ff');
+    px(ctx, p[0] + 13, p[1] + 12, '#a888ff'); px(ctx, p[0] + 2, p[1] + 13, '#c8a8ff');
+  }
+  p = T(77);                                                                                             // enchanting table side (obsidian pedestal + book edge)
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, OBSID, rnd);
+    // book edge band across the top
+    ctx.fillStyle = '#5c1a14';
+    ctx.fillRect(p[0], p[1], 16, 4);
+    ctx.fillStyle = '#e8e0d0';
+    ctx.fillRect(p[0], p[1] + 1, 16, 2);
+    ctx.fillStyle = '#c8bca4';
+    ctx.fillRect(p[0], p[1] + 3, 16, 1);
+    // diamond glow studs (MC has obsidian + diamonds in the frame)
+    px(ctx, p[0] + 3, p[1] + 8, '#5decf5', 2, 2);
+    px(ctx, p[0] + 11, p[1] + 11, '#5decf5', 2, 2);
+    ctx.fillStyle = '#8ff5fb';
+    px(ctx, p[0] + 3, p[1] + 8, '#8ff5fb'); px(ctx, p[0] + 11, p[1] + 11, '#8ff5fb');
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

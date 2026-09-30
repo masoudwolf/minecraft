@@ -13,6 +13,8 @@ export interface HotbarSlot {
   blockId: number; // 0 = empty
   count: number;
   dur?: number; // remaining durability (tools)
+  /** enchantments (e.g. { sharpness: 3 }) — preserved with the stack */
+  ench?: Record<string, number>;
 }
 
 export class Player {
@@ -249,6 +251,13 @@ export class Player {
     if (amount > 0) {
       const pts = this.armorPoints;
       if (pts > 0) dmg = Math.max(1, Math.round(amount * (1 - pts * 0.04)));
+      // Protection enchant: −4% per level per enchanted piece (MC formula), capped 64%
+      let prot = 0;
+      for (const piece of this.armor) {
+        if (!piece || piece.blockId <= 0) continue;
+        prot += piece.ench?.protection ?? 0;
+      }
+      if (prot > 0) dmg = Math.max(1, Math.round(dmg * Math.max(0.36, 1 - Math.min(16, prot) * 0.04)));
       // armor wear: every equipped piece loses 1 durability per hit
       for (let i = 0; i < 4; i++) {
         const piece = this.armor[i];

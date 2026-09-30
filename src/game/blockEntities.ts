@@ -35,6 +35,9 @@ const SMELT = new Map<number, number>([
   [ITEM.BEEF, ITEM.STEAK],
   [ITEM.CHICKEN_RAW, ITEM.CHICKEN_COOKED],
   [ITEM.MUTTON, ITEM.MUTTON_COOKED],
+  // fish (MC smelting)
+  [ITEM.RAW_COD, ITEM.COOKED_COD],
+  [ITEM.RAW_SALMON, ITEM.COOKED_SALMON],
 ]);
 
 const FUEL = new Map<number, number>([

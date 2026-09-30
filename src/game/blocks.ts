@@ -17,7 +17,7 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch';
+  model?: 'cube' | 'cross' | 'torch' | 'lily';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** inventory icon = flat texture tile instead of isometric cube */
@@ -102,6 +102,9 @@ export const BLOCK = {
   WHEAT_STAGE3: 65,
   OAK_SAPLING: 66,
   SPRUCE_SAPLING: 67,
+  // ── phase 11: enchanting ──
+  LAPIS_ORE: 68,
+  ENCHANTING_TABLE: 69,
 } as const;
 
 /** wheat crop growth stages (0 = sprout, 3 = mature golden) */
@@ -154,6 +157,7 @@ export const TILE = {
   farmland_top: 67, farmland_side: 68,
   wheat_0: 69, wheat_1: 70, wheat_2: 71, wheat_3: 72,
   oak_sapling: 73, spruce_sapling: 74,
+  lapis_ore: 75, enchanting_top: 76, enchanting_side: 77,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -238,6 +242,10 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.WHEAT_STAGE3]: { id: BLOCK.WHEAT_STAGE3, name: 'Wheat Crop', tiles: TILE.wheat_3, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.01, drop: null, sound: 'grass' },
   [BLOCK.OAK_SAPLING]: { id: BLOCK.OAK_SAPLING, name: 'Oak Sapling', tiles: TILE.oak_sapling, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
   [BLOCK.SPRUCE_SAPLING]: { id: BLOCK.SPRUCE_SAPLING, name: 'Spruce Sapling', tiles: TILE.spruce_sapling, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, sound: 'grass' },
+
+  // ── phase 11: enchanting ──
+  [BLOCK.LAPIS_ORE]: { id: BLOCK.LAPIS_ORE, name: 'Lapis Ore', tiles: TILE.lapis_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', minTier: 2, drop: ITEM.LAPIS_LAZULI, sound: 'stone' },
+  [BLOCK.ENCHANTING_TABLE]: { id: BLOCK.ENCHANTING_TABLE, name: 'Enchanting Table', tiles: t(TILE.enchanting_side, TILE.enchanting_side, TILE.enchanting_top, TILE.obsidian, TILE.enchanting_side, TILE.enchanting_side), solid: true, opaque: false, height: 0.75, flatIcon: true, needsGround: true, hardness: 5, tool: 'pickaxe', minTier: 1, lightEmit: 7, sound: 'stone' },
 };
 
 /** flowing water defs share appearance with source water */

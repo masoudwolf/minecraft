@@ -44,7 +44,7 @@ export interface Settings {
 }
 
 export interface HUDState {
-  hotbar: { blockId: number; count: number; dur?: number }[];
+  hotbar: { blockId: number; count: number; dur?: number; ench?: Record<string, number> }[];
   selected: number;
   health: number;
   hunger: number;
@@ -102,6 +102,8 @@ interface GameStore {
   advancement: { title: string; desc: string; icon: string } | null;
   /** villager trade panel open (playing screen only) */
   tradeOpen: boolean;
+  /** enchanting table panel open (playing screen only) */
+  enchantOpen: boolean;
   /** known worlds (menu list) */
   worlds: WorldMeta[];
   /** id of the world currently being played */
@@ -119,6 +121,7 @@ interface GameStore {
   setInv: (inv: Partial<InvUIState>) => void;
   setAdvancement: (a: { title: string; desc: string; icon: string } | null) => void;
   setTradeOpen: (v: boolean) => void;
+  setEnchantOpen: (v: boolean) => void;
   setWorlds: (w: WorldMeta[]) => void;
   setCurrentWorld: (id: string | null, name: string) => void;
 }
@@ -155,6 +158,7 @@ export const useGameStore = create<GameStore>((set) => ({
   inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, creative: false, armor: [null, null, null, null] },
   advancement: null,
   tradeOpen: false,
+  enchantOpen: false,
   worlds: [],
   currentWorldId: null,
   currentWorldName: '',
@@ -174,6 +178,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
   setAdvancement: (a) => set({ advancement: a }),
   setTradeOpen: (v) => set({ tradeOpen: v }),
+  setEnchantOpen: (v) => set({ enchantOpen: v }),
   setWorlds: (w) => set({ worlds: w }),
   setCurrentWorld: (id, name) => set({ currentWorldId: id, currentWorldName: name }),
 }));

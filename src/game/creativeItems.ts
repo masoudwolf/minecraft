@@ -74,7 +74,7 @@ export interface CreativeTab {
 
 const NATURE_WORDS = ['grass', 'dirt', 'sand', 'gravel', 'log', 'leaves', 'flower', 'poppy', 'dandelion', 'cactus', 'sugarcane', 'dead bush', 'lily', 'mycelium', 'mushroom', 'water', 'ice', 'snowy', 'snow block', 'ore', 'podzol', 'clay', 'vine'];
 const BUILDING_WORDS = ['stone', 'cobble', 'planks', 'brick', 'sandstone', 'glass', 'wool', 'obsidian', 'bedrock', 'bookshelf', 'quartz', 'terracotta', 'concrete', 'slab', 'stairs', 'fence', 'door', 'trapdoor'];
-const FUNCTIONAL_WORDS = ['crafting', 'furnace', 'chest', 'torch', 'tnt', 'bed', 'glowstone', 'ladder', 'rail', 'boat', 'sign', 'lantern', 'jack'];
+const FUNCTIONAL_WORDS = ['crafting', 'furnace', 'chest', 'torch', 'tnt', 'bed', 'glowstone', 'ladder', 'rail', 'boat', 'sign', 'lantern', 'jack', 'enchanting'];
 
 function classify(e: CreativeEntry): CreativeCat {
   const n = e.name.toLowerCase();
@@ -82,7 +82,7 @@ function classify(e: CreativeEntry): CreativeCat {
   if (e.isItem) {
     const def = getItemDef(e.id)!;
     if (def.food) return 'food';
-    if (def.tool || isItemId(e.id) && (n.includes('sword') || n.includes('bow') || n.includes('arrow') || n.includes('helmet') || n.includes('chestplate') || n.includes('leggings') || n.includes('boots'))) return 'tools';
+    if (def.tool || def.rod || def.shears || isItemId(e.id) && (n.includes('sword') || n.includes('bow') || n.includes('arrow') || n.includes('helmet') || n.includes('chestplate') || n.includes('leggings') || n.includes('boots'))) return 'tools';
     return 'materials';
   }
   if (hit(FUNCTIONAL_WORDS)) return 'functional';

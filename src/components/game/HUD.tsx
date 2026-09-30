@@ -192,6 +192,13 @@ export function HUD() {
                 }}
               >
                 {icon && <img src={icon} alt={slotName(slot.blockId)} className="h-[36px] w-[36px]" style={{ imageRendering: 'pixelated' }} draggable={false} />}
+                {slot.ench && Object.keys(slot.ench).length > 0 && (
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{ background: 'linear-gradient(135deg, rgba(220,160,255,0.65), rgba(130,60,210,0.35))', mixBlendMode: 'screen' }}
+                    aria-hidden
+                  />
+                )}
                 {slot.count > 1 && (
                   <span
                     className="absolute bottom-0 right-0.5 text-[13px] font-bold text-white"
@@ -230,7 +237,8 @@ function SelectedName() {
   if (blockId <= 0) return null;
   const name = slotName(blockId);
   if (!name) return null;
-  return <FadeText key={`${hud.selected}:${blockId}`} text={name} />;
+  const enchKey = slot?.ench ? Object.keys(slot.ench).map((k) => k + slot.ench![k]).join(',') : '';
+  return <FadeText key={`${hud.selected}:${blockId}:${enchKey}`} text={name} />;
 }
 
 function FadeText({ text }: { text: string }) {

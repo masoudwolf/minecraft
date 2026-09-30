@@ -50,14 +50,20 @@ const CHEAT_ITEMS: { id: number; n: number }[] = [
   { id: ITEM.IRON_INGOT, n: 64 },
   { id: ITEM.GOLD_INGOT, n: 64 },
   { id: ITEM.COAL, n: 64 },
+  { id: ITEM.LAPIS_LAZULI, n: 64 },
+  { id: ITEM.BOOK, n: 16 },
   { id: ITEM.STEAK, n: 64 },
   { id: ITEM.BREAD, n: 64 },
   { id: BLOCK.TORCH, n: 64 },
   { id: BLOCK.PLANKS, n: 64 },
   { id: BLOCK.COBBLESTONE, n: 64 },
+  { id: BLOCK.OBSIDIAN, n: 16 },
   { id: ITEM.STRING, n: 16 },
   { id: ITEM.ARROW, n: 64 },
   { id: ITEM.BOW, n: 1 },
+  { id: ITEM.FISHING_ROD, n: 1 },
+  { id: ITEM.SHEARS, n: 1 },
+  { id: BLOCK.ENCHANTING_TABLE, n: 8 },
 ];
 
 /** collapsed state: a small always-visible cheat button (top-right) */
