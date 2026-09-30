@@ -1162,3 +1162,17 @@ Stage Summary:
 - Creative breaking behaves like MC: 1 click = 1 block, hold = 4 blocks/s, reach-limited.
 - Version surfaces unified (version.ts); F3 no longer stale.
 - NEXT QUEUE: mob sun-shadow tinting (lightF shadow-map aware), performance pass, brewing/potions, villager restock UI, item frames/armor stands, cake from milk.
+
+---
+Task ID: 46-b (GitHub main hijack incident + recovery)
+Agent: Z.ai Code (main)
+Task: post-push guard — discovered and repaired a hijacked origin/main.
+
+Work Log:
+- On push, origin/main was REJECTED (non-fast-forward): a runaway cron agent had force-pushed a DIFFERENT project ("Voxel Mob Lab" mob-gallery app — src/components/minecraft, NO src/game/, 9 squashed commits incl. BoneKing/Gearling/Chameleo mobs) over main, wiping VoxelCraft from the remote.
+- Recovery: archived the stray head to branch `archive/mob-gallery-126cb1e` (nothing lost), then force-pushed the VoxelCraft lineage back (main = 3ed52bb, v0.45.0 + db player/time restore commit).
+- Root cause: old webDevReview cron jobs ran in stale sandboxes without the anti-rollback restore and rebuilt/pushed a foreign project. All 4 stale cron jobs deleted; ONE fresh cron created (15-min, fixed_rate, Asia/Tehran) with an IDENTITY CHECK section: if the tree lacks src/game/ + worklog Task 46+, run restore-from-github.sh and never push a non-VoxelCraft tree.
+
+Stage Summary:
+- origin/main = VoxelCraft v0.45.0 (3ed52bb). Backup of the stray gallery app: archive/mob-gallery-126cb1e.
+- Future cron rounds carry an explicit identity check + restore protocol to prevent recurrence.
