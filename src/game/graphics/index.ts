@@ -17,6 +17,8 @@ import { WATER_PLANE_Y } from './waterGfx';
 import type { GfxSettings } from './settings';
 
 const CLAMP = THREE.MathUtils.clamp;
+/** clear color whose RGBA-unpack reads as depth 1.0 (far) → empty texels = lit */
+const SHADOW_CLEAR = new THREE.Color(1, 0, 0);
 
 export class GraphicsSystem {
   private renderer: THREE.WebGLRenderer;
@@ -43,6 +45,20 @@ export class GraphicsSystem {
   private tmpV4 = new THREE.Vector3();
   private tmpPlane = new THREE.Plane();
   private tmpQ = new THREE.Vector4();
+
+  // ── OWNED sun-shadow pass ────────────────────────────────────────────────
+  // three r186 renders shadow maps into a DepthTexture with compareFunction
+  // (sampler2DShadow) plus a color attachment holding INVERTED byte depth —
+  // neither matches the RGBA-packed sampler this pack was built on, and the
+  // compare-sampler variant wedges software GL. So the pack renders its OWN
+  // depth pass into a color RT (32-bit packed depth, plain sampler2D).
+  private shadowRT: THREE.WebGLRenderTarget | null = null;
+  private shadowCam = new THREE.OrthographicCamera(-56, 56, 56, -56, 1, 320);
+  private shadowMatrix = new THREE.Matrix4();
+  private depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+  private shadowTarget = new THREE.Vector3();
+  private shadowLightDir = new THREE.Vector3(0.5, 0.8, 0.2).normalize();
+  private tmpClearColor = new THREE.Color();
 
   private lastSunDir = new THREE.Vector3(0, 1, 0);
   private lastSunColor = new THREE.Color(1, 1, 1);
@@ -72,6 +88,8 @@ export class GraphicsSystem {
     } catch { this.isSoftware = false; }
 
     this.mirrorCam.layers = this.camera.layers;
+    // dev/QA introspection hook (harmless in prod; used by agent-browser checks)
+    if (typeof window !== 'undefined') (window as unknown as Record<string, unknown>).__gfxDebug = this;
   }
 
   // ── world wiring ────────────────────────────────────────────────────────────
@@ -141,35 +159,125 @@ export class GraphicsSystem {
   setShadowQuality(q: number): void {
     const sizes = [0, 1024, 2048, 4096];
     if (q <= 0) {
+      if (this.shadowRT) { this.shadowRT.dispose(); this.shadowRT = null; }
       this.renderer.shadowMap.enabled = false;
-      this.sunLight.castShadow = false;
       this.setShadowStrength(0);
+      this.refreshChunkShadowFlags();
       return;
     }
     const size = sizes[q] ?? 2048;
+    // three's own shadow pipeline stays OFF (no casting light) — shadowMap.enabled
+    // only drives the vanilla blob-shadow suppression + receiver flag semantics;
+    // the REAL depth map is our own pass (runShadowPass).
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft removed in three r186
-    this.renderer.shadowMap.autoUpdate = false; // refreshed once per frame
-    const sh = this.sunLight.shadow;
-    if (sh.mapSize.x !== size) {
-      sh.map?.dispose();
-      sh.map = null;
-      sh.mapSize.set(size, size);
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.sunLight.castShadow = false;
+    if (!this.shadowRT) {
+      this.shadowRT = new THREE.WebGLRenderTarget(size, size, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        depthBuffer: true,
+      });
+    } else if (this.shadowRT.width !== size) {
+      this.shadowRT.setSize(size, size);
     }
     const half = CLAMP((this.gfx?.renderScale ?? 4) * 0 + 56, 48, 96);
-    const cam = sh.camera;
+    const cam = this.shadowCam;
     cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
     cam.near = 1; cam.far = 320;
     cam.updateProjectionMatrix();
-    sh.bias = -0.00035;
-    sh.normalBias = 0.02;
-    this.sunLight.castShadow = true;
     this.setShadowStrength(1);
     if (this.scene.getObjectById(this.sunLight.target.id) == null) this.scene.add(this.sunLight.target);
+    this.refreshChunkShadowFlags();
+  }
+
+  /** re-apply caster/receiver flags to ALREADY-BUILT chunk meshes (they were
+   *  flagged at mesh time — toggling shadows later leaves stale flags and the
+   *  world would stop casting shadows until every chunk remeshed) */
+  private refreshChunkShadowFlags(): void {
+    if (!this.world) return;
+    const shadowsOn = this.renderer.shadowMap.enabled;
+    for (const chunk of this.world.chunks.values()) {
+      const m = chunk.meshes;
+      if (!m) continue;
+      if (m.opaque) { m.opaque.castShadow = shadowsOn; m.opaque.receiveShadow = shadowsOn; }
+      if (m.cutout) { m.cutout.castShadow = shadowsOn; m.cutout.receiveShadow = shadowsOn; }
+      if (m.water) { m.water.castShadow = false; m.water.receiveShadow = true; }
+    }
+  }
+
+  /** true when the object (or any descendant ≤3 levels down) wants to cast —
+   *  covers top-level chunk meshes and entity Groups with mesh children */
+  private isShadowCaster(o: THREE.Object3D, depth = 0): boolean {
+    if (o.castShadow === true) return true;
+    if (depth >= 3) return false;
+    for (const c of o.children) {
+      if (this.isShadowCaster(c, depth + 1)) return true;
+    }
+    return false;
+  }
+
+  /** render the scene from the sun into our RGBA-packed depth RT */
+  private runShadowPass(): void {
+    if (!this.shadowRT) return;
+    const cam = this.shadowCam;
+    const t = this.shadowTarget;
+    const d = this.shadowLightDir;
+    const h = d.y > 0.18 ? d.y : 0.18;
+    cam.position.set(t.x + d.x * 90, t.y + h * 90, t.z + d.z * 90);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(t);
+    cam.updateMatrixWorld();
+
+    const prevRT = this.renderer.getRenderTarget();
+    const prevOverride = this.scene.overrideMaterial;
+    this.renderer.getClearColor(this.tmpClearColor);
+    const prevClearAlpha = this.renderer.getClearAlpha();
+
+    // only casters stay visible (everything else hidden, restored after)
+    const vis: Array<{ o: THREE.Object3D; v: boolean }> = [];
+    const list = this.scene.children;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      vis.push({ o, v: o.visible });
+      o.visible = o.visible !== false && this.isShadowCaster(o);
+    }
+
+    this.scene.overrideMaterial = this.depthMat;
+    this.renderer.setRenderTarget(this.shadowRT);
+    this.renderer.setClearColor(SHADOW_CLEAR, 0);
+    this.renderer.clear();
+    this.renderer.render(this.scene, cam);
+    this.scene.overrideMaterial = prevOverride;
+    this.renderer.setClearColor(this.tmpClearColor, prevClearAlpha);
+    this.renderer.setRenderTarget(prevRT);
+
+    for (const e of vis) e.o.visible = e.v;
+
+    // texture matrix: raw proj*view — gfxShadow adds the NDC→[0,1] bias itself
+    this.shadowMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const sz = this.shadowRT.width;
+    for (const m of this.voxelMats()) {
+      m.uniforms.uShadowMap.value = this.shadowRT.texture;
+      m.uniforms.uShadowMatrix.value.copy(this.shadowMatrix);
+      (m.uniforms.uShadowTexel.value as THREE.Vector2).set(1 / sz, 1 / sz);
+    }
   }
 
   private setShadowStrength(s: number): void {
-    if (this.waterMat) this.waterMat.uniforms.uShadowStrength.value = s;
+    for (const m of this.voxelMats()) {
+      if (m.uniforms.uShadowStrength) m.uniforms.uShadowStrength.value = s;
+    }
+  }
+
+  /** all voxel materials that participate in sun shadows (terrain + water) */
+  private voxelMats(): THREE.ShaderMaterial[] {
+    if (!this.world) return [];
+    return [
+      this.world.getMaterial('opaque'),
+      this.world.getMaterial('cutout'),
+      this.world.getMaterial('water'),
+    ].filter((m): m is THREE.ShaderMaterial => !!m);
   }
 
   // ── chunk hooks ─────────────────────────────────────────────────────────────
@@ -231,19 +339,24 @@ export class GraphicsSystem {
     }
     this.grass.update(performance.now() / 1000, sky.sunLevel, this.lastFogColor, this.lastFogNear, this.lastFogFar);
 
-    // water sun/shadow uniforms
-    if (this.waterMat) {
-      this.waterMat.uniforms.uSunDirW.value.copy(lightDir);
-      this.waterMat.uniforms.uSunColorW.value.copy(this.lastSunColor);
-      if (this.renderer.shadowMap.enabled && this.sunLight.shadow.map) {
-        this.waterMat.uniforms.uShadowMap.value = this.sunLight.shadow.map.texture;
-        this.waterMat.uniforms.uShadowMatrix.value.copy(this.sunLight.shadow.matrix);
-        const sz = this.sunLight.shadow.mapSize.x;
-        (this.waterMat.uniforms.uShadowTexel.value as THREE.Vector2).set(1 / sz, 1 / sz);
-      }
+    // voxel sun/shadow uniforms — sun dir + strength; the MAP itself is filled
+    // by runShadowPass() every frame (terrain opaque/cutout AND water share it)
+    const shadowOn = (gfx.shadows ?? 0) > 0 && this.shadowRT !== null;
+    for (const m of this.voxelMats()) {
+      if (m.uniforms.uSunDirW) m.uniforms.uSunDirW.value.copy(lightDir);
+      if (m.uniforms.uSunColorW) m.uniforms.uSunColorW.value.copy(this.lastSunColor);
+      if (m.uniforms.uShadowStrength) m.uniforms.uShadowStrength.value = shadowOn ? 1 : 0;
     }
 
-    // shadow camera follows the player (snapped to block grid — no shimmer)
+    // shadow target follows the player (snapped to block grid — no shimmer)
+    if (shadowOn) {
+      const px = Math.round(playerX);
+      const py = Math.round(playerY);
+      const pz = Math.round(playerZ);
+      this.shadowTarget.set(px, py, pz);
+      this.shadowLightDir.copy(lightDir).normalize();
+    }
+    // sun light still follows the player for entity Lambert shading
     if (this.renderer.shadowMap.enabled) {
       const px = Math.round(playerX);
       const py = Math.round(playerY);
@@ -400,8 +513,8 @@ export class GraphicsSystem {
 
   // ── render ──────────────────────────────────────────────────────────────────
   render(_dt: number): void {
-    if (this.renderer.shadowMap.enabled) {
-      this.renderer.shadowMap.needsUpdate = true;
+    if (this.gfx && this.gfx.shadows > 0 && this.shadowRT) {
+      this.runShadowPass();
     }
     const useComposer = this.gfx?.postfx === true && this.postfx !== null;
     if (useComposer && this.gfx!.waterQuality >= 1 && !this.underwaterCam) {
@@ -430,5 +543,7 @@ export class GraphicsSystem {
     this.grass.dispose();
     this.postfx?.dispose();
     this.reflRT?.dispose();
+    this.shadowRT?.dispose();
+    this.depthMat.dispose();
   }
 }

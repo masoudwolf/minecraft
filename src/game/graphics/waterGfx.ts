@@ -113,7 +113,8 @@ const FRAG = /* glsl */ `
     // hill shadows read as gentle blue-tinted darkening, never pitch black.
     float sf = 1.0;
     if (uShadowStrength > 0.001 && !under) {
-      sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vec3(0.0, 1.0, 0.0));
+      float ndl = clamp(dot(vec3(0.0, 1.0, 0.0), uSunDirW), 0.0, 1.0);
+      sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vec3(0.0, 1.0, 0.0), ndl);
       sf = mix(1.0, sf, uShadowStrength);
     }
     float sunKeep = mix(sf, 1.0, 0.62);
@@ -133,18 +134,21 @@ const FRAG = /* glsl */ `
       fres = mix(fres, clamp(fres * 1.25, 0.0, 1.0), 0.5);
 
       vec3 reflCol;
+      vec3 skyRefl = gfxSkyColor(reflDir, false);
       if (uHasRefl > 0.5) {
         vec2 uvR = vMirrorCoord.xy / max(vMirrorCoord.w, 1e-4);
         float distFade = clamp(90.0 / max(vFogDepth, 8.0), 0.12, 1.0);
         uvR += nrm.xz * vec2(0.055, 0.11) * distFade * (uWaterQ >= 1.5 ? 1.35 : 0.8);
         if (uvR.x >= 0.0 && uvR.x <= 1.0 && uvR.y >= 0.0 && uvR.y <= 1.0) {
           reflCol = texture2D(uReflMap, uvR).rgb;
-          reflCol = mix(reflCol, gfxSkyColor(reflDir, false), 0.22);
+          reflCol = mix(reflCol, skyRefl, 0.22);
+          // RT-hole guard: a mirror can never be darker than faint sky
+          reflCol = max(reflCol, skyRefl * 0.05);
         } else {
-          reflCol = gfxSkyColor(reflDir, false);
+          reflCol = skyRefl;
         }
       } else {
-        reflCol = gfxSkyColor(reflDir, false);
+        reflCol = skyRefl;
       }
 
       // reflections stay alive in shadow — the sky is still above the water

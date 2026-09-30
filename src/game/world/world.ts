@@ -597,6 +597,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform mat4 uShadowMatrix;
     uniform vec2 uShadowTexel;
     uniform float uShadowStrength;
+    uniform vec3 uSunDirW;
     varying vec2 vUv;
     varying float vShade;
     varying float vSky;
@@ -611,7 +612,8 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       if (tex.a < uAlphaTest) discard;
       float sf = 1.0;
       if (uShadowStrength > 0.001) {
-        sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW);
+        float ndl = clamp(dot(normalize(vNormalW), uSunDirW), 0.0, 1.0);
+        sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW, ndl);
         sf = mix(1.0, sf, uShadowStrength);
       }
       // Shadow keeps 45% sky ambient (shader-pack / Unreal convention: ambient
@@ -646,6 +648,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uShadowMatrix: { value: new THREE.Matrix4() },
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
         uShadowStrength: { value: 0 },
+        uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
       },
       transparent: opts.transparent,
       side: opts.side,
