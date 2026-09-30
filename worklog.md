@@ -1286,3 +1286,41 @@ Stage Summary:
 - Key portable constants: moon 0.07–0.10 direct / 0.03–0.05 ambient; moon tint #BFD4FF (0.75,0.83,1.00); torch (1.0,0.75,0.63) + pow8 tail + −20% daylight; water σa (0.39,0.14,0.07)air / (0.20,0.08,0.04)underwater; Purkinje tint (0.5,0.7,1.0) @5% with exp2(−20·scotopic); exposure asymmetric 1.0/2.0 EV/s, clamp ~3 EV, OFF at night.
 - Top queued new-pass items: underwater fog ray-march (reuses v0.47 DepthTexture+shadow map), torch bounce proxy, sky-SH ambient.
 - Report: /home/z/my-project/agent-ctx/graphics-research.md · raw Photon sources cached: /home/z/my-project/agent-ctx/research/photon/
+
+---
+Task ID: 50
+Agent: Z.ai Code (main)
+Task: v0.48.0 Nightfall — 用户要求：① 夜晚必须足够黑暗（生存恐惧感）② 联网调研 Unreal Engine 为何图形强 ③ 调研 Minecraft 顶级光影包的实现（尽量读源码）④ 调研现实世界光影物理（含水下光学）⑤ 基于调研把图形推到更高水平
+
+Work Log:
+- restore 脚本运行：tree 与 origin/main 一致（origin/main=8583784, v0.47.0+world-save）
+- 【调研 50-a】general-purpose 子代理完成四区深度调研（12 次搜索 + 抓取真实源码）：
+  * Photon shader（sixthsurge，开源）真实源码 41 个文件缓存到 agent-ctx/research/photon/（purkinje_shift.glsl / light_color.glsl / blocklight_color.glsl / water_fog_vl.glsl / c4_taa_exposure 等全文）
+  * Bliss + Complementary 源码部分缓存（bliss_*.glsl / comp_*.glsl）
+  * 关键实测数字：月光=太阳的 9.4%（sun base 7.0 vs moon 0.66）；月光色调 sRGB (0.75,0.83,1.00)=#BFD4FF；火把色调 (1.0,0.75,0.63)≈2400K + falloff pow8(bl)+0.18bl²+0.16；水吸收每米 σa=(0.39,0.14,0.07)（红光 5 倍速衰减，transmittance=exp(-(σa+σs)·d)）；Purkinje 公式 scotopic=xyz·(1.33(1+(y+z)/x)−1.68)，rod=(7.15e-5,0.481,0.328)（rec2020），tint (0.5,0.7,1.0)，mix=exp2(-rcp(0.05)·scotopic)；自动曝光默认关闭+非对称速率 (亮→暗 1.0 EV/s / 暗→亮 2.0 EV/s)+范围钳制；蓝调时刻环境光增益 1+0.5·sunset+40·blueHour²；现实 lux 表（正午 100k lux / 满月 0.05-0.3 lux / 星光 0.0003-0.001 lux，太阳:月亮≈17 EV 但光影包压缩到 ~3.4 EV）；恐怖/生存游戏夜晚亮度=白天的 1-6%（我们当时 30%=「昏暗白天」——用户抱怨的根因实锤）
+  * 报告：agent-ctx/graphics-research.md（含 17 项按影响/成本排序的行动清单）
+- 【夜晚改造 50-c】
+  * sky.ts：sunLevel 夜间地板 0.30 → 0.09（Photon 月光比）；NIGHT_SKY 0x0a0e1e→0x070b16、NIGHT_HORIZON 0x101828→0x0c1322；星场上限 0.9→1.0
+  * graphics/index.ts：自动曝光重写——移除夜间 +0.35 抬升（这正是"夜晚不够黑"的第二根因：0.30×1.35≈0.405 白日亮度）、非对称速率（暗向 1.0/s、亮向 2.0/s）、总幅度钳制 [0.92,1.22]；月光色换 Photon #BFD4FF×0.30；新增 Purkinje 喂入 uPurkinje=0.055×clamp((0.02-sunHeight)/0.10)（民用暮光结束后满强度）；VLS 月光束夜间增益 0.5→0.62
+  * postfx.ts：Grade 着色器移植 Photon Purkinje shift（rec2020 矩阵折叠进 rec709 单点积 W=(-0.3148,0.7635,0.3165)，逐像素自门控——暗部蓝移、火把光池保持暖色），修了一个 mix 因子公式错误（初版 exp2(-20·purk)×uPurkinje×20 在 purk→0 时超 1，改回 Photon 原式 exp2(-purk/intensity) 钳制）
+  * engine.ts：实体场景灯下限 0.25/0.15 → 0.12/0.05（正午不变 1.0/0.95，午夜 0.20/0.13 剪影可读）；玩家手持物光照归一化地板 0.3→0.10（防"手持物变黑"回归）
+  * mobs.ts：mob 光照归一化地板同步 0.3→0.10（保留 v0.45 反双暗化结构，只是跟随新地板）
+- 【调研落地 50-d】
+  * world.ts + grass.ts：火把池重塑（pow4 陡尾×0.72 + bl²×0.22 + bl×0.06）——光池 4-5 格硬截止，与夜境对比 10:1（恐怖感："危险在光池边缘"）
+  * waterGfx.ts：v0.47 单一 0.011 深度衰减 → Beer-Lambert 逐通道吸收（σa=0.40/0.15/0.08 每米，in-scatter 体色 (0.012,0.16,0.27)×光强，alpha 跟随平均透射率）——浅滩沙色半透→中段绿青→深水浓郁蓝，红光 2.5 格 1/e、蓝光 12 格（Unreal/SEUS 物理排序）
+  * cloudsVolumetric.ts：QA 发现月光云过亮（HG 前向散射 2.0×0.30≈0.6 无夜间衰减，午夜云画成白天灰）→ sunLight×mix(0.32,1,uDay) + 夜间环境光 (0.04,0.045,0.08)→(0.016,0.020,0.042)
+- 【QA 50-e】agent-browser（两次 llvmpipe 死锁按 runbook 杀 chrome 重启恢复；发现并修正 QA 方法错误：yaw/pitch 在 player 对象而非 entity 上，之前 e.pitch= 赋值无效）：
+  * 午夜户外：地形暗剪影+星空+暗云 ✓（修复前云是白天灰，修复后暗蓝剪影）
+  * 火把池：setBlock 放火把（光 BFS=15 确认）→ 暖亮光池 4-5 格硬截止+周围 Purkinje 冷蓝，恐惧感对比度到位 ✓（测试后已还原）
+  * 正午（t=248.9）：亮度与改造前一致 ✓ + 新水体吸收渐变清晰可见（池心深蓝/边缘浅滩）✓
+  * 黄昏（t=368）：快速熄灯节拍+地平线残光+月出+星空 ✓（白色粒子为天气雨，非 bug）
+  * shader 诊断 0 错误、console 干净；世界状态还原（239.3,42.0,-108.5, yaw-0.75, pitch-0.10, t=248.9）+ autosave 200
+- 【世界台账】本轮 QA 实际进入的世界 id=cmuonnnhs0002qombhgeiyhr1（"Migrated World 10/12 奖杯"，种子 7777，内容与用户基地一致）；Task 49 用户世界 cmunbv1a00005oewlz996x3yh 本轮未被触碰（API 验证 22:39 后无更新）；cmuonnnhs 玩家/时间已还原（原始位置 310.2,47.0,-77.8 疑为 cron 会话所留）
+- 【⚠ 未竟事项：push 失败】github token 失效（API 401，push rejected "Invalid username or token"）；commit 4578f19 (v0.48.0) 已安全落在本地 main；本轮 session 开始时 restore 脚本的自动 push 大概率也静默失败（当时输出 "local AHEAD by 1, pushing instead" 后即 OK——需复核）。token 刷新后需手动 `git push origin main`（或下轮 restore 脚本自动补推）。本轮无任何代码回退风险（未 fetch/reset）
+- lint 通过；VERSION + version.ts → 0.48.0 "Nightfall (Photon-Tuned Darkness)"
+
+Stage Summary:
+- v0.48.0 = 本项目首个"实测数据驱动"的图形调优版本：夜晚亮度从白天的 40.5% → 9%（Photon 同款），曝光不再"救场"，暗部 Purkinje 蓝移，火把池硬边高对比，水体物理吸收——生存恐惧感与白天可玩性同时保住（QA 截图佐证）
+- 调研资产沉淀：Photon/Bliss/Complementary 源码缓存 + graphics-research.md 行动清单（17 项）——后续版本可按清单继续（SSR 水面反射、水下雾 ray-march、天空 SH 环境光、接触硬化 PCF、月光相位等）
+- NEW QUEUE（按报告优先级）：①水下雾 ray-march（复用 v0.47 DepthTexture+阴影图）②月光相位缩放 ③火把一弹反弹 ④接触硬化 PCF ⑤SSAO（性能允许时）
+- PUSH PENDING：token 失效，4578f19 待推（下轮 restore 自动尝试）
