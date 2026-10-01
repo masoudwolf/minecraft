@@ -1489,3 +1489,30 @@ Stage Summary (Task 56 continuation — v0.54.0 implementation):
 - 【存档卫生】测试方块全部清除（回读 0 残留）、玩家还原 (239.3, 42.0, -108.5, yaw -0.75, pitch -0.10)、sky.time 复位 248.9、autosave PUT 200 ×N
 - 【GitHub push 受阻】沙箱重置后 token 失效（repo 为 public，fetch 匿名可用；push 401 "Invalid username or token"）——本地已 commit，待用户新 token 后补推
 - NEXT QUEUE：item frames/armor stands、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐
+
+---
+Task ID: 57
+Agent: Z.ai Code (main)
+Task: 用户新 token + repo 链接（masoudwolf/minecraft）→ 补推被 token 阻塞的 v0.54.0 提交；随后按既定 "برو مرحله بعد" 指令交付 NEXT QUEUE 首项 v0.55.0 "Showcase & Décor"（item frames + flower pots）
+
+Work Log:
+- 【补推】restore 脚本报 "local AHEAD 2 — pushing instead" 但 ls-remote 证实远端仍停 2d07f61（v0.53.0）——restore 的 push 静默失败过。用新 token 手动 push 成功：origin/main = 185c51f（v0.54.0 Glasswork & Masonry）。
+- 【调研】Explore 子代理产出 10 区勘察报告（id/tile 空闲段、meta API、torch 粒子锚点模式、pushBox 签名、placement/break/cleanup 落点、GrassManager 生命周期模板、chunk 无卸载回调的坑）。
+- 【方块】ITEM_FRAME(108) + FLOWER_POT(109)，model 联合 + 'itemframe'|'flowerpot'；5 新 tile(110-114)：frame_icon/frame_ring（透明 12×12 中孔）/pot_icon/pot_rim_top（环形孔）/pot_side。meta 编码：frame = (storedId<<4)|(rot<<2)|(wall-1)，frameWall/frameRot/frameItem/packFrameMeta 助手；pot meta = 植物 block id（0=空）。isPottable：2 花/高草/枯灌木/2 蘑菇/2 树苗。
+- 【mesher】itemframe：梯子式 1/16 贴墙板 + 环贴图 alphaTest 打孔，跳过贴墙面，chunk.frames 锚点（模仿 chunk.torches byproduct 模式）；flowerpot：陶土身(6/16)+沿口环(8/16，顶面孔)，土面为 body 顶面（复用 dirt tile），植物 = 缩比对角双 quad（pushTint 全属性 1:1，高草走 biomeTint），沿口侧面 tileSub 采样 4px 带防竖向压扁。
+- 【FrameManager（新 graphics/frames.ts）】物品图标是运行时 canvas 非图集 → 显示物用外部 sprite 平面（PlaneGeometry 11/16，CanvasTexture Nearest+SRGB+alphaTest 0.4，材质按 displayed id 缓存共享）；生命周期键=chunk：onChunkMeshed 重建 / 新增 gfx.onChunkUnloaded 挂钩引擎卸载清扫（GrassManager 容忍陈旧但可见 quad 不行）/ dispose 清空；环境光 0.2+0.8·sunLevel 与场景实体一致，NV 提升 0.62·nvLift（applySkyFog 喂 nvLift，gfx.update 喂 ambient）。旋转 = rotation.y 定朝向 + rotateZ 局部滚动。
+- 【交互】frame：仅侧面放置（复用 torch 法线反转映射，非侧面双语 toast）、实心墙校验；右键=空手取回（比 MC 断开取回友好）/持物旋转 90°（MC）/空框插入消耗 1；break/墙毁弹出时 stored 物品一并掉落；cleanupDependents sideCells 新增 frame 随墙 pop 分支。pot：needsGround 落地；空手取回/可种植物栽种或替换（旧植物回包）；生存 pop 循环加植物随锅掉落；break 掉 pot+植物。
+- 【配方】MC 版型：8 木棍围皮革→item frame；3 砖块 V→flower pot（MC 用砖物品，游戏无砖物品 → 用砖块实体代替，工作日志记实）。
+- 【QA（agent-browser，world cmuonnnhs…，45-47 chunks，1 次 CDP 卡死按 runbook 杀 chrome 恢复）】
+  * 主菜单 0.55.0 ✓；世界加载玩家 (239.3,42,-108.5) 与存档一致 ✓
+  * rig 实测：chunk.frames 3 锚点；2 精灵（空框无精灵 ✓）；位置/朝向逐 16 分之一精确（243.1875=框心+5/16 朝墙 ✓）；矩阵基向量验证 rot=1 滚转 ✓（Euler 读回会骗人，quaternion 正确）；3 纹理 uuid 互异（钻石物品/石块 tile/药水）✓
+  * 截图实证：木环+钻石精灵、陶盆+罂粟、红蘑菇盆、高草盆（biome tint 生效）全部 MC 观感 ✓
+  * 行为：meta 换内容→精灵重建 ✓；清空→精灵消失(3→2) ✓；真实 cleanupDependents 路径 frame 随墙 pop（243→AIR）✓
+  * aTint 不变量 109 meshes / 276,884 verts / 0 违例 ✓；console 无错误；lint 干净；tsc 无新增错误（atlas/engine/AssetViewer 的既有基线错误与本轮无关，已用 stash 对照证实）
+- 【诚实台账】① MultiEdit 非原子教训：一次 6 编辑调用因第 4 项 old_str 撞车（两处 brokenMeta/popMeta 同形）中断，前 3 项已落盘后 2 项丢失——QA "frame 没随墙 pop" 第一轮实为该丢失导致（非游戏逻辑错误），rg 复核文件后补齐重测通过；② QA 期间两次测试脚本错误（eval 直接 setMeta 字面量 0 抹掉 wall 位、setBlock 绕过 cleanupDependents）均按实证法定位为测试姿势而非代码缺陷；③ 无效 rig 状态"框上挂框"（真实放置被 solid 校验拦截，QA 直写 meta 造成）不在真实游玩可达域，未为它加防御代码；④ pot 地面 pop 循环与生存掉落路径未在 creative 世界直接驱动——代码形状与 v0.52 起验证过的 torch/花 needsGround pop 及容器掉落模式逐字同构，风险低；⑤ 花盆植物高度统一 10/16（蘑菇会略高，MC 亦按盆缩放，观感差异可忽略）；⑥ frame 显示物环境光为全局近似（不逐格采块光，洞内/火把旁会有亮度偏差，记 backlog）。
+- 【QA 收尾】rig 全清（回读 0 残留）、玩家/时间还原 (239.3,42,-108.5, yaw-0.75, pitch-0.10, t=248.9)、autosave PUT 200 ×2、browser close + pkill。
+- lint 通过；VERSION + version.ts → 0.55.0 "Showcase & Décor (Item Frames · Flower Pots)"
+
+Stage Summary:
+- v0.55.0 = 展示系统落地：首个"格内容物"方块（item frame 存任意 id 于 meta 层，零 schema 变更）+ 首个外部场景精灵系统（FrameManager，补齐 chunk 卸载回调缺口）+ 花盆 8 种植物组合。沿用 v0.45.1 属性不变量防线与 v0.52 meta 基础设施。
+- NEXT QUEUE：armor stands（实体装备，工作量大单列）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进
