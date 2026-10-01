@@ -1538,3 +1538,32 @@ Stage Summary:
 - v0.55.1 = 夜间渲染观感修复：脆弱 sin-hash → 白噪声 hash12 + 振幅减半。夜晚暗部从"线性爬行条纹"变为阈下细颗粒（banding 掩护功能保留）
 - 教训沉淀：① 经典 fract(sin()) hash 在 1080p+ 桌面 GPU 上必坏，本项目 GLSL 噪声一律走 hash12；② IGN 是梯度噪声只配 dither/TAA，film grain 要白噪声；③ llvmpipe 的软件 sin 精度太高，复现不了硬件 sin 量化 bug——GPU 特性 bug 要靠机理+文献实证而非沙箱复现
 - NEXT QUEUE：armor stands（实体装备）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进
+
+---
+Task ID: 59
+Agent: Z.ai Code (main)
+Task: 用户确认 v0.55.1 夜间噪点修复生效（"آره الان این مشکل نمیبینم اوکیه"）+ 指令 "برو به توسعه بعدی مراحل فقط حواست باشه باز ریست ورژن نشی"（继续下一阶段开发，注意别再回退版本）→ NEXT QUEUE 落地 v0.56.0 "Alchemy II"
+
+Work Log:
+- 【防回退】restore 脚本执行：origin/main 前进到 82ff232（平台自动 commit 的 db 快照，模式同历史 UUID commit）→ 脚本 "local AHEAD 1 → pushing instead" 推平 → tree 匹配、VERSION=0.55.1 无回退 ✓（用户警告的"版本回退"防线上半部分=restore 脚本，每轮无条件跑）
+- 【调研】Explore 子代理 10 区勘察：9 基础药水 id 344-355、brewing BE 结构（BREW_INGREDIENT 表 + tickBrewing 瓶位谓词硬编码 WATER_BOTTLE）、女巫投掷药水 projectile 模式（substep 0.4 + 重力16 + 碎裂 AoE 2.6）、hurtMob API、无 REDSTONE/GUNPOWDER/GLOWSTONE_DUST 物品、RecipeBook 分类硬编码区间、item 名 EN-only 惯例
+- 【物品】356 REDSTONE / 357 GLOWSTONE_DUST / 358 GUNPOWDER + 26 药水变体（359-366 extended ×8/3 时长；367-373 tier-2 amp=2 半时长——仅限放大器有意义的效果，NV/WB 二元不给 II；374-382 splash）数据驱动工厂 + POTION_PALETTE 表（供变体图标 + 投射物染色）+ 圆瓶 splash 画笔 + long 白带/II 亮斑图标
+- 【获取链（MC 平价改编）】女巫掉落红石+萤石粉（MC 女巫掉落表）、苦力怕掉火药（MC 平价，drops [] → gunpowder 1-2）、萤石块挖掘掉 2-4 萤石粉（MC）+ 4 粉合成回块配方（防建材损失）、萤石粉也可直接酿夜视（块保留兼容旧库存）
+- 【效果放大】ActiveEffect + amp 字段（存档 round-trip 安全、load 校验）；strength 1.5→2.0 / speed 1.25→1.4 / haste 1.35→1.7 / jump 1.35→1.7 / regen 2s→1s / poison tick 1.5s→0.75s（poisonAmp 字段，毒尽归零）；HUD 芯片 II 后缀 + key kind:amp（旧 key 只用 kind 会撞车）；toast 带 II
+- 【酿造】BREW_MODIFIER 表（红石→long / 萤石粉→strong / 火药→splash）+ 逐槽 target 解析；QA 抓到设计 bug：萤石粉双角色（基础配方+修饰器）被基础路径抢占——修复为按槽内容分流（水瓶=基础路径、药水=修饰路径）
+- 【投掷】RMB 分支 drink/throw 分流；throwPlayerPotion 公开 API（视线方向 + 1.6 弧线抬升，速度 13；逐 potionId 染色 MeshLambertMaterial 缓存）；substep 飞行 + 直接命中生物 AABB±0.3 即碎；碎裂 AoE 2.6：瞬时效果（治疗）距离衰减、时效效果全强度；玩家走新 MobCallbacks applyEffect/healPlayer（creative 也生效——伤害 tick 内部自行无效化）；生物=治疗回血(clamp 满血)+poisonT DoT（1 dmg/1.5s 不致死 floor 1hp，update 循环 tick）；投掷消耗瓶不返还（MC Java）
+- 【QA（agent-browser，cmuonnnhs，2 次 llvmpipe CDP 死锁按 runbook 杀 chrome 恢复）】
+  * 酿造 8 场景全过：水+糖→speed(347)；红石→extended(359)；萤石粉→II(367)；火药→splash(382)；负例×3（红石×治疗/萤石粉×夜视/火药×II 全部 no-op 不耗料）；燃料扣减+cookT 回退衰减 ✓
+  * 饮用：extended t=240 + 瓶返还 ✓；II amp=2 t=45 ✓；HUD 芯片 "Speed II · سرعت" II 后缀渲染 ✓
+  * 投掷链：RMB 分支→throwSplashPotion→projectile(potionId=374, fromPlayer=true, 染色 #58b8d8, 槽消耗)→落地碎裂→self-apply effects speed t=89 ✓（先前 pitch=+1.15 上抛事故按符号约定纠正）
+  * 生物毒：debugSpawn 僵尸→splash poison→poisonT 22s、hp 20→16（4 tick 不致死）✓（第一轮误读：find() 撞上远处天然僵尸—— rig 僵尸其实一直带毒）
+  * 图标 7 个新物品 HUD 热键栏全部正确渲染（红/黄/灰粉堆、蓝瓶白带、蓝瓶亮斑、圆瓶蓝/绿）✓
+  * lint clean、tsc 仅剩既有基线（AssetViewer/atlas:354/engine:2852 FurnaceBE 联合类型——rg 证实该行本轮未触碰）；中途一次 sed 管道显示 "hotbarotbarIdx" 疑似文件损坏——tsc/eslint/node 三方证伪，为传输层显示伪影，非真实损坏（教训：可疑损坏先用 node readFileSync 复核）
+- 【诚实台账】① QA rig 直接覆写玩家 selected 热键栏槽位（先 drink/throw 测试后 icon 测试），原槽内容未在进世界时快照——本会话首屏截图证实该槽当时为空、仅 slot8 木板×7 原样保留，已还原 0-7 空；但"进世界先存 __qaSave（含 hotbar+yaw+pitch）"教训连续第二轮踩中（yaw/pitch 无法还原，置 0，外观级损失）② 酿造台 rig 放置后浏览器在 autosave 前被杀→方块丢失一次，重放通过；后改用 g.saveGame() 显式落盘 ③ splash-long/splash-II 组合不可酿（单修饰器限制，26 变体 vs MC 全组合，工作日志记实）④ 生物无移动增益效果系统（speed 等对生物 no-op，文档化改编）⑤ 平台自动 commit 82ff232（db 快照）由 restore 脚本推上 origin——正常
+- 【收尾】rig 全清（酿造台 AIR + BE 槽清空 + rig 僵尸 hurtMob 击杀 + 热键栏还原）、玩家 (312.9,52,-73) 未移动、时间还原 427.5、yaw/pitch 置 0（台账①）、g.saveGame() + PUT 200、browser close + pkill
+- VERSION + version.ts → 0.56.0 "Alchemy II (Splash · Extended · Tier-2 Potions)"；commit bfb97f7 已推 origin/main（masoudwolf/minecraft.git）
+
+Stage Summary:
+- v0.56.0 = 炼金系统完形：MC 三大修饰器（红石/萤石粉/火药）+ 26 新物品 + 首个玩家可投掷AoE物品 + 首个生物 DoT 通道（poisonT）。获取链全部走既有生物/方块（女巫/苦力怕/萤石），零地形改动
+- 基础设施沉淀：BREW_MODIFIER 逐槽解析模式（双角色原料分流）、MobCallbacks.applyEffect/healPlayer（反向状态施加通道）、POTION_PALETTE 运行时调色表
+- NEXT QUEUE：armor stands（实体装备，大项单列）、villager profession/restock UI、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进、药水箭/滞留药水（splash 基建已铺）
