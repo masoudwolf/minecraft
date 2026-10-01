@@ -1516,3 +1516,25 @@ Work Log:
 Stage Summary:
 - v0.55.0 = 展示系统落地：首个"格内容物"方块（item frame 存任意 id 于 meta 层，零 schema 变更）+ 首个外部场景精灵系统（FrameManager，补齐 chunk 卸载回调缺口）+ 花盆 8 种植物组合。沿用 v0.45.1 属性不变量防线与 v0.52 meta 基础设施。
 - NEXT QUEUE：armor stands（实体装备，工作量大单列）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进
+
+---
+Task ID: 58
+Agent: Z.ai Code (main)
+Task: 用户报告 "درشب که میبینم یک حالت رندر نویزی خطی میبینم چک کن چیه حلش کن"（夜晚看到线性噪点渲染，查明并修复）→ 诊断 + 修复 + QA + v0.55.1
+
+Work Log:
+- 【前置】新 token 写入 /home/z/.github-token → restore 脚本确认 local tree = origin/main (32fa8c8, v0.55.0)，无回退；dev server 存活（当日 10:35 启动，PUT 正常）
+- 【诊断】夜间专属的屏幕空间噪点 → 嫌疑清单：shadow acne（低角度月光）/ z-fighting / 天空 banding / 星星 / postfx。勘察 graphics/ 发现 v0.50 "shadow grain"（仅在夜晚生效的胶片噪点，purkNight 门控 + 暗像素加权 (1-l)，夜里强度 0.032）使用经典脆弱 hash：fract(sin(dot(p,(12.9898,78.233)))*43758.5453)
+- 【根因机理】1080p+ 下 dot 达 ~1.1e5，fp32 在该量级 ULP=2^-6 → sin 参数小数部分量化为 ~400 个相位；hash 向量使相邻行近似碰撞（沿 (78.23,-12.99) ≈ 偏水平 9° 方向）→ 噪点坍缩成缓慢爬行的近水平细线 = 用户所见 "نویز خطی"（线性噪点）；只在夜晚出现因为 grain 强度被 purkNight 放大、被 (1-l) 限制在暗部
+- 【GPU 实证】public/test-grain.html A/B 测试（offscreen WebGL 1280×720，渲染三种 hash 并测自相关）：llvmpipe 720p 下旧 sin-hash 恰好无条纹（lag≈0.02，其 sin 为软件高精度实现，无法在沙箱复现用户 NVIDIA 硬件 sin 精度损失）；IGN lag(6,-1)=0.82（梯度噪声有强结构，不适合 grain）；Hoskins hash12 所有 lag ≈0.001（真白噪声）
+- 【修复① postfx.ts】grainHash → Dave Hoskins "hash without sine" hash12（fract-first，任意分辨率精度安全；与 GLSL_NOISE 现有 hash12 同款 = 全包统一标准）
+- 【修复② index.ts】夜间 grain 峰值减半 0.032→0.016（±0.008 抖动仍覆盖 1/255 banding 步长，但降到阈下感知；旧振幅在 hash 修复后以干净白噪声形态呈现仍会被感知为"噪"）
+- 【QA】hash12 在运行中的 grade shader 内验证 live（hasHoskins=true）；夜景截图：均匀细颗粒无线条、星星圆点干净、云平滑、树冠绿（Task 47 修复在位）、地面月光着色平滑无 shadow acne 条纹；llvmpipe 2× CDP 死锁按 runbook 杀 chrome 恢复（非回归）；lint 通过
+- 【存档卫生（诚实台账）】加载时用户位置已非旧约定的 (239.3,42,-108.5) 而是用户本人游玩位 (311.6,51,-78.3, t=388, 51→132 chunks)；QA 仅移动玩家/视角未触碰方块/物品/成就；还原 (311.6,51,-78.3) + PUT 200 确认。⚠️ 用户原始 yaw/pitch 在我第一次 eval 时未捕获、窗口 __qaSave 随两次页面重载丢失，已还原为 (0,0)——下次 respawn 视线朝北，属外观级损失（位置/时间/物品/成就完好），已记入台账避免再犯：QA 一进世界先存 window.__qaSave
+- 【清理】public/test-grain.html 已删除（QA 工具不入库）；VERSION + version.ts → 0.55.1 "Night Render Fix (Grain Hash)"
+- commit cdc551e 已推 origin/main（masoudwolf/minecraft.git）
+
+Stage Summary:
+- v0.55.1 = 夜间渲染观感修复：脆弱 sin-hash → 白噪声 hash12 + 振幅减半。夜晚暗部从"线性爬行条纹"变为阈下细颗粒（banding 掩护功能保留）
+- 教训沉淀：① 经典 fract(sin()) hash 在 1080p+ 桌面 GPU 上必坏，本项目 GLSL 噪声一律走 hash12；② IGN 是梯度噪声只配 dither/TAA，film grain 要白噪声；③ llvmpipe 的软件 sin 精度太高，复现不了硬件 sin 量化 bug——GPU 特性 bug 要靠机理+文献实证而非沙箱复现
+- NEXT QUEUE：armor stands（实体装备）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进
