@@ -1428,3 +1428,37 @@ Stage Summary:
 - 诚实台账：QA 世界 "QA Carpentry v52/v52b/Final" 因 DB readonly 窗口未持久化（throwaway 世界，不影响用户存档）；用户全部既有世界未触碰；llvmpipe/SwiftShader 卡死 2 次均为环境问题
 - 已知边界：爆炸不会联动清理门/床另一半与墙火把（与既有 torch/花行为一致，低危）；关门无平滑动画（体素瞬切，MC 基础版观感）
 - NEXT QUEUE：villager restock UI（profession 系统）、item frames/armor stands、药水抛掷(splash)/延长二级、trapdoor（meta 层已就绪）、cake 放置朝向对齐咬痕侧
+
+---
+Task ID: 55
+Agent: Z.ai Code (main)
+Task: 用户指令 "برو سراغ مراحل بعدی توسعه"（进入下一开发阶段）→ 按 worklog NEXT QUEUE 交付 v0.53.0 "Woodwork II"：trapdoors（3 木种）+ 可攀爬梯子 + fences & fence gates（3 木种）
+
+Work Log:
+- restore 脚本：origin/main = 46396ae (v0.52.0 Carpentry)，无回退
+- 【调研】Explore 子代理产出 13 区勘察报告（block id 86+ 空闲 / tile 84-88+99+ 空闲 / pushBox+door+wall-torch 模板 / meta API / collides 局限：不支持 >1 格碰撞高度 / toggleDoor+cardinalToward+cleanupDependents 模板 / crafting+creative+RecipeBook 落点），确认绿场
+- 【方块】TRAPDOOR_{OAK,SPRUCE,JUNGLE}(_OPEN) 86-91 + LADDER 92 + FENCE_* 93-95 + FENCE_GATE_*(_OPEN) 96-101；BlockDef 新增 `tall` 字段（栅栏/关门=0.6：格子以上 0.6 格的幻影碰撞延伸=MC 1.5 格栅栏等价物）；model 联合类型 +trapdoor/ladder/fence/gate
+- 【meta 约定】TRAPDOOR meta 0..3=OPEN 面板贴靠边（侧点=贴附边、地面点=放置时按玩家位选铰链边）、5=吸顶（OPEN 平板贴格子顶）；LADDER meta 复用 TORCH_WALL_* 1..4（墙面方位）；GATE meta bits0-1=facing（门横杆垂直于玩家来向，与 door 同构）
+- 【mesher】4 个新模型全部走 pushBox（属性 1:1 不变量防线延续）：trapdoor（closed=3/16 底板 / open=贴边竖板 / meta5=贴顶板）、ladder（1/16 贴墙板）、fence（中柱 6..10/16 + 四向自动连接扶手 double-rail 6..9 & 12..15/16，fenceConnects=同族+gate+全尺寸不透明方块）、gate（closed=全跨 3/16 中置板高 14/16 / open=两端各 4/16 退缩板中央走人缺口；大面用 gate 贴图、棱面用 woodPlankTile 按木种派生）
+- 【物理】collides() 返回值改 hit 码（0 无/1 实心/2 仅 tall 带）；moveEntity Y 轴：tall 带回弹默认不再置 onGround，除非实体正好停在带顶（站在栅栏顶仍算落地）——否则贴栅栏连跳会沿幻影延伸"阶梯爬升"翻越（QA 实测抓到并修复）
+- 【玩家】player.moveInput 新增 ladder 攀爬分支（身体任一处重叠梯子格即吸附：有移动输入=2.8 上升 / 潜行=悬停 / 静止=−2.2 缓滑，替代重力），fallStartY 攀爬时持续重置（下梯无摔伤）；QA 实测 3 格梯连爬 42→45.36 单调、越顶自然跨出、全程 HP 20 无伤
+- 【交互】placeBlock 新增 trapdoor（按点击面写 attach meta）/ladder（仅侧面+实心墙，拒绝时双语 toast "Ladders need a solid wall"）/gate（cardinalToward facing）三分支；rightClick 分发 +toggleTrapdoor/+toggleGate（关门防夹：trapdoor 用 0.16 板带检测——站板上允许关（板从脚下合上=MC）、脚在板内拒绝；gate 沿用 aabbIntersectsBlock 全格防夹）；cleanupDependents 新增梯子/贴墙 trapdoor 随支撑方块消失掉落
+- 【贴图】atlas 10 新 tile：trapdoor×3（oak=X 斜撑格栅/spruce=横条/jungle=中柱+侧梁，复用 DOOR_WOODS 调色）、ladder（透明底双轨四横蹬）、gate×3（横轨+X 撑+中柱）、fence icon×3（透明底中柱+双扶手短截）；flatIcon=tiles[0] 图标路径全部成立
+- 【配方/创造】11 条 MC 版型配方：trapdoor 3×2（刻意转置避免与 2×3 门配方在匹配器中撞车——自查发现）、ladder H 形 7 木棍→3、fence 4 板+2 棍→3、gate 4 棍+2 板→1；creativeItems 排除 open 态
+- 【QA】agent-browser（cmuonnnhs 世界，全程 4fps SwiftShader，2 次 llvmpipe CDP 死锁按 runbook 杀 chrome 重启恢复）：
+  * trapdoor 真实 rightClick 放置（墙侧点 meta=0 贴附边 ✓）→ toggle 86→87→86 meta 保持 ✓；开=贴柱竖板带 X 格栅、关=3/16 底板（截图佐证）
+  * ladder 真实放置 meta=1 ✓；攀爬 42→45.36 连续、越顶、下地无伤 ✓；3 格梯视觉=双轨+横蹬贴墙 ✓
+  * fence 自动连接（石块→fence→gate→fence→fence 全链扶手）截图 ✓；栅栏 1.6 高碰撞：行走止步 -107.7 ✓、60fps dt 连跳 apex 43.53 不可越 ✓、站 trapdoor 顶跳 apex 43.58 仍差 0.02 不可越 ✓
+  * gate：放置 meta=3 横杆垂直来向 ✓、右键 96→97 开、步行穿越至 -114 ✓、站门内关闭被拒 ✓、门外关闭 97→96 ✓
+  * crush 矩阵：trapdoor 板内关=拒/板上关=许；gate 门内关=拒/门外关=许 全部 ✓
+  * 支撑清理：拆柱→梯子消失 ✓、拆墙→贴墙 trapdoor 消失 ✓
+  * hotbar 8 格新块图标全部正确渲染 ✓；closed trapdoor 世界内渲染（oak 格栅顶面）✓
+  * 收尾：180 格备份全部还原（58 格实际回写）、无残留扫描 0、玩家/视角还原 (239.3,42,-108.5, yaw-0.75, pitch-0.10)、saveGame+API 验证 PUT 成功
+- 【诚实台账】① QA 前 3 次测试姿势坐标错（cell 边界 floor 换算、过期 yaw 走位绕过栅栏、残留 trapdoor 卡住自己）浪费数轮——全部是我测试脚本的错而非游戏代码缺陷，按实证法逐一定位；② 门配方初版与 trapdoor 撞车（同为 2×3 板）在自查中抓到并改为 MC 真实 3×2 转置；③ HMR 在 QA 中途重载世界两次（blocks.ts 改动触发），重进+重建 rig 恢复；④ db/custom.db 的 prisma readonly 错误为已知自愈模式（API 验证保存全部成功）；⑤ QA 存档 cmuonnnhs hotbar 内容被清空还原为空（原 slot 2 火把堆在 v0.51 已知损失，本轮未再触碰其余世界）
+- lint 通过；VERSION + version.ts → 0.53.0 "Woodwork II (Trapdoors · Climbable Ladders · Fences · Fence Gates)"；commit dc59e5a + f7c57f7（QA hardening）已推 origin/main（masoudwolf/minecraft.git）
+
+Stage Summary:
+- v0.53.0 = 建造系统大扩展：4 类新方块家族（16 个方块 id）+ 首个攀爬机制 + 首个 >1 格碰撞高度（tall 幻影延伸）+ 栅栏自动连接——meta 基础设施（v0.52）第三批复用者，全部走 pushBox 属性不变量防线
+- 物理层新能力：hit 码区分实心/幻影延伸，为未来墙栏(wall)、玻璃板(pane)连接与 1.5 格碰撞铺路
+- 已知边界：梯子/贴墙 trapdoor 无下方支撑弹出（与 v0.52 爆炸不联动同级别低危）；fence 不向下连接（MC 亦然）；gate open 面板退缩式（非铰链旋转）视觉近似
+- NEXT QUEUE：item frames / armor stands（展示类，meta+BE 已就绪）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、玻璃板+墙栏（fenceConnects/tall 已铺路）
