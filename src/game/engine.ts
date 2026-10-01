@@ -15,7 +15,7 @@ import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, isPotionItem, getPotionDef, ITEM } from './items';
 import { EFFECTS } from './effects';
 import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
-import { villagerTrades, tradeEpoch, villagerTradeSeed, VILLAGER_PROFESSIONS, type VillagerProfession, type TradeOffer } from './trades';
+import { villagerTrades, tradeEpoch, villagerTradeSeed, VILLAGER_PROFESSIONS, pickVillagerProfession, type VillagerProfession, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, hasInfinity, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
 import { BlockEntityManager, BREW_TIME } from './blockEntities';
@@ -44,6 +44,11 @@ function cardinalToward(px: number, pz: number, cx: number, cz: number): number 
 }
 
 const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration source)
+// v0.58: marker written alongside every saveGame; migrateLocalSave treats a
+// save WITHOUT it as legacy. Without this, any fresh browser profile that
+// autosaves once then reloads re-migrates the autosave as a NEW 'Migrated
+// World' row — a duplicate-world factory (QA hit this ~dozens of times).
+const SAVE_KEY_MARK = 'voxelcraft.save.v2';
 
 interface SaveData {
   seed: number;
@@ -328,7 +333,10 @@ export class Game {
   async loadWorld(id: string): Promise<void> {
     const store = useGameStore.getState();
     try {
-      const res = await fetch(`/api/worlds/${id}`);
+      // v0.58: cache:'no-store' — the browser heuristic cache served STALE
+      // saves on reload (player/mobs/time reverting to an older state); the
+      // server now also sends Cache-Control: no-store (belt and braces)
+      const res = await fetch(`/api/worlds/${id}`, { cache: 'no-store' });
       if (!res.ok) throw new Error('load failed');
       const { world } = (await res.json()) as { world: { id: string; name: string; gameMode: GameMode; seed: number; time: number; data: string } };
       let save: SaveData | null = null;
@@ -357,6 +365,7 @@ export class Game {
         const MIGRATED_FLAG = 'voxelcraft.migrated';
         const raw = localStorage.getItem(SAVE_KEY);
         if (!raw || localStorage.getItem(MIGRATED_FLAG)) return;
+        if (localStorage.getItem(SAVE_KEY_MARK)) return; // v0.58: current-code save, NOT legacy — never re-migrate
         localStorage.setItem(MIGRATED_FLAG, '1'); // set first — prevents duplicate worlds on race/retry
         const save = JSON.parse(raw) as SaveData & { gameMode?: GameMode };
         const res = await fetch('/api/worlds', {
@@ -381,7 +390,7 @@ export class Game {
   /** refresh the world list in the store */
   async fetchWorlds(): Promise<void> {
     try {
-      const res = await fetch('/api/worlds');
+      const res = await fetch('/api/worlds', { cache: 'no-store' }); // v0.58: fresh list
       if (!res.ok) return;
       const { worlds } = (await res.json()) as { worlds: (WorldMeta & { achievements: string | string[] })[] };
       useGameStore.getState().setWorlds(worlds.map((w) => ({
@@ -597,6 +606,7 @@ export class Game {
     const json = JSON.stringify(save);
     try {
       localStorage.setItem(SAVE_KEY, json); // legacy mirror (offline fallback)
+      try { localStorage.setItem(SAVE_KEY_MARK, '2'); } catch { /* quota */ }
       useGameStore.getState().setHasSave(true);
     } catch { /* quota */ }
     // canonical store: DB (fire-and-forget, throttled by callers)
@@ -883,6 +893,29 @@ export class Game {
         this.startSwing();
       }
       return;
+    }
+    // v0.58 villager spawn egg: place a resident on the targeted face (MC
+    // spawn-egg UX). Egg villagers get persist=true — permanent residents that
+    // survive the radius despawn — and a random profession for the trade pool.
+    if (held && held.count > 0 && held.blockId === ITEM.VILLAGER_EGG && this.target && this.mobs) {
+      const t = this.target;
+      const sx = t.x + t.nx, sy = t.y + t.ny, sz = t.z + t.nz;
+      // needs 2-block headroom like every other spawn
+      if (this.world.getBlock(sx, sy, sz) === BLOCK.AIR && this.world.getBlock(sx, sy + 1, sz) === BLOCK.AIR) {
+        const mob = this.mobs.debugSpawn('villager', sx + 0.5, sy, sz + 0.5, pickVillagerProfession(), true);
+        if (mob) {
+          audio.pop();
+          this.placeCooldown = 0.25;
+          this.startSwing();
+          if (!this.player.isCreative) {
+            held.count--;
+            if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+            this.updateHandMesh();
+          }
+          this.syncHUD();
+        }
+      }
+      return; // egg press is always consumed (MC: failed placement still swings)
     }
     // hoe: till grass/dirt/mycelium into farmland
     const heldTool = held && held.count > 0 && isItemId(held.blockId) ? getToolDef(held.blockId) : undefined;

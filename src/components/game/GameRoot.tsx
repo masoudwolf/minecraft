@@ -29,11 +29,18 @@ export default function GameRoot() {
     if (!canvasRef.current) return;
     const game = new Game(canvasRef.current);
     setEngine(game);
+    // QA/dev handle — same convention as window.__gfxDebug (graphics/index.ts)
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__vcEngine = game;
+    }
     void game.migrateLocalSave(); // legacy localStorage save → DB world (one-time)
     void game.fetchWorlds();
     return () => {
       game.dispose();
       setEngine(null);
+      if (typeof window !== 'undefined') {
+        delete (window as unknown as Record<string, unknown>).__vcEngine;
+      }
     };
   }, []);
 

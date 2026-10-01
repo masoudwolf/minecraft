@@ -1601,3 +1601,32 @@ Stage Summary:
 - v0.57.0 = 村庄完形：单模板空壳 → 6 类型×4 旋转带家具装修的职业住宅（bed 朝向走 gen-meta 新基建）+ 5 个职业工作方块（3 个自定义 mesher 模型）+ 村民 6 职业（袍色染色/生成强化/存档持久化）+ 按职业交易池 + 双语交易面板
 - 基础设施沉淀：generateChunk metaOut 通道（地形生成可写朝向 meta，!has 守卫保存档权威）；villager variant→skinKey→tradeProfile 全链路职业通道（零 schema 变更）
 - NEXT QUEUE：armor stands（实体装备，大项单列）、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进、药水箭/滞留药水（splash 基建已铺）、村民职业方块交互（lectern 阅读/堆肥桶堆肥等 gameplay 化）
+
+---
+Task ID: 61
+Agent: Z.ai Code (main)
+Task: 用户问 "چرا پس من این روستایی ها رو تو مو کریتیو نمیبینم"（为什么我在我的创造模式世界里看不到村民？）→ 排查"v0.57.0 已实现村民但用户看不见"的根因并修复 → v0.58.0 "Village Residents (Spawn Egg · Anchored Spawning)"
+
+Work Log:
+- 【防回退】restore 脚本：local AHEAD 1（平台 db 快照 commit）→ 推平；origin/main=48fa798，VERSION=0.57.0，worklog 尾部=Task 60 ✓ 版本链 0.55.1→0.56.0→0.57.0 单调
+- 【根因分析（对用户问题的诚实回答）】v0.57.0 村民实体/职业/交易确实存在，但自然生成逻辑 = 每 1.6s 一次 50% 概率 roll，随机点 16-42 格外，要求落点 EXACTLY 是 PLANKS/COBBLE 地表——村庄占地极小，命中率 ≈1%，再加白天门槛 → 实际几乎永远看不到。Task 60 worklog 台账③（自然生成未在 QA 窗口观察到）早已预警此问题
+- 【修复① 村庄锚定生成】MobManager.trySpawnVillagers（mobs.ts）：不再赌随机点命中，改为选定列后向下扫描收集所有"木板/圆石地表+2 格净空"候选，取最低者（屋内地板/院子 优先于 屋顶）；topSolid-8 守卫防矿井/洞穴误生成；光照门槛 max(blkL, skyL·sun)≥7（火把照明的室内+白天院子都合格）；每 roll 采样 6 列（初版单列实测 320 列仅 2 候选 → 6 列后 25s 内实测出 2 只、累计 5 只）；cap 9、群 2-3、距离带 20-56、独立于通用 roll 的预算（mobs<30）
+- 【修复② 刷怪蛋】ITEM.VILLAGER_EGG=383（items.ts，MC 风格蛋形像素画：米白底+褐斑+高光）；engine RMB 分支：射线目标面放置 villager（随机职业 pickVillagerProfession）+persist=true+audio.pop+消耗（创造模式不消耗）；creativeItems 'spawn egg'→functional 分类
+- 【修复③ persist 标志】Mob.persist?: boolean——刷怪蛋村民豁免半径 despawn（MC 平价：创造放的村民不该走远就消失）；SavedMob.persist 序列化 round-trip（可选字段，load 容错）；NaN/坠世界清洁检查仍对所有生物生效
+- 【修复④（重大·既有 bug）区块门控生物恢复】QA 抓到：restore() 在 setupWorld 时直接 spawn，此时世界只有 (0,0) chunk——远离出生点的存档生物落在未生成地形（getBlock=AIR）→ 坠落 y<-20 → despawn。**存档里所有离开原地的生物每次重进都无声消失**（v0.55 起就存在的潜伏 bug，动物/村民一视同仁）。修复：restore() 入 pendingMobs 队列，update() 里 drainPendingMobs() 仅在 chunk.hasData 时物化（MC 式 chunk 门控实体加载）；serialize() 把仍排队者附在队尾（防存档丢生物）；clear() 清队列
+- 【修复⑤（重大）存档 API 缓存污染】标记实验（sky.time=300.77+3 村民存档→curl 验证 DB→reload→客户端载入的却是 t≈421 旧态）揪出：worlds API GET 响应无 Cache-Control → 浏览器启发式缓存 reload 时静默回吐旧存档。这同时大概率解释了历史上用户的"باز برگشتی به ورژن قدیمی"（版本回退）类投诉——不是代码回退，是浏览器缓存回吐旧世界！修复：两个 GET 路由 + 客户端 fetch 均加 no-store（belt and braces）
+- 【修复⑥（重大）迁移工厂】QA 全程"世界列表越来越长"暴露：fresh 浏览器 profile 无 MIGRATED_FLAG → 每次 reload 都把 localStorage autosave 当"legacy 存档"POST 成新的 "Migrated World" 行。修复：saveGame 写 SAVE_KEY_MARK('voxelcraft.save.v2')，migrateLocalSave 见 marker 直接 return。DB 清理：删除 31 行 0-trophy "Migrated World" 垃圾（全部为 QA 期间迁移产物，含 3bhjhi3/4o708n 等 18:40-19:25 本轮窗口的 7 行）；保留全部有成就世界（10/12 主世界 eiyhr1、10/12×3、9/12×4、4/12 survival）+ 用户自建 "New Worldkkj" + 2 个前主世界时期(9/28-29)的 0-tr 旧档（保守保留）——**台账：删除判据=name='Migrated World' AND achievements='[]' AND id≠主世界，若用户在这些垃圾档里有任何操作（achievements 会>0）则必被保留**
+- 【QA（agent-browser，cmuonnnhs 主世界，5 次 llvmpipe CDP 死锁按 runbook 杀 chrome 恢复，标记实验法定位缓存 bug）】
+  * 锚定生成实测：传送铁匠铺 (199,52,-234)+正午 → 25s 内 butcher+brewer 在 (203,46,-215)/(201,46,-216) 屋内生成；累计 5 只（butcher/brewer×3/fisherman），屋顶/地板双落点均验证
+  * 截图证据：屠夫村民在圆石地板屋内（床/工作台/火把陈设可见）；村民大特写（棕袍+一字眉+绿眼+长鼻+交臂）；渔夫村民+蛋图标（slot0 白蛋褐斑）+两栋异色房屋同框（云杉大屋 vs 全圆石屋=多样性实证）
+  * 刷怪蛋实测：蛋+rightClick（合成事件因 pointer lock 不可用→直接 g.rightClick()）→ 目标面 (205,45,-223) 生成 librarian、persist=true ✓
+  * round-trip 实测：saveGame→DB 验证（3 村民 1 persist）→reload→重进→live=3 persist=1 time=320.52（=300.77+走表）→**存档/读档全链路通了**
+  * lint clean；tsc 仅既有基线（AssetViewer/atlas:353/FurnaceBE）
+- 【诚实台账】① QA 时间线中段曾把"缓存回吐旧档"误判为 despawn 时序问题，绕行 30+ 分钟——标记实验法（精确时间戳+村民数写盘再对比客户端载入值）是破案关键，沉淀为 QA 标准手段；② 前几轮 QA 建的 31 个垃圾世界污染了用户列表数周（每轮 QA 一个），本轮才定位并清理——诚实认领；③ rig 期间被清掉的 14 只宿敌/动物与 3 只 rig 村民均为测试产物，最终态 DB=玩家原位 (313,52,-73)+t=424.4+0 村民+7 天然生物；④ 原始 hotbar 意外经缓存链路保留（slot2=火把×64/slot8=木板×7），无需修复；⑤ 屋顶落点（低优先候选）会出现在"地板被家具堵净空"的列——后续可加"地面层优先"权重
+- 【收尾】rig 村民 3 杀+残留 0、玩家 (312.9,52,-72.95,yaw1.106,pitch-0.21)+时间 423.7 还原、saveGame→PUT 200→Prisma 复读确认、browser close+pkill
+- VERSION + version.ts → 0.58.0 "Village Residents (Spawn Egg · Anchored Spawning)"；cron webDevReview 重建为 v0.58.0 版（旧 job 428749 因 exec limits 耗尽被替换）
+
+Stage Summary:
+- v0.58.0 = 村庄"有生命"闭环：村庄锚定生成（村民真的会出现在村庄里了）+ 创造刷怪蛋（用户可亲手放村民，永久居民）+ 存档读档 3 个结构性 bug 修复（区块门控恢复 / API no-store / 迁移工厂）——后三者全是 QA 过程中挖出的既有系统性 bug，尤其 no-store 缓存回吐极可能就是历史上"版本回退"体感的真凶
+- 基础设施沉淀：pendingMobs 队列模式（生物随 chunk 物化）；window.__vcEngine QA 句柄；标记实验法（marker save → reload → diff）；QA 存档直查 DB 的 Prisma 脚本模式
+- NEXT QUEUE：armor stands（实体装备，大项单列）、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似、药水箭/滞留药水（splash 基建已铺）、职业方块 gameplay 化（lectern 阅读/堆肥桶堆肥）、新 chunk 生成期村民锚点（generateChunk metaOut 记录房屋出生点）

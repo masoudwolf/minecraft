@@ -10,7 +10,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const world = await db.world.findUnique({ where: { id } });
     if (!world) return NextResponse.json({ error: "World not found" }, { status: 404 });
-    return NextResponse.json({ world });
+    // v0.58: no-store — without it the browser heuristically caches this GET and
+    // a reload can silently serve a STALE world save (player position/mobs
+    // "revert" to an older state). Root cause of the disappearing-villagers QA
+    // loop and very likely the historical "world went back to an old state"
+    // user reports.
+    const res = NextResponse.json({ world });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (err) {
     console.error("GET /api/worlds/[id] failed", err);
     return NextResponse.json({ error: "Failed to load world" }, { status: 500 });

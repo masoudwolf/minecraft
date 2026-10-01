@@ -9,6 +9,7 @@ import { audio } from '../audio';
 import { ITEM, getPotionDef, POTION_PALETTE } from '../items';
 import { shadowState } from '../graphics/shadowState';
 import { pickVillagerProfession } from '../trades';
+import { CHUNK_SIZE } from '../constants';
 
 export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem' | 'knight';
 
@@ -74,6 +75,9 @@ interface Mob extends AABBEntity {
   /** splash-poison DoT on mobs (player-thrown poison potions); non-lethal */
   poisonT?: number;
   poisonTickT?: number;
+  /** v0.58: spawn-egg mobs are permanent residents — exempt from the radius
+   *  despawn (MC parity: creative-placed villagers don't vanish on you) */
+  persist?: boolean;
   dead: boolean;
   deathT: number;
   wanderX: number;
@@ -97,6 +101,8 @@ export interface SavedMob {
   variant?: string;
   /** sheep: fleece sheared off (regrows on its own after load) */
   sheared?: boolean;
+  /** v0.58: spawn-egg villager — survives the radius despawn */
+  persist?: boolean;
 }
 
 interface Arrow {
@@ -921,8 +927,10 @@ export class MobManager {
   arrows: Arrow[] = [];
   potions: Potion[] = [];
   private scene: THREE.Scene;
-  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string };
+  private world: { getBlock(x: number, y: number, z: number): number; setBlock(x: number, y: number, z: number, id: number): void; getLight(x: number, y: number, z: number): number; getLightForMesh(x: number, y: number, z: number): number; biomeAt?(x: number, z: number): string; getChunk?(cx: number, cz: number): { hasData: boolean } | undefined };
   private spawnTimer = 0;
+  /** v0.58: saved mobs waiting for their chunk to stream in (restore queue) */
+  private pendingMobs: SavedMob[] = [];
   private arrowMat: THREE.MeshLambertMaterial;
   private playerArrowMat: THREE.MeshLambertMaterial;
   private potionMat: THREE.MeshLambertMaterial;
@@ -946,9 +954,10 @@ export class MobManager {
     return this.mobs.length;
   }
 
-  /** QA/testing helper: force-spawn a mob at position (variant for sheep) */
-  debugSpawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
-    return this.spawn(type, x, y, z, variant);
+  /** QA/testing helper: force-spawn a mob at position (variant for sheep;
+   *  persist=true marks spawn-egg villagers as permanent residents) */
+  debugSpawn(type: MobType, x: number, y: number, z: number, variant = '', persist = false): Mob | null {
+    return this.spawn(type, x, y, z, variant, persist);
   }
 
   clear(): void {
@@ -957,6 +966,7 @@ export class MobManager {
       this.scene.remove(m.parts.shadow);
     }
     this.mobs = [];
+    this.pendingMobs = [];
     for (const a of this.arrows) this.scene.remove(a.mesh);
     this.arrows = [];
     for (const p of this.potions) this.scene.remove(p.mesh);
@@ -1002,29 +1012,55 @@ export class MobManager {
         yaw: +m.yaw.toFixed(2),
         ...(m.variant ? { variant: m.variant } : {}),
         ...(m.sheared ? { sheared: true } : {}),
+        ...(m.persist ? { persist: true } : {}),
       });
       if (out.length >= 36) break;
+    }
+    // v0.58: mobs still queued for chunk-gated materialization must survive a
+    // save/reload too — append them behind the live ones
+    for (const s of this.pendingMobs) {
+      if (out.length >= 36) break;
+      out.push(s);
     }
     return out;
   }
 
-  /** restore mobs from a save; suppresses the spawn burst right after */
+  /** restore mobs from a save; suppresses the spawn burst right after.
+   *  v0.58 fix: mobs are queued, not spawned immediately — at setupWorld time
+   *  only chunk (0,0) exists, so a mob restored at its saved position fell
+   *  through ungenerated terrain (getBlock = AIR) below y=-20 and was
+   *  despawned. Saved mobs anywhere away from the world spawn silently
+   *  vanished on every reload. They now materialize once their chunk's data
+   *  exists (MC-style chunk-gated entity load). */
   restore(list: SavedMob[]): void {
     for (const s of list) {
       if (!(s.type in MOB_DEFS)) continue;
       if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z)) continue;
+      this.pendingMobs.push(s);
+    }
+    this.spawnTimer = 6;
+  }
+
+  /** materialize queued saved mobs whose chunk has data (runs each update) */
+  private drainPendingMobs(): void {
+    if (this.pendingMobs.length === 0) return;
+    for (let i = this.pendingMobs.length - 1; i >= 0; i--) {
+      const s = this.pendingMobs[i];
+      const ch = this.world.getChunk?.(Math.floor(s.x / CHUNK_SIZE), Math.floor(s.z / CHUNK_SIZE));
+      if (!ch || !ch.hasData) continue; // chunk not streamed yet — stays queued
+      this.pendingMobs.splice(i, 1);
       const m = this.spawn(s.type as MobType, s.x, s.y, s.z, s.variant ?? '');
       if (m) {
         m.health = Math.max(1, Math.min(m.def.health, Math.round(s.health)));
         m.yaw = Number.isFinite(s.yaw) ? s.yaw : m.yaw;
         m.targetYaw = m.yaw;
+        if (s.persist) m.persist = true;
         if (s.sheared && m.type === 'sheep') this.setSheared(m, true);
       }
     }
-    this.spawnTimer = 6;
   }
 
-  private spawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
+  private spawn(type: MobType, x: number, y: number, z: number, variant = '', persist = false): Mob | null {
     const def = MOB_DEFS[type];
     const skinKey = variant && (type === 'sheep' || type === 'snowgolem' || type === 'knight' || type === 'villager') ? `${type}:${variant}` : type;
     const skins = getMobSkins(skinKey);
@@ -1072,6 +1108,7 @@ export class MobManager {
       fuse: -1, dead: false, deathT: 0,
       provoked: false, teleportCd: 0, waterHurtT: 0,
       variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : type === 'knight' ? (variant || 'cyber') : type === 'villager' ? (variant || 'none') : '',
+      persist: persist || undefined,
       sheared: false,
       woolRegrowT: 0,
       wanderX: x, wanderZ: z,
@@ -1139,14 +1176,9 @@ export class MobManager {
         this.spawn('golem', x, sy + 1, z);
         return;
       }
-      const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
-      // v0.57: bigger cap + herds of 2-3 with random professions — villages
-      // feel inhabited, and the despawn exemption below keeps them around
-      if (villagerCount < 9 && skyL >= 9 && sunLevel > 0.55) {
-        const herd = 2 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < herd; i++)
-          this.spawn('villager', x + (Math.random() - 0.5) * 2.5, sy + 1, z + (Math.random() - 0.5) * 2.5, pickVillagerProfession());
-      }
+      // v0.58: villagers moved OUT of this random-point roll — a village's
+      // footprint is tiny, so a random column almost never lands on it.
+      // They now spawn via trySpawnVillagers() (anchored column scan).
       return;
     }
     if (groundId === BLOCK.MYCELIUM) {
@@ -1298,9 +1330,68 @@ export class MobManager {
     cb.explodeParticles(x, y, z);
   }
 
+  /**
+   * v0.58 village-anchored villager spawning.
+   * The old roll required a random point 16-42 blocks out to land EXACTLY on
+   * planks/cobble — a village's footprint is tiny, so encounters were close to
+   * never (the user's report: no villagers visible in their creative world).
+   * Instead: pick a column in village range, scan it for planks/cobble
+   * surfaces with headroom, and spawn at the LOWEST match — house floor / yard
+   * beats roof. Works for both old single-template chunks and new diverse
+   * house chunks, since it reads the actual saved blocks.
+   */
+  private trySpawnVillagers(playerX: number, playerZ: number, sunLevel: number): void {
+    if (this.mobs.length >= 30) return;
+    const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
+    if (villagerCount >= 9) return;
+    const angle = Math.random() * Math.PI * 2;
+    // 20-56 blocks out: past the generic mob band, inside the villager
+    // despawn radius (96) — covers village cores the player is near
+    const dist = 20 + Math.random() * 36;
+    const x = Math.floor(playerX + Math.cos(angle) * dist) + 0.5;
+    const z = Math.floor(playerZ + Math.sin(angle) * dist) + 0.5;
+    // v0.58: village footprints are a tiny fraction of the annulus, so ONE
+    // column per roll hit only ~1% of the time. Sample 6 columns per roll
+    // (~560 cheap array lookups every 1.6s) — villages now visibly populate.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const colX = Math.floor(x + (Math.random() - 0.5) * 24);
+      const colZ = Math.floor(z + (Math.random() - 0.5) * 24);
+      // single pass down the column: topmost solid + lowest valid village surface
+      let topSolid = -1;
+      let bestY = -1;
+      for (let y = 95; y > 2; y--) {
+        const id = this.world.getBlock(colX, y, colZ);
+        if (id === 0 || isWaterId(id)) continue;
+        if (topSolid < 0) topSolid = y;
+        if (y < topSolid - 8) break; // surface structures only — no mines/spelunk spawns
+        if (
+          (id === BLOCK.PLANKS || id === BLOCK.COBBLESTONE) &&
+          this.world.getBlock(colX, y + 1, colZ) === 0 &&
+          this.world.getBlock(colX, y + 2, colZ) === 0
+        ) {
+          bestY = y; // keep scanning down — the lowest match (floor/yard) wins
+        }
+      }
+      if (bestY < 3) continue;
+      const l = this.world.getLight(colX, bestY + 1, colZ);
+      if (l < 0) continue;
+      const skyL = l >> 4;
+      const blkL = l & 15;
+      // torch-lit interiors (blkL) and sunlit yards (skyL·sun) both pass; dark
+      // caves / unlit night ground do not
+      if (Math.max(blkL, skyL * sunLevel) < 7) continue;
+      const herd = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < herd; i++)
+        this.spawn('villager', colX + 0.5 + (Math.random() - 0.5) * 2.5, bestY + 1, colZ + 0.5 + (Math.random() - 0.5) * 2.5, pickVillagerProfession());
+      return; // one herd per roll
+    }
+  }
+
   update(dt: number, player: AABBEntity & { eyeY(): number }, sunLevel: number, cb: MobCallbacks): void {
     this.time += dt;
     this.lastCb = cb;
+    // v0.58: materialize restored mobs whose chunks have streamed in
+    this.drainPendingMobs();
     // ── spawning ──
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -1312,6 +1403,9 @@ export class MobManager {
       if (this.mobs.length < 22 && Math.random() < 0.5) {
         this.trySpawnMob(player.x, player.y, player.z, sunLevel, passive, hostile);
       }
+      // v0.58: independent village-anchored villager roll (own budget, so a
+      // full generic mob pool can't starve villages of residents)
+      this.trySpawnVillagers(player.x, player.z, sunLevel);
     }
 
     // ── mobs ──
@@ -1324,9 +1418,11 @@ export class MobManager {
       // glitch out would otherwise persist forever.
       // v0.57: villagers linger at 1.5× the radius so a village keeps its
       // residents while you explore nearby (they persist through saves too).
+      // v0.58: spawn-egg villagers (persist) never despawn by radius — but a
+      // glitched position (NaN / below-world) is still always cleaned up.
       const despawnR = m.type === 'villager' ? 96 : 64;
       if (
-        distToPlayer > despawnR ||
+        (!m.persist && distToPlayer > despawnR) ||
         !Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.z) ||
         m.y < -20
       ) {

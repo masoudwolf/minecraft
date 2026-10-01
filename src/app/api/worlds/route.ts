@@ -18,7 +18,10 @@ export async function GET() {
         achievements: true,
       },
     });
-    return NextResponse.json({ worlds });
+    // v0.58: no-store — the world list must always reflect fresh updatedAt
+    const res = NextResponse.json({ worlds });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (err) {
     console.error("GET /api/worlds failed", err);
     return NextResponse.json({ error: "Failed to list worlds" }, { status: 500 });

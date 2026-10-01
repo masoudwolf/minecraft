@@ -191,6 +191,8 @@ export const ITEM = {
   POTION_SPLASH_JUMP: 380,
   POTION_SPLASH_HEALING: 381,
   POTION_SPLASH_POISON: 382,
+  // v0.58: creative tool — place a villager with a random profession
+  VILLAGER_EGG: 383,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -1182,6 +1184,40 @@ ITEMS[ITEM.GUNPOWDER] = {
     ctx.fillStyle = '#8a8a8a';
     ctx.fillRect(6, 9, 2, 1);
     ctx.fillRect(10, 11, 1, 1);
+  },
+};
+
+// ── v0.58: villager spawn egg (creative) ──
+// MC spawn-egg silhouette: off-white base (villager robe tone) with brown
+// spots (farmer-brown accent). Pixel art at 16×16 like the other items.
+ITEMS[ITEM.VILLAGER_EGG] = {
+  id: ITEM.VILLAGER_EGG, name: 'Villager Spawn Egg',
+  icon: (ctx) => {
+    // egg body — rounded blob
+    ctx.fillStyle = '#e8e2d2';
+    ctx.fillRect(6, 3, 4, 1);
+    ctx.fillRect(5, 4, 6, 1);
+    ctx.fillRect(4, 5, 8, 2);
+    ctx.fillRect(3, 7, 10, 5);
+    ctx.fillRect(4, 12, 8, 1);
+    ctx.fillRect(5, 13, 6, 1);
+    // shading on the lower-right
+    ctx.fillStyle = '#c9c2ac';
+    ctx.fillRect(10, 8, 2, 4);
+    ctx.fillRect(8, 12, 4, 1);
+    ctx.fillRect(9, 5, 2, 1);
+    // brown spots (MC villager egg has brown patches)
+    ctx.fillStyle = '#7a5b3a';
+    ctx.fillRect(5, 6, 2, 2);
+    ctx.fillRect(9, 8, 2, 3);
+    ctx.fillRect(6, 11, 2, 1);
+    ctx.fillRect(10, 5, 1, 1);
+    ctx.fillRect(4, 9, 1, 2);
+    // top-left sheen
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(6, 4, 1, 1);
+    ctx.fillRect(5, 5, 1, 1);
+    ctx.fillRect(4, 6, 1, 1);
   },
 };
 
