@@ -1567,3 +1567,37 @@ Stage Summary:
 - v0.56.0 = 炼金系统完形：MC 三大修饰器（红石/萤石粉/火药）+ 26 新物品 + 首个玩家可投掷AoE物品 + 首个生物 DoT 通道（poisonT）。获取链全部走既有生物/方块（女巫/苦力怕/萤石），零地形改动
 - 基础设施沉淀：BREW_MODIFIER 逐槽解析模式（双角色原料分流）、MobCallbacks.applyEffect/healPlayer（反向状态施加通道）、POTION_PALETTE 运行时调色表
 - NEXT QUEUE：armor stands（实体装备，大项单列）、villager profession/restock UI、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进、药水箭/滞留药水（splash 基建已铺）
+
+---
+Task ID: 60
+Agent: Z.ai Code (main)
+Task: 用户问 "الان ولیجیر ها در روستا وجود دارن یا خیر؟ و لطفا خانه های متنوع داشته باشن نه شبیه هم وسایل مخصوص که استفاده میکنن داشته باشن و در هم داشته باشن خونه هاشون"（村庄里现在有村民吗？房子要多样化不要都一样，要有村民用的专属工具方块，而且要放在他们屋里）→ v0.57.0 "Village Life"
+
+Work Log:
+- 【防回退】restore 脚本：local = origin/main e01eddc（v0.56.0，Task 59 Alchemy II 已由 cron 会话完成并推送）→ 无回退；版本链 0.55.1 → 0.56.0 → 0.57.0 单调递增
+- 【回答用户（写入给用户的答复）】村民实体+交易 UI 早已存在且会自然生成，但 (1) 判据是"随机点踩到 PLANKS/COBBLE 地表"与村庄结构零耦合、上限 5 只、>64 格即消失；(2) 房屋是单一 7×7 空壳模板（室内仅 1 火把）；(3) 全部职业方块（讲台/锅/堆肥桶等）不存在。本轮三项全补齐
+- 【勘察】Explore 报告：villager MobDef 无职业字段、mobSkins getMobSkins('villager:*') 会落到 default:buildPig() 陷阱、trades.ts 扁平 10 条池、BLOCK 110-255/tile 115-255 空闲、世界 meta Map 持久化机制（v0.52 bed/door 先例）、容器 getOrCreate 惰性创建（gen 摆放 furnace/brewing stand 可安全右键）
+- 【新方块 110-114】LECTERN(自定义 mesher：底座+中柱+斜面顶[书页画进贴图]+前唇挡板)/CAULDRON(四壁 13/16+ε内缩腔底，防空面 z-fight)/COMPOSTER(木框 12/16+堆肥填充 5/16)/SMITHING_TABLE+BARREL(纹理立方体)；12 atlas tiles 115-126（铆钉铁/橡木桶箍/深色堆肥/枪灰砧座面等手绘像素图案）；BlockDef.model 联合 +3
+- 【房屋多样化】placeVillageHouse：6 建筑类型（0 cottage 5×5/1 bigHouse 9×7/2 library 7×9/3 smithy 7×7/4 farmstead 7×6/5 brewery 5×6）×4 旋转（纯坐标变换，模板→chunk-local R(lx,lz)，奇数旋转交换 w/d）；每类型独立墙/角/檐/面板材 palette（cottage 橡木+橡木原木角、bigHouse 云杉木、library 橡木+原木檐、smithy 全鹅石、farmstead 橡木+云杉角+丛林木板檐、brewery 丛林木板）；逐类型窗位表；室内按"业主职业"装修：bed(putBed 两格+旋转 facing meta)/crafting/bookshelf 行/羊毛毯/火把×2 + 职业标志方块（library=lectern+7 书架、smithy=锻造台+熔炉+双桶、farmstead=堆肥桶+锅+床、brewery=酿造台+锅+桶、cottage/bigHouse=床+工作台+书架+桶）；footprint+margin 严格 in-chunk（ox=2+hash*(13-w)）
+- 【gen-meta 基建】generateChunk(cx,cz,data,metaOut?) 第 4 参 + world.ensureChunk 合并（!has 守卫不覆盖存档恢复值）→ 地形生成的床获得与玩家放置床相同的朝向 meta（feet=facing、head=facing|4）；旋转朝向映射表 [[0,1,2,3],[2,3,1,0],[1,0,3,2],[3,2,0,1]][rot]
+- 【村民职业】variant 通道复用（SavedMob.variant 已有，存档 round-trip 零 schema 变更）；mobSkins 加 'villager:' 前缀分支（修掉落 buildPig 陷阱）+ buildVillager(prof)：袍子(body+robe腿+折臂桥)区域限定 multiply 染色 tintedTex 0.62（region=box-UV 全足迹 2(d+w)×d+h），头/鼻保持 vanilla——零新美术；6 职业色：farmer 棕/librarian 白/smith 黑围裙/brewer 紫/butcher 白/fisherman 卡其
+- 【村庄居住感】自然生成 cap 5→9、群 2-3 只随机职业；despawn 半径村民 96（其他 64）；serialize 上限 28→36
+- 【职业交易】trades.ts 重构：GENERAL_TRADES×4 + PROFESSION_TRADES Record<6 职业>（farmer 麦/种子/皮革/腐肉→面包金锭、librarian 纸/书/骨头、smith 燧石/煤/铁锭→箭/金、brewer 蜘蛛眼/红石/萤石粉/瓶、butcher 生熟肉转换、fisherman 鳕鱼鲑鱼生熟转换+线）；villagerTrades(seed,epoch,profession?) 池=职业4+通用4；engine.openTrade 收 {x,z,variant} 透传 profession；state +tradeProfession；TradePanel 双语职业标题（"Farmer Villager · کشاورز"模式）+ restock 倒计时（~N min · بازپرستی تا N دقیقه）
+- 【配方】MC 版型：桶=8 木板环、堆肥桶=7 木板 U、讲台=书架+3 木板底行、锻造台=2 铁+4 木板、锅=7 铁 U；creativeItems FUNCTIONAL_WORDS +5
+- 【QA（agent-browser，cmuonnnhs，CREATIVE 世界，一次 llvmpipe 卡死无、0 次 CDP 死锁）】
+  * 主菜单 0.57.0 "Village Life" ✓（无回退）
+  * 程序化网格扫描 1116 chunk：12 村庄房屋命中——library×8(110)/smithy×2(113+114)/farmstead×1(111+112)，3 种 palette 实证
+  * 铁匠铺实测：鹅石壳+玻璃窗+屋内锻造台(199,48,-234)+熔炉+木桶+双火把逐格与设计一致；锻造台/木桶渲染特写正确（枪灰顶板、橡木板条铁箍）
+  * 农舍实测：**床白枕头在正确一端**（gen-meta 朝向生效，feet meta=0/head=4 实读验证）+红毯+工作台+堆肥桶(木框板条+顶开口深色堆肥)+锅(空心内腔+卷边铁壁)+门洞+窗
+  * 图书馆实测：讲台(斜面+书页贴图)居中+7 书架后墙排+羊毛毯+4 窗+2 火把
+  * 村民职业：rig spawn 6 职业→棕/白/黑/紫/白/卡其袍色差异肉眼可辨（截图）；位置/群 wander 正常
+  * 交易面板×2：farmer（皮革→金/种子→面包/腐肉→面包）+librarian（纸→书/书→铁/煤→铁[通用池混入]）——职业池切换 ✓、双语标题+restock 倒计时渲染 ✓
+  * aTint 不变量：203 meshes / 593,524 verts / 0 违例（新 mesher 模型全属性 1:1）✓；console 无错误；lint clean；tsc 仅既有基线
+- 【诚实台账】① __qaSave.time 用了不存在的 g.worldTime 字段——原始时间未捕获，还原用 worklog Task 59 的最后已知值 427.5（深夜，外观级近似，已在此声明）；② QA 中 sky.time 被我改到 240 白天+autosave(20s 周期)已把 QA 中间态写入存档→显式 saveGame 前先杀 6 只测试村民+还原位置/yaw/pitch/时间，最终 2×PUT 200 确认还原态落盘；③ 自然村民生成未在 QA 窗口内观察到（雨天 sun 0.72>0.55 门槛满足但采样点命中率低）——机制与 Task 59 前完全同路径仅调参（cap/群/半径），风险低；④ cottage/bigHouse/brewery 无新方块签名未在扫描中单独计数（bed+crafting 与其他类型重叠），同一代码路径已由 3 类型实证；⑤ 房屋只影响新生成 chunk——用户已探索区域旧房屋不变（edits 覆盖+确定性生成下老 chunk 已有本地缓存/存档），新房屋在玩家探索新地域时出现
+- 【收尾】测试村民清除（6 杀+0 残留）、玩家还原 (312.90,51.87,-72.95, yaw 1.106, pitch -0.21)（本次 yaw/pitch 靠 __qaSave 立即捕获成功还原！）、时间 427.5、saveGame+autosave PUT 200 ×2、browser close + pkill
+- VERSION + version.ts → 0.57.0 "Village Life (Diverse Houses · Professions)"；commit 8a7c6f4 已推 origin/main（masoudwolf/minecraft.git）
+
+Stage Summary:
+- v0.57.0 = 村庄完形：单模板空壳 → 6 类型×4 旋转带家具装修的职业住宅（bed 朝向走 gen-meta 新基建）+ 5 个职业工作方块（3 个自定义 mesher 模型）+ 村民 6 职业（袍色染色/生成强化/存档持久化）+ 按职业交易池 + 双语交易面板
+- 基础设施沉淀：generateChunk metaOut 通道（地形生成可写朝向 meta，!has 守卫保存档权威）；villager variant→skinKey→tradeProfile 全链路职业通道（零 schema 变更）
+- NEXT QUEUE：armor stands（实体装备，大项单列）、cake 放置朝向对齐咬痕侧、frame 显示物逐格光照近似改进、药水箭/滞留药水（splash 基建已铺）、村民职业方块交互（lectern 阅读/堆肥桶堆肥等 gameplay 化）
