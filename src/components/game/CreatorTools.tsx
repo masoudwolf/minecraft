@@ -66,6 +66,10 @@ const CHEAT_ITEMS: { id: number; n: number }[] = [
   { id: ITEM.BUCKET, n: 4 },
   { id: ITEM.WATER_BUCKET, n: 4 },
   { id: BLOCK.ENCHANTING_TABLE, n: 8 },
+  { id: BLOCK.ITEM_FRAME, n: 16 },
+  { id: BLOCK.FLOWER_POT, n: 16 },
+  { id: BLOCK.FLOWER_RED, n: 16 },
+  { id: BLOCK.MUSHROOM_RED, n: 16 },
 ];
 
 /** collapsed state: a small always-visible cheat button (top-right) */

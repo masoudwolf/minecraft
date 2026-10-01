@@ -1154,6 +1154,92 @@ export function getAtlas(): AtlasData {
   drawWallIcon(108, 'brick');
   drawWallIcon(109, 'sand');
 
+  // ── phase 17: showcase & décor tiles (item frame / flower pot) ──
+  // item frame creative icon: transparent bg, square stick-frame ring with a
+  // parchment inner edge (MC empty item frame reads as wood ring + tan backing)
+  p = T(110);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const wood = '#9a7442', woodDark = '#6e5230', woodHi = '#b58c55';
+    ctx.fillStyle = wood;
+    ctx.fillRect(p[0], p[1], 16, 2); ctx.fillRect(p[0], p[1] + 14, 16, 2);
+    ctx.fillRect(p[0], p[1] + 2, 2, 12); ctx.fillRect(p[0] + 14, p[1] + 2, 2, 12);
+    ctx.fillStyle = woodHi;                       // top/left bevel highlight
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1], 1, 16);
+    ctx.fillStyle = woodDark;                     // bottom/right bevel shade
+    ctx.fillRect(p[0], p[1] + 15, 16, 1); ctx.fillRect(p[0] + 15, p[1], 1, 16);
+    ctx.fillStyle = '#c9b48a';                    // tan backing lip inside the ring
+    ctx.fillRect(p[0] + 2, p[1] + 2, 12, 1); ctx.fillRect(p[0] + 2, p[1] + 13, 12, 1);
+    ctx.fillRect(p[0] + 2, p[1] + 2, 1, 12); ctx.fillRect(p[0] + 13, p[1] + 2, 1, 12);
+  }
+  // frame panel face: wood ring with a fully TRANSPARENT 12×12 center — the
+  // cutout alphaTest punches the hole so the wall shows through behind the
+  // displayed item sprite (matches the in-world 1/16 panel geometry)
+  p = T(111);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const wood = '#9a7442', woodDark = '#6e5230', woodHi = '#b58c55';
+    ctx.fillStyle = wood;
+    ctx.fillRect(p[0], p[1], 16, 2); ctx.fillRect(p[0], p[1] + 14, 16, 2);
+    ctx.fillRect(p[0], p[1] + 2, 2, 12); ctx.fillRect(p[0] + 14, p[1] + 2, 2, 12);
+    ctx.fillStyle = woodHi;
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1], 1, 16);
+    ctx.fillStyle = woodDark;
+    ctx.fillRect(p[0], p[1] + 15, 16, 1); ctx.fillRect(p[0] + 15, p[1], 1, 16);
+    // subtle grain speckle on the ring so it doesn't read as flat plastic
+    ctx.fillStyle = woodDark;
+    px(ctx, p[0] + 4, p[1] + 1, woodDark); px(ctx, p[0] + 10, p[1] + 1, woodDark);
+    px(ctx, p[0] + 1, p[1] + 6, woodDark); px(ctx, p[0] + 1, p[1] + 11, woodDark);
+    px(ctx, p[0] + 6, p[1] + 14, woodDark); px(ctx, p[0] + 12, p[1] + 14, woodDark);
+    px(ctx, p[0] + 14, p[1] + 5, woodDark); px(ctx, p[0] + 14, p[1] + 10, woodDark);
+  }
+  // flower pot creative icon: terracotta V-pot silhouette (wide rim, tapered body)
+  p = T(112);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const terra = '#b0693f', terraDark = '#8a4f2e', terraHi = '#c97e4e', rim = '#9c5e37';
+    ctx.fillStyle = rim;                          // rim band 10/16 wide, 3px tall
+    ctx.fillRect(p[0] + 3, p[1] + 3, 10, 3);
+    ctx.fillStyle = terraHi; ctx.fillRect(p[0] + 3, p[1] + 3, 10, 1);
+    ctx.fillStyle = terraDark; ctx.fillRect(p[0] + 3, p[1] + 5, 10, 1);
+    ctx.fillStyle = terra;                        // tapered body 8/16 → 5/16
+    ctx.fillRect(p[0] + 4, p[1] + 6, 8, 4);
+    ctx.fillRect(p[0] + 5, p[1] + 10, 6, 3);
+    ctx.fillStyle = terraHi; ctx.fillRect(p[0] + 4, p[1] + 6, 1, 7);
+    ctx.fillStyle = terraDark; ctx.fillRect(p[0] + 11, p[1] + 6, 1, 7);
+    ctx.fillRect(p[0] + 5, p[1] + 12, 6, 1);
+    ctx.fillStyle = '#5c3a22';                    // dark soil peeking at the top
+    ctx.fillRect(p[0] + 4, p[1] + 4, 8, 1);
+  }
+  // pot rim top: terracotta ring, transparent center — punched hole reveals
+  // the dirt soil face (body top) and the plant sprite geometry inside
+  p = T(113);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const terra = '#b0693f', terraDark = '#8a4f2e', terraHi = '#c97e4e';
+    ctx.fillStyle = terra;
+    ctx.fillRect(p[0], p[1], 16, 2); ctx.fillRect(p[0], p[1] + 14, 16, 2);
+    ctx.fillRect(p[0], p[1] + 2, 2, 12); ctx.fillRect(p[0] + 14, p[1] + 2, 2, 12);
+    ctx.fillStyle = terraHi;
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1], 1, 16);
+    ctx.fillStyle = terraDark;
+    ctx.fillRect(p[0], p[1] + 15, 16, 1); ctx.fillRect(p[0] + 15, p[1], 1, 16);
+  }
+  // pot side: full-tile terracotta speckle (body sides + rim sides sample
+  // horizontal bands of it via tileSub so faces aren't vertically squashed)
+  p = T(114);
+  {
+    ctx.fillStyle = '#b0693f';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#b0693f', '#a8623a', '#ba7045', '#a05c36'], rnd);
+    ctx.fillStyle = '#c97e4e';                    // faint horizontal throw-lines
+    ctx.fillRect(p[0], p[1] + 4, 16, 1); ctx.fillRect(p[0], p[1] + 11, 16, 1);
+    ctx.fillStyle = '#8a4f2e';
+    ctx.fillRect(p[0], p[1] + 7, 16, 1);
+    px(ctx, p[0] + 3, p[1] + 2, '#c97e4e'); px(ctx, p[0] + 12, p[1] + 9, '#c97e4e');
+    px(ctx, p[0] + 6, p[1] + 13, '#8a4f2e'); px(ctx, p[0] + 14, p[1] + 3, '#8a4f2e');
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

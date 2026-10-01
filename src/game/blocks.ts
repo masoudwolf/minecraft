@@ -17,7 +17,7 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate' | 'pane' | 'wall';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate' | 'pane' | 'wall' | 'itemframe' | 'flowerpot';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** horizontal shrink 0..1 (cake bites shrink like MC; 1 = full cell) */
@@ -154,6 +154,8 @@ export const BLOCK = {
   WALL_MOSSY: 105,
   WALL_BRICK: 106,
   WALL_SANDSTONE: 107,
+  ITEM_FRAME: 108,
+  FLOWER_POT: 109,
 } as const;
 
 // ── orientation meta (v0.52 Carpentry) ────────────────────────────────────────
@@ -170,11 +172,37 @@ export const BLOCK = {
 //   LADDER: 1..4 = the wall the ladder hangs on (TORCH_WALL_* numbering)
 //   FENCE_GATE: bits 0-1 = facing (the bar spans perpendicular to the player's
 //          approach, exactly like doors)
+//   ITEM_FRAME (v0.55): (storedId << 4) | (rot << 2) | (wall-1) — see the
+//          frameWall/frameRot/frameItem/packFrameMeta helpers below
+//   FLOWER_POT (v0.55): the potted plant's block id (0 = empty pot)
 export const TORCH_FLOOR = 0;
 export const TORCH_WALL_PX = 1;
 export const TORCH_WALL_NX = 2;
 export const TORCH_WALL_PZ = 3;
 export const TORCH_WALL_NZ = 4;
+
+// v0.55 item frame meta: (storedId << 4) | (rot << 2) | (wall-1) — wall uses
+// TORCH_WALL_* numbering minus 1 so 4 directions fit the 2 low bits, rot is
+// 0..3 quarter turns of the displayed item, storedId is the displayed block
+// or item id (0 = empty frame).
+export function frameWall(meta: number): number {
+  return (meta & 3) + 1; // → TORCH_WALL_* value 1..4
+}
+export function frameRot(meta: number): number {
+  return (meta >> 2) & 3;
+}
+export function frameItem(meta: number): number {
+  return meta >> 4;
+}
+export function packFrameMeta(wall: number, rot: number, stored: number): number {
+  return ((stored & 0xfff) << 4) | ((rot & 3) << 2) | ((wall - 1) & 3);
+}
+/** flower pot meta = the potted plant's block id (0 = empty pot) */
+export function isPottable(id: number): boolean {
+  return id === BLOCK.FLOWER_RED || id === BLOCK.FLOWER_YELLOW || id === BLOCK.TALL_GRASS
+    || id === BLOCK.DEAD_BUSH || id === BLOCK.MUSHROOM_RED || id === BLOCK.MUSHROOM_BROWN
+    || id === BLOCK.OAK_SAPLING || id === BLOCK.SPRUCE_SAPLING;
+}
 /** facing index → unit direction (0=+X, 1=-X, 2=+Z, 3=-Z) */
 const FACING_DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export function facingDir(f: number): [number, number] {
@@ -379,6 +407,9 @@ export const TILE = {
   // ── phase 16: glasswork & masonry ──
   pane_icon: 104, iron_bars: 105,
   wall_icon_cobble: 106, wall_icon_mossy: 107, wall_icon_brick: 108, wall_icon_sandstone: 109,
+  // ── phase 17: showcase & décor ──
+  frame_icon: 110, frame_ring: 111,
+  pot_icon: 112, pot_rim_top: 113, pot_side: 114,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -485,6 +516,13 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.WALL_MOSSY]: { id: BLOCK.WALL_MOSSY, name: 'Mossy Cobblestone Wall', tiles: all(TILE.wall_icon_mossy), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
   [BLOCK.WALL_BRICK]: { id: BLOCK.WALL_BRICK, name: 'Brick Wall', tiles: all(TILE.wall_icon_brick), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
   [BLOCK.WALL_SANDSTONE]: { id: BLOCK.WALL_SANDSTONE, name: 'Sandstone Wall', tiles: all(TILE.wall_icon_sandstone), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
+
+  // ── v0.55 showcase & décor — wall-mounted display frame + potted plants.
+  // Both are cutout non-cubes like panes/walls: full-cell collision (engine
+  // convention), meta-driven orientation, stored content lives in the meta
+  // layer (packed frame meta / plant id) so saves stay schema-free.
+  [BLOCK.ITEM_FRAME]: { id: BLOCK.ITEM_FRAME, name: 'Item Frame', tiles: all(TILE.frame_icon), solid: true, opaque: false, cutout: true, model: 'itemframe', flatIcon: true, hardness: 0.4, sound: 'wood' },
+  [BLOCK.FLOWER_POT]: { id: BLOCK.FLOWER_POT, name: 'Flower Pot', tiles: all(TILE.pot_icon), solid: true, opaque: false, cutout: true, model: 'flowerpot', flatIcon: true, hardness: 0.1, needsGround: true, sound: 'stone' },
 
   // ── phase 3b ──
   ...flowDefs(),

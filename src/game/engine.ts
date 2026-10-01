@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage, isDoorId, isDoorOpenId, doorClosedId, doorOpenIdOf, doorUpper, bedHead, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorId, isTrapdoorOpenId, trapdoorClosedId, trapdoorOpenIdOf, isLadderId, isGateId, isGateOpenId, gateClosedId, gateOpenIdOf } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage, isDoorId, isDoorOpenId, doorClosedId, doorOpenIdOf, doorUpper, bedHead, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorId, isTrapdoorOpenId, trapdoorClosedId, trapdoorOpenIdOf, isLadderId, isGateId, isGateOpenId, gateClosedId, gateOpenIdOf, frameWall, frameRot, frameItem, packFrameMeta, isPottable } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -1908,6 +1908,14 @@ export class Game {
           this.drops.spawn(item.id, t.x + 0.5, t.y + 0.5, t.z + 0.5, item.count);
         }
       }
+      // v0.55: frames and pots spill their stored content
+      const spillMeta = this.world.getMeta(t.x, t.y, t.z);
+      if (harvest && t.id === BLOCK.ITEM_FRAME && frameItem(spillMeta) > 0) {
+        this.drops.spawn(frameItem(spillMeta), t.x + 0.5, t.y + 0.4, t.z + 0.5, 1);
+      }
+      if (harvest && t.id === BLOCK.FLOWER_POT && spillMeta > 0) {
+        this.drops.spawn(spillMeta, t.x + 0.5, t.y + 0.4, t.z + 0.5, 1);
+      }
       const brokenMeta = this.world.getMeta(t.x, t.y, t.z);
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
       this.cleanupDependents(t.x, t.y, t.z, t.id, brokenMeta, true);
@@ -1927,6 +1935,10 @@ export class Game {
           }
         }
         const popMeta = this.world.getMeta(t.x, py, t.z);
+        // potted plant rides along when its pot pops off broken ground
+        if (aboveId === BLOCK.FLOWER_POT && popMeta > 0) {
+          this.drops.spawn(popMeta, t.x + 0.5, py + 0.4, t.z + 0.5, 1);
+        }
         this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
         this.cleanupDependents(t.x, py, t.z, aboveId, popMeta, true);
         // halves dropped by their own break path above: door uppers + bed heads
@@ -1971,6 +1983,15 @@ export class Game {
       // v0.53: trapdoors + fence gates toggle the same way
       if (isTrapdoorId(targetId)) { this.toggleTrapdoor(this.target.x, this.target.y, this.target.z, targetId); return; }
       if (isGateId(targetId)) { this.toggleGate(this.target.x, this.target.y, this.target.z, targetId); return; }
+      // v0.55: item frames insert/rotate/return their display item (MC right-click
+      // semantics). Flower pots take a plant only with an empty hand or a
+      // pottable one — anything else falls through so you can place against them.
+      if (targetId === BLOCK.ITEM_FRAME) { this.useItemFrame(this.target.x, this.target.y, this.target.z); return; }
+      if (targetId === BLOCK.FLOWER_POT) {
+        const potHeld = this.player.hotbar[this.player.selected];
+        const potHeldId = potHeld && potHeld.count > 0 ? potHeld.blockId : 0;
+        if (potHeldId === 0 || isPottable(potHeldId)) { this.useFlowerPot(this.target.x, this.target.y, this.target.z); return; }
+      }
       // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
       if (targetId === BLOCK.TNT) {
         const held = this.player.hotbar[this.player.selected];
@@ -2052,6 +2073,22 @@ export class Game {
           return;
         }
       }
+    }
+    // ── v0.55: item frames mount on side faces only (MC wall frames) ──
+    if (slot.blockId === BLOCK.ITEM_FRAME) {
+      if (this.target.ny !== 0) {
+        this.showToast('Item frames need a wall / قاب باید روی دیوار باشد');
+        return;
+      }
+      const frameWallDef = getBlockDef(targetId);
+      if (!frameWallDef?.solid) return; // can't mount on decorations
+      // ray normal points from the wall TOWARD the player (see torch note)
+      const frameWallMeta = this.target.nx < 0 ? TORCH_WALL_PX : this.target.nx > 0 ? TORCH_WALL_NX : this.target.nz < 0 ? TORCH_WALL_PZ : TORCH_WALL_NZ;
+      this.world.setBlock(bx, by, bz, BLOCK.ITEM_FRAME);
+      this.world.setMeta(bx, by, bz, packFrameMeta(frameWallMeta, 0, 0));
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
     }
     // ── v0.52: wall torch — clicked a block's SIDE face: mount + lean out ──
     if (slot.blockId === BLOCK.TORCH && this.target.ny === 0) {
@@ -2164,6 +2201,82 @@ export class Game {
     this.syncHUD();
     this.updateHandMesh();
     void def;
+  }
+
+  /** v0.55: right-click an item frame — insert the held item, rotate the
+   *  displayed item a quarter turn (MC), or take it back with an empty hand
+   *  (friendlier than MC's break-only retrieval; frame itself never drops here) */
+  private useItemFrame(x: number, y: number, z: number): void {
+    const meta = this.world.getMeta(x, y, z);
+    const stored = frameItem(meta);
+    const held = this.player.hotbar[this.player.selected];
+    const holding = !!(held && held.count > 0 && held.blockId !== 0);
+    if (stored && !holding) {
+      // empty hand → retrieve the displayed item
+      this.world.setMeta(x, y, z, packFrameMeta(frameWall(meta), 0, 0));
+      const left = this.addToInventory(stored, 1);
+      if (left > 0) this.drops.spawn(stored, x + 0.5, y + 0.4, z + 0.5, left);
+      audio.pop();
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      this.syncHUD();
+      return;
+    }
+    if (stored && holding) {
+      // holding anything → rotate the item a quarter turn
+      const rot = (frameRot(meta) + 1) & 3;
+      this.world.setMeta(x, y, z, packFrameMeta(frameWall(meta), rot, stored));
+      audio.click();
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      return;
+    }
+    if (!stored && holding) {
+      // empty frame → insert one of the held item/block
+      const put = held.blockId;
+      held.count--;
+      if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+      this.world.setMeta(x, y, z, packFrameMeta(frameWall(meta), 0, put));
+      audio.place('wood');
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      this.syncHUD();
+      this.updateHandMesh();
+    }
+  }
+
+  /** v0.55: right-click a flower pot with an empty hand (retrieve) or a
+   *  pottable plant (plant/swap — MC replaces and hands back the old plant).
+   *  Non-pottable items fall through to normal placement (caller gates this). */
+  private useFlowerPot(x: number, y: number, z: number): void {
+    const cur = this.world.getMeta(x, y, z);
+    const held = this.player.hotbar[this.player.selected];
+    const holding = !!(held && held.count > 0 && held.blockId !== 0 && isPottable(held.blockId));
+    if (cur && !holding) {
+      this.world.setMeta(x, y, z, 0);
+      const left = this.addToInventory(cur, 1);
+      if (left > 0) this.drops.spawn(cur, x + 0.5, y + 0.5, z + 0.5, left);
+      audio.pop();
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      this.syncHUD();
+      return;
+    }
+    if (holding) {
+      const plant = held.blockId;
+      held.count--;
+      if (held.count <= 0) { held.blockId = 0; held.count = 0; }
+      this.world.setMeta(x, y, z, plant);
+      if (cur) {
+        const left = this.addToInventory(cur, 1);
+        if (left > 0) this.drops.spawn(cur, x + 0.5, y + 0.5, z + 0.5, left);
+      }
+      audio.place('grass');
+      this.placeCooldown = 0.25;
+      this.startSwing();
+      this.syncHUD();
+      this.updateHandMesh();
+    }
   }
 
   /** any water block orthogonally adjacent to this cell (at same or one-below level)? */
@@ -2405,6 +2518,20 @@ export class Game {
         if (m < 5 && (m & 3) === want) {
           this.world.setBlock(ax, ay, az, BLOCK.AIR);
           if (survival) this.drops.spawn(trapdoorClosedId(nid), ax + 0.5, ay + 0.3, az + 0.5, 1);
+        }
+      } else if (nid === BLOCK.ITEM_FRAME) {
+        // v0.55: wall-mounted frames pop with their wall (frameWall() uses
+        // TORCH_WALL_* numbering — the wall is on the frame cell's side
+        // toward the broken block). Stored item spills with it.
+        const wantWall = (ax === x + 1) ? TORCH_WALL_NX : (ax === x - 1) ? TORCH_WALL_PX : (az === z + 1) ? TORCH_WALL_NZ : TORCH_WALL_PZ;
+        const fm = this.world.getMeta(ax, ay, az);
+        if (frameWall(fm) === wantWall) {
+          const stored = frameItem(fm);
+          this.world.setBlock(ax, ay, az, BLOCK.AIR);
+          if (survival) {
+            this.drops.spawn(BLOCK.ITEM_FRAME, ax + 0.5, ay + 0.3, az + 0.5, 1);
+            if (stored) this.drops.spawn(stored, ax + 0.5, ay + 0.4, az + 0.5, 1);
+          }
         }
       }
     }
@@ -3279,6 +3406,7 @@ export class Game {
         const [cx, cz] = key.split(',').map(Number);
         if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > R + 3) {
           this.world.unloadChunk(cx, cz);
+          this.gfx.onChunkUnloaded(cx, cz); // drop frame display sprites with the chunk
         }
       }
     }
@@ -3909,6 +4037,8 @@ export class Game {
     }
     // grass tufts share the Night Vision lift (separate material from the voxel one)
     if (this.gfx && this.gfx.grass) this.gfx.grass.nvValue = this.nvF;
+    // item-frame display sprites get the same NV floor (ambient handled in gfx.update)
+    if (this.gfx && this.gfx.frames) this.gfx.frames.nvLift = this.nvF;
     // entity lights follow sun
     // v0.48: lower ambient/directional floors — scene-lit entities (mobs,
     // drops, boats) follow the darker night instead of the old "dim day".

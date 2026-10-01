@@ -37,6 +37,9 @@ export class Chunk {
   hasData = false;
   /** torch positions (world coords) collected during meshing — used for flame particles */
   torches: [number, number, number][] = [];
+  /** item frame positions (world coords) collected during meshing — the
+   *  FrameManager rebuilds its display sprites from this after every remesh */
+  frames: [number, number, number][] = [];
 
   constructor(cx: number, cz: number) {
     this.cx = cx;

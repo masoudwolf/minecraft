@@ -1,6 +1,6 @@
 // ─── Chunk mesher: face culling + ambient occlusion + smooth lighting ────────
 import * as THREE from 'three';
-import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorOpenId, isGateOpenId, fenceConnects, woodPlankTile, thinConnects, thinFaceTile } from '../blocks';
+import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorOpenId, isGateOpenId, fenceConnects, woodPlankTile, thinConnects, thinFaceTile, frameWall } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import { tileUV } from '../textures/atlas';
 import type { World, Chunk } from './world';
@@ -190,6 +190,7 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
   const cutout = newBuffers();
   const water = newBuffers();
   chunk.torches = [];
+  chunk.frames = [];
 
   const x0 = chunk.cx * CHUNK_SIZE;
   const z0 = chunk.cz * CHUNK_SIZE;
@@ -505,6 +506,86 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           else { z1 = D; }                                  // wall on the -Z side (default)
           pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
             [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk);
+          continue;
+        }
+
+        // ── special model: item frame (v0.55) — 1/16 panel hugging the wall
+        // edge (ladder-style mount), ring texture with a transparent center
+        // punches the display window. The displayed item itself is an external
+        // sprite managed by the graphics FrameManager (item icons live on
+        // canvases, not the atlas), so here we only push the wood ring and
+        // register the anchor for the sprite pass.
+        if (def.model === 'itemframe') {
+          const fMeta = world.getMeta(wx, y, wz);
+          const wall = frameWall(fMeta);
+          const uvRect = tileUV(TILE.frame_ring);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const D = 1 / 16;
+          let x0 = 0, x1 = 1, z0 = 0, z1 = 1;
+          let skipWallFace = 5;
+          if (wall === TORCH_WALL_PX) { x0 = 1 - D; skipWallFace = 0; }       // wall on the +X side
+          else if (wall === TORCH_WALL_NX) { x1 = D; skipWallFace = 1; }
+          else if (wall === TORCH_WALL_PZ) { z0 = 1 - D; skipWallFace = 4; }
+          else { z1 = D; skipWallFace = 5; }
+          pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
+            [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk, [skipWallFace]);
+          chunk.frames.push([wx + 0.5, y + 0.5, wz + 0.5]);
+          continue;
+        }
+
+        // ── special model: flower pot (v0.55) — terracotta body + rim ring
+        // whose transparent center reveals the dirt soil face and the potted
+        // plant (meta = plant block id, 0 = empty). Plant renders as two
+        // diagonal quads (scaled-down cross) with the full attribute set.
+        if (def.model === 'flowerpot') {
+          const plant = world.getMeta(wx, y, wz);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uvSide = tileUV(TILE.pot_side);
+          const uvSoil = tileUV(TILE.dirt);
+          const uvRing = tileUV(TILE.pot_rim_top);
+          const uvRimSide = tileSub(TILE.pot_side, 0, 5, 16, 9); // 4px band, no vertical squash
+          const P0 = 5 / 16, P1 = 11 / 16;      // body cross-section 6/16
+          const R0 = 4 / 16, R1 = 12 / 16;      // rim cross-section 8/16
+          const BH = 4 / 16, RH0 = 4 / 16, RH1 = 6 / 16;
+          // body: pot sides + dirt top face (soil), bottom skipped (sits on ground)
+          pushBox(cutout, lx + P0, y, lz + P0, lx + P1, y + BH, lz + P1,
+            [uvSide, uvSide, uvSoil, uvSide, uvSide, uvSide], BOX_SHADES, sky, blk, [3]);
+          // rim: ring top face punches the display hole, bottom never visible
+          pushBox(cutout, lx + R0, y + RH0, lz + R0, lx + R1, y + RH1, lz + R1,
+            [uvRimSide, uvRimSide, uvRing, uvRimSide, uvRimSide, uvRimSide], BOX_SHADES, sky, blk, [3]);
+          if (plant) {
+            const pdef = getBlockDef(plant);
+            const tile = pdef ? (Array.isArray(pdef.tiles) ? pdef.tiles[0] : pdef.tiles) : TILE.pot_side;
+            const [u0, v0, u1, v1] = tileUV(tile);
+            const tint = plant === BLOCK.TALL_GRASS ? biomeTint(wx, wz) : TINT_WHITE;
+            const A = 0.25, B = 0.75;           // plant spans 8/16, centered
+            const yb = y + BH, yt = y + 14 / 16; // soil level → 10/16 tall
+            const quads: [number, number, number][][] = [
+              [[A, yb, A], [B, yb, B], [B, yt, B], [A, yt, A]],
+              [[B, yb, A], [A, yb, B], [A, yt, B], [B, yt, A]],
+            ];
+            for (const quad of quads) {
+              const basePos = cutout.positions.length / 3;
+              for (let c = 0; c < 4; c++) {
+                const cr = quad[c];
+                cutout.positions.push(lx + cr[0], cr[1], lz + cr[2]);
+                cutout.normals.push(0, 1, 0); // up-normal trick — see cross model
+                const uvc = UV_CORNERS[c];
+                cutout.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
+                cutout.shades.push(0.95);
+                cutout.skies.push(sky);
+                cutout.blocks.push(blk);
+                pushTint(cutout, tint);
+                cutout.sways.push(0); // rigid — potted plants don't wave
+                cutout.depths.push(0);
+              }
+              cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+            }
+          }
           continue;
         }
 

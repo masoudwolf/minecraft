@@ -14,6 +14,7 @@ import { AtmosphereSky } from './atmosphere';
 import { VolumetricClouds } from './cloudsVolumetric';
 import { PostFX } from './postfx';
 import { GrassManager } from './grass';
+import { FrameManager } from './frames';
 import { WATER_PLANE_Y } from './waterGfx';
 import type { GfxSettings } from './settings';
 import { shadowState } from './shadowState';
@@ -31,6 +32,7 @@ export class GraphicsSystem {
   atmosphere: AtmosphereSky | null = null;
   clouds: VolumetricClouds | null = null;
   grass: GrassManager;
+  frames: FrameManager;
   postfx: PostFX | null = null;
 
   private world: World | null = null;
@@ -151,6 +153,7 @@ export class GraphicsSystem {
     this.camera = camera;
     this.sunLight = sunLight;
     this.grass = new GrassManager(scene);
+    this.frames = new FrameManager(scene);
 
     // software-GL detection → default preset guard
     try {
@@ -491,6 +494,7 @@ export class GraphicsSystem {
   // ── chunk hooks ─────────────────────────────────────────────────────────────
   onChunkMeshed(chunk: Chunk, world: World): void {
     if (this.gfx && this.gfx.grassDensity > 0.02) this.grass.updateChunk(chunk, world);
+    this.frames.updateChunk(chunk, world);
     const m = chunk.meshes;
     if (!m) return;
     const shadowsOn = this.renderer.shadowMap.enabled;
@@ -499,10 +503,17 @@ export class GraphicsSystem {
     if (m.water) { m.water.castShadow = false; m.water.receiveShadow = true; }
   }
 
+  /** engine unload sweep hook — dropped display sprites would float in
+   *  unmeshed space (GrassManager tolerates staleness; visible quads don't) */
+  onChunkUnloaded(cx: number, cz: number): void {
+    this.frames.removeChunk(cx, cz);
+  }
+
   // ── per-frame update ────────────────────────────────────────────────────────
   update(dt: number, camera: THREE.PerspectiveCamera, sky: SkySystem, playerX: number, playerY: number, playerZ: number, underwater: boolean, rain = 0): void {
     if (!this.gfx || !this.atmosphere) return;
     const gfx = this.gfx;
+    this.frames.setAmbient(sky.sunLevel);
     this.updateReflNeed(dt);
 
     // retire the legacy sun/moon quads once — the atmosphere dome owns both now
@@ -1040,6 +1051,7 @@ export class GraphicsSystem {
     this.atmosphere?.dispose();
     this.clouds?.dispose();
     this.grass.dispose();
+    this.frames.dispose();
     this.postfx?.dispose();
     this.reflRT?.dispose();
     this.shadowRT?.dispose();

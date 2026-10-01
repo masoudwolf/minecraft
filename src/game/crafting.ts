@@ -121,6 +121,12 @@ export const RECIPES: Recipe[] = [
   shaped(3, 2, [BLOCK.MOSSY_COBBLE, BLOCK.MOSSY_COBBLE, BLOCK.MOSSY_COBBLE, BLOCK.MOSSY_COBBLE, BLOCK.MOSSY_COBBLE, BLOCK.MOSSY_COBBLE], BLOCK.WALL_MOSSY, 6),
   shaped(3, 2, [BLOCK.BRICKS, BLOCK.BRICKS, BLOCK.BRICKS, BLOCK.BRICKS, BLOCK.BRICKS, BLOCK.BRICKS], BLOCK.WALL_BRICK, 6),
   shaped(3, 2, [BLOCK.SANDSTONE, BLOCK.SANDSTONE, BLOCK.SANDSTONE, BLOCK.SANDSTONE, BLOCK.SANDSTONE, BLOCK.SANDSTONE], BLOCK.WALL_SANDSTONE, 6),
+  // ── v0.55 showcase & décor — MC patterns ──
+  // item frame: 8 sticks around 1 leather (MC)
+  shaped(3, 3, [S, S, S, S, ITEM.LEATHER, S, S, S, S], BLOCK.ITEM_FRAME, 1),
+  // flower pot: 3 bricks in a V (MC uses brick items; our economy keeps
+  // brickwork at block granularity so the Bricks block stands in)
+  shaped(3, 2, [BLOCK.BRICKS, 0, BLOCK.BRICKS, 0, BLOCK.BRICKS, 0], BLOCK.FLOWER_POT, 1),
   // ── ranged combat ──
   // bow: MC pattern (sticks diagonal, strings right column)
   shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),
