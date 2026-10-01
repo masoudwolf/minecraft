@@ -689,9 +689,12 @@ export class GraphicsSystem {
       // Fades in as the sun drops below ~-0.08 (civil twilight end).
       const purkNight = CLAMP((0.02 - sunHeight) / 0.10, 0, 1);
       this.postfx.setPurkinje(0.055 * purkNight * (1 - storm * 0.5) * Math.min(haze, 1));
-      // v0.50: shadow grain — subtle film grain that only lives in the dark
-      // (masks banding on smooth night gradients, horror-genre staple)
-      this.postfx.setGrain(0.010 + 0.022 * purkNight * Math.min(haze, 1));
+      // v0.50: shadow grain — masks 8-bit banding on smooth night gradients.
+      // v0.55.1: amplitude halved — the old 0.032 peak read as "noisy night
+      // rendering" (user report) once the hash fix exposed it as clean white
+      // noise; ±0.008 dither still covers 1/255 banding steps while staying
+      // subliminal. Also see the hash12 swap in postfx.ts GradeShader.
+      this.postfx.setGrain(0.006 + 0.011 * purkNight * Math.min(haze, 1));
 
       // ── flare gate: voxel occlusion × camera facing (v0.47) ──
       // Raycast from the eye toward the light through the voxel grid — walls

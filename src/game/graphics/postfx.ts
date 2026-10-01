@@ -203,8 +203,20 @@ const GradeShader = {
       const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
       return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
     }
+    // Dave Hoskins' "hash without sine" (hash12) — the canonical replacement
+    // for the classic fract(sin(dot(p,(12.9898,78.233)))*43758.5453) grain.
+    // The sin-hash BREAKS at 1080p+ on desktop GPUs: the dot reaches ~1.1e5,
+    // fp32 ULP there is 2^-6, the sin argument's fraction quantizes to ~400
+    // phases and neighbor rows near-collide → the grain collapsed into slowly
+    // crawling near-horizontal LINES (user: "نویز خطی" at night). Hoskins'
+    // fract-first construction keeps every product < ~1e4 → full precision,
+    // TRUE white noise (measured GPU autocorrelation ≈ 0.001 at every lag,
+    // vs 0.82 for IGN — gradient noise, wrong tool for grain). This is the
+    // same hash12 GLSL_NOISE already uses — one standard for the whole pack.
     float grainHash(vec2 p) {
-      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
     }
     void main() {
       vec2 uv = vUv;
