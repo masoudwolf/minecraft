@@ -11,10 +11,12 @@ import type { GameMode } from './state';
 /** seconds of air the player can hold underwater before drowning (vanilla: 15s) */
 export const PLAYER_AIR_MAX = 15;
 
-/** active potion status effect ({k, t} pairs, engine ticks them down) */
+/** active potion status effect ({k, t, amp?} — engine ticks them down;
+ *  amp ≥ 2 marks a tier-2 (glowstone-brewed) effect, shown as "II" in HUD) */
 export interface ActiveEffect {
   k: string;
   t: number;
+  amp?: number;
 }
 
 export interface HotbarSlot {
@@ -56,6 +58,8 @@ export class Player {
   /** poison timer (witch splash potions); ticks 1 damage per poisonTickT while > 0 */
   poisonT = 0;
   poisonTickT = 0;
+  /** poison amplifier (poison II drinks tick every 0.75s instead of 1.5s) */
+  poisonAmp = 0;
 
   // ── potion status effects (phase 13) ──
   /** active effects with remaining seconds; engine decrements and applies */
@@ -64,9 +68,11 @@ export class Player {
   jumpMultiplier = 1;
   /** water breathing potion active — air never drains; engine sets per-frame */
   breathing = false;
-  /** melee damage multiplier (Strength potion) */
+  /** melee damage multiplier (Strength potion; tier-2 = 2.0×) */
   get strengthMultiplier(): number {
-    return this.effects.some((e) => e.k === 'strength') ? 1.5 : 1;
+    const e = this.effects.find((e) => e.k === 'strength');
+    if (!e) return 1;
+    return e.amp !== undefined && e.amp >= 2 ? 2.0 : 1.5;
   }
 
   // ── drowning (vanilla-style: 15s of air underwater, then 2 dmg/s) ──

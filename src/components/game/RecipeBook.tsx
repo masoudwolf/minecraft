@@ -33,8 +33,8 @@ function categoryOf(id: number): Cat {
     if (SWORD_IDS.includes(id) || id === 317 || id === 318) return 'combat'; // bow/arrow
     if (id >= 301 && id <= 316) return 'armor';
     if ((id >= 256 && id <= 259) || (id >= 293 && id <= 296) || id === 324) return 'food';
-    // phase 13: glass bottle / water bottle / sugar / potions → brewing
-    if (id >= 344 && id <= 355) return 'brewing';
+    // phase 13/14: glass bottle / water bottle / sugar / potions + modifiers → brewing
+    if (id >= 344 && id <= 384) return 'brewing';
     return 'misc';
   }
   if (id === 70) return 'brewing'; // brewing stand

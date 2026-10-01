@@ -188,6 +188,8 @@ export const RECIPES: Recipe[] = [
   shaped(3, 1, [BLOCK.GLASS, BLOCK.GLASS, BLOCK.GLASS], ITEM.GLASS_BOTTLE, 3),
   // sugar: 1 sugarcane → 1 sugar (MC is 1:1)
   shapeless([BLOCK.SUGARCANE], ITEM.SUGAR, 1),
+  // glowstone dust ×4 (2×2) → glowstone block (MC parity — mining sheds dust)
+  shaped(2, 2, [ITEM.GLOWSTONE_DUST, ITEM.GLOWSTONE_DUST, ITEM.GLOWSTONE_DUST, ITEM.GLOWSTONE_DUST], BLOCK.GLOWSTONE),
   // brewing stand: 2 sticks on a cobblestone base (blaze-rod proxy)
   shaped(3, 3, [0, ITEM.STICK, 0, 0, ITEM.STICK, 0, C, C, C], BLOCK.BREWING_STAND),
   // cake: 3 milk buckets + 2 sugar + 3 wheat (MC layout minus the egg);

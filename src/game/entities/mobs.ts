@@ -6,7 +6,7 @@ import { getMobSkins, type MobSkinPart, type MobSkins } from './mobSkins';
 import { boxUV, type BoxUVOptions } from './vanillaSkins';
 import { buildKnight, animateKnight, getKnightRig } from './knightSkin';
 import { audio } from '../audio';
-import { ITEM } from '../items';
+import { ITEM, getPotionDef, POTION_PALETTE } from '../items';
 import { shadowState } from '../graphics/shadowState';
 
 export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem' | 'knight';
@@ -70,6 +70,9 @@ interface Mob extends AABBEntity {
   sheared?: boolean;
   /** sheep: seconds until the fleece grows back */
   woolRegrowT?: number;
+  /** splash-poison DoT on mobs (player-thrown poison potions); non-lethal */
+  poisonT?: number;
+  poisonTickT?: number;
   dead: boolean;
   deathT: number;
   wanderX: number;
@@ -107,12 +110,15 @@ interface Arrow {
   dmg: number;
 }
 
-/** witch splash potion projectile */
+/** witch splash potion projectile (potionId/fromPlayer = player-thrown variants) */
 interface Potion {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   life: number;
   mesh: THREE.Mesh;
+  /** player-thrown splash potion: applies its own effect payload on shatter */
+  potionId?: number;
+  fromPlayer?: boolean;
 }
 
 // ─── Model builders (vanilla textures + MC box-UV mapping) ───────────────────
@@ -457,7 +463,7 @@ const MOB_DEFS: Record<MobType, MobDef> = {
   },
   creeper: {
     hostile: true, width: 0.6, height: 1.7, health: 20, speed: 1.6, damage: 0,
-    drops: [], sound: 'hiss',
+    drops: [{ id: ITEM.GUNPOWDER, min: 1, max: 2 }], sound: 'hiss', // MC parity
     builder: (s) => {
       const group = new THREE.Group();
       const mats: THREE.MeshLambertMaterial[] = [];
@@ -651,6 +657,8 @@ const MOB_DEFS: Record<MobType, MobDef> = {
     drops: [
       { id: ITEM.STICK, min: 0, max: 2 },
       { id: ITEM.SPIDER_EYE, min: 0, max: 1 },
+      { id: ITEM.REDSTONE, min: 1, max: 2 },       // MC witches shed redstone
+      { id: ITEM.GLOWSTONE_DUST, min: 1, max: 2 }, // MC witches shed glowstone dust
     ], sound: 'witch',
     // ranged caster: keeps distance and lobs splash potions (poison on hit)
     // VANILLA WitchModel: villager layout (folded arms!) + nested hat chain
@@ -883,6 +891,10 @@ export interface MobCallbacks {
   playerDead?: boolean;
   /** witch splash potion: apply poison for N seconds (ticks 1 dmg / 1.5s, non-lethal) */
   poisonPlayer?: (seconds: number) => void;
+  /** player splash potion: apply a timed status effect to the player in the splash */
+  applyEffect?: (k: string, seconds: number, amp?: number) => void;
+  /** player splash healing: Instant Health to the player in the splash */
+  healPlayer?: (n: number) => void;
   spawnDrop: (itemId: number, x: number, y: number, z: number) => void;
   spawnXP: (x: number, y: number, z: number, value: number) => void;
   explodeParticles: (x: number, y: number, z: number) => void;
@@ -913,6 +925,8 @@ export class MobManager {
   private arrowMat: THREE.MeshLambertMaterial;
   private playerArrowMat: THREE.MeshLambertMaterial;
   private potionMat: THREE.MeshLambertMaterial;
+  /** per-potion-id tinted materials for player-thrown splash bottles */
+  private playerPotionMats = new Map<number, THREE.MeshLambertMaterial>();
   private time = 0;
   /** most recent callbacks (for hurt→teleport outside update loop) */
   private lastCb: MobCallbacks | null = null;
@@ -1343,6 +1357,16 @@ export class MobManager {
         m.hurtT -= dt;
         this.setTint(m, 1, 0.35, 0.35);
         if (m.hurtT <= 0) this.setTint(m, 1, 1, 1);
+      }
+
+      // splash-poison DoT (player poison potions): 1 dmg / 1.5s, never lethal
+      if ((m.poisonT ?? 0) > 0 && !m.dead) {
+        m.poisonT = Math.max(0, m.poisonT! - dt);
+        m.poisonTickT = (m.poisonTickT ?? 0) - dt;
+        if (m.poisonTickT! <= 0) {
+          m.poisonTickT = 1.5;
+          if (m.health > 1) this.hurtMob(m, 1, 0, 0.01, cb);
+        }
       }
 
       // ambient sound
@@ -2003,15 +2027,31 @@ export class MobManager {
       const steps = Math.max(1, Math.ceil((sp * dt) / 0.4));
       const sdt = dt / steps;
       let shattered = false;
+      let directMob: Mob | undefined = undefined;
       for (let s = 0; s < steps && !shattered; s++) {
         po.x += po.vx * sdt;
         po.y += po.vy * sdt;
         po.z += po.vz * sdt;
         const bid = this.world.getBlock(Math.floor(po.x), Math.floor(po.y), Math.floor(po.z));
         if (bid !== 0 && !isWaterId(bid)) shattered = true;
+        // player splash potions: direct mob contact detonates instantly (MC)
+        if (!shattered && po.fromPlayer) {
+          for (const m of this.mobs) {
+            if (m.dead) continue;
+            if (
+              po.x > m.x - m.width / 2 - 0.3 && po.x < m.x + m.width / 2 + 0.3 &&
+              po.y > m.y - 0.2 && po.y < m.y + m.height + 0.2 &&
+              po.z > m.z - m.width / 2 - 0.3 && po.z < m.z + m.width / 2 + 0.3
+            ) {
+              shattered = true;
+              directMob = m;
+              break;
+            }
+          }
+        }
       }
-      const pd = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
-      if (pd < 1.1) shattered = true; // direct hit
+      const pd = po.fromPlayer ? Infinity : Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+      if (!po.fromPlayer && pd < 1.1) shattered = true; // direct hit (witch potions only — thrower immune to own)
       if (shattered || po.life <= 0) {
         this.scene.remove(po.mesh);
         this.potions.splice(i, 1);
@@ -2019,11 +2059,16 @@ export class MobManager {
           const shatterDist = Math.hypot(po.x - cb.playerX, po.y - cb.playerY, po.z - cb.playerZ);
           audio.potionShatter(shatterDist);
           cb.teleportParticles(po.x, po.y + 0.2, po.z); // purple magic splash
-          // splash radius 2.6: damage + poison (MC splash lingering area)
-          const pDist = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
-          if (pDist < 2.6 && !cb.playerCreative) {
-            cb.damagePlayer(Math.max(1, Math.round(4 * (1 - pDist / 2.6))), po.x, po.z);
-            cb.poisonPlayer?.(4.5);
+          const pdef = po.fromPlayer ? getPotionDef(po.potionId ?? 0) : undefined;
+          if (po.fromPlayer && pdef) {
+            this.splashPlayerPotion(po, pdef, directMob, player, cb);
+          } else {
+            // splash radius 2.6: damage + poison (MC splash lingering area)
+            const pDist = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+            if (pDist < 2.6 && !cb.playerCreative) {
+              cb.damagePlayer(Math.max(1, Math.round(4 * (1 - pDist / 2.6))), po.x, po.z);
+              cb.poisonPlayer?.(4.5);
+            }
           }
         }
         continue;
@@ -2031,6 +2076,69 @@ export class MobManager {
       po.mesh.position.set(po.x, po.y, po.z);
       po.mesh.rotation.x += dt * 7;
       po.mesh.rotation.z += dt * 4;
+    }
+  }
+
+  /** player-thrown splash potion (engine RMB): straight look-dir + slight arc.
+   *  Mesh is tinted with the potion's liquid color; payload rides on potionId. */
+  throwPlayerPotion(x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number, potionId: number): void {
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.22, 0.17), this.playerPotionMat(potionId));
+    mesh.position.set(x, y, z);
+    this.scene.add(mesh);
+    this.potions.push({
+      x, y, z,
+      vx: dx / len * speed, vy: dy / len * speed + 1.6, vz: dz / len * speed,
+      life: 8, mesh, potionId, fromPlayer: true,
+    });
+    audio.potionThrow(0);
+  }
+
+  /** material cache for player splash bottles — one tint per potion id */
+  private playerPotionMat(potionId: number): THREE.MeshLambertMaterial {
+    let m = this.playerPotionMats.get(potionId);
+    if (!m) {
+      const def = getPotionDef(potionId);
+      const col = def ? POTION_PALETTE[def.effect][0] : '#b05ad8';
+      m = new THREE.MeshLambertMaterial({ color: new THREE.Color(col) });
+      this.playerPotionMats.set(potionId, m);
+    }
+    return m;
+  }
+
+  /** shatter payload for a player-thrown splash potion (MC splash semantics):
+   *  instant effects (healing) fall off with distance; timed effects apply at
+   *  full strength inside the radius. Player: status/heal via callbacks; mobs:
+   *  healing tops up health, poison starts the non-lethal DoT (no mob status
+   *  system exists for the movement buffs — a documented MC adaptation). */
+  private splashPlayerPotion(po: Potion, def: NonNullable<ReturnType<typeof getPotionDef>>, direct: Mob | undefined, player: AABBEntity, cb: MobCallbacks): void {
+    const R = 2.6;
+    const amp = def.amp ?? 1;
+    const healAmt = amp >= 2 ? 12 : 6;
+    // mobs in the radius (direct-hit mob always gets the full effect)
+    for (const m of this.mobs) {
+      if (m.dead) continue;
+      const d = Math.hypot(po.x - m.x, po.y - (m.y + m.height * 0.5), po.z - m.z);
+      const inRadius = m === direct || d < R;
+      if (!inRadius) continue;
+      const fall = m === direct ? 1 : Math.max(0, 1 - d / R);
+      if (def.effect === 'healing') {
+        m.health = Math.min(m.def.health, m.health + Math.max(1, Math.round(healAmt * fall)));
+      } else if (def.effect === 'poison') {
+        m.poisonT = Math.max(m.poisonT ?? 0, def.seconds);
+      }
+    }
+    // player in the radius (throw at your feet = self-application, MC tactic)
+    const pd = Math.hypot(po.x - player.x, po.y - (player.y + 0.9), po.z - player.z);
+    if (pd < R) {
+      const fall = Math.max(0, 1 - pd / R);
+      if (def.effect === 'healing') {
+        cb.healPlayer?.(Math.max(1, Math.round(healAmt * fall)));
+      } else if (def.effect === 'poison') {
+        cb.poisonPlayer?.(def.seconds);
+      } else {
+        cb.applyEffect?.(def.effect, def.seconds, def.amp);
+      }
     }
   }
 

@@ -8,8 +8,8 @@ import { EFFECTS, effectIconUrl, isEffectKind } from '@/game/effects';
 import { slotIconUrl, slotName } from './slotIcon';
 import { Heart } from './ui';
 
-/** potion effect chips above the XP bar (icon + countdown, MC style) */
-function EffectStrip({ effects }: { effects: { k: string; seconds: number }[] }) {
+/** potion effect chips above the XP bar (icon + countdown + amp tier, MC style) */
+function EffectStrip({ effects }: { effects: { k: string; seconds: number; amp?: number }[] }) {
   if (effects.length === 0) return null;
   return (
     <div className="mb-1 flex max-w-[420px] flex-wrap items-start justify-center gap-1.5">
@@ -19,10 +19,11 @@ function EffectStrip({ effects }: { effects: { k: string; seconds: number }[] })
         const m = Math.floor(e.seconds / 60);
         const s = e.seconds % 60;
         const timer = e.seconds >= 3600 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
+        const amp2 = e.amp !== undefined && e.amp > 1;
         return (
           <div
-            key={e.k}
-            title={`${def.label} · ${def.fa}`}
+            key={`${e.k}:${e.amp ?? 1}`}
+            title={`${def.label}${amp2 ? ' II' : ''} · ${def.fa}`}
             className="flex flex-col items-center gap-[1px] px-1 py-[2px]"
             style={{
               background: 'rgba(0,0,0,0.55)',
@@ -32,9 +33,9 @@ function EffectStrip({ effects }: { effects: { k: string; seconds: number }[] })
           >
             <img src={effectIconUrl(e.k)} alt={def.label} className="h-[18px] w-[18px]" style={{ imageRendering: 'pixelated' }} draggable={false} />
             {def.instant ? (
-              <span className="text-[9px] font-bold" style={{ fontFamily: 'var(--font-mc)', color: def.color, textShadow: '1px 1px 0 #000' }}>✓</span>
+              <span className="text-[9px] font-bold" style={{ fontFamily: 'var(--font-mc)', color: def.color, textShadow: '1px 1px 0 #000' }}>{amp2 ? '✓✓' : '✓'}</span>
             ) : (
-              <span className="text-[9px] font-bold leading-none" style={{ fontFamily: 'var(--font-mc)', color: '#fff', textShadow: '1px 1px 0 #000' }}>{timer}</span>
+              <span className="text-[9px] font-bold leading-none" style={{ fontFamily: 'var(--font-mc)', color: '#fff', textShadow: '1px 1px 0 #000' }}>{timer}{amp2 ? <span style={{ color: def.color }}>II</span> : null}</span>
             )}
           </div>
         );

@@ -29,8 +29,9 @@ export interface ItemDef {
   rod?: RodDef;
   /** shears stats */
   shears?: ShearsDef;
-  /** potion: applies this status effect when drunk (brewing system) */
-  potion?: { effect: EffectKind; seconds: number };
+  /** potion: applies this status effect when drunk (brewing system);
+   *  amp = amplifier tier (2 → "II" variants), splash = throwable variant */
+  potion?: { effect: EffectKind; seconds: number; amp?: number; splash?: boolean };
   /** draw 16x16 pixel-art icon; returns canvas */
   icon: (ctx: CanvasRenderingContext2D) => void;
 }
@@ -158,6 +159,38 @@ export const ITEM = {
   POTION_JUMP: 353,
   POTION_HEALING: 354,
   POTION_POISON: 355,
+  // ── phase 14: alchemy II (variants + brewing modifiers) ──
+  REDSTONE: 356,
+  GLOWSTONE_DUST: 357,
+  GUNPOWDER: 358,
+  // extended potions (redstone — ×8/3 duration, MC-adapted)
+  POTION_SPEED_LONG: 359,
+  POTION_STRENGTH_LONG: 360,
+  POTION_REGEN_LONG: 361,
+  POTION_HASTE_LONG: 362,
+  POTION_NIGHT_VISION_LONG: 363,
+  POTION_WATER_BREATHING_LONG: 364,
+  POTION_JUMP_LONG: 365,
+  POTION_POISON_LONG: 366,
+  // tier-2 potions (glowstone dust — amplifier II, half duration; only for
+  // effects where an amplifier does something — NV/WB are binary)
+  POTION_SPEED_2: 367,
+  POTION_STRENGTH_2: 368,
+  POTION_REGEN_2: 369,
+  POTION_HASTE_2: 370,
+  POTION_JUMP_2: 371,
+  POTION_HEALING_2: 372,
+  POTION_POISON_2: 373,
+  // splash potions (gunpowder — throwable, AoE on impact)
+  POTION_SPLASH_SPEED: 374,
+  POTION_SPLASH_STRENGTH: 375,
+  POTION_SPLASH_REGEN: 376,
+  POTION_SPLASH_HASTE: 377,
+  POTION_SPLASH_NIGHT_VISION: 378,
+  POTION_SPLASH_WATER_BREATHING: 379,
+  POTION_SPLASH_JUMP: 380,
+  POTION_SPLASH_HEALING: 381,
+  POTION_SPLASH_POISON: 382,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -1069,6 +1102,160 @@ ITEMS[ITEM.POTION_POISON] = {
   icon: (ctx) => drawPotion(ctx, '#58a848', '#a8e088', '#186818'),
 };
 
+// ── alchemy II (phase 14): brewing modifiers + potion variants ──
+// Runtime palette per effect (drives variant icons + the splash potion
+// projectile tint in mobs.ts). The 9 base defs above keep their inline
+// literals — these are the same values, one table for everything new.
+export const POTION_PALETTE: Record<EffectKind, [string, string, string]> = {
+  speed: ['#58b8d8', '#a8e8f8', '#2c7898'],
+  strength: ['#c05838', '#e8a878', '#782818'],
+  regen: ['#e858a0', '#f8b8d8', '#982858'],
+  haste: ['#d8c838', '#f8f0a8', '#888018'],
+  night_vision: ['#3858c8', '#88a8f0', '#182868'],
+  water_breathing: ['#4898d8', '#98d0f8', '#185888'],
+  jump: ['#88c848', '#c8f0a0', '#387818'],
+  healing: ['#f04868', '#f8a8b8', '#981828'],
+  poison: ['#58a848', '#a8e088', '#186818'],
+};
+
+/** splash-bottle painter: rounder MC splash flask (short neck, squat body) */
+function drawSplashPotion(ctx: CanvasRenderingContext2D, liquid: string, light: string, dark: string): void {
+  ctx.fillStyle = '#c8dce8';
+  ctx.fillRect(7, 0, 2, 2);
+  ctx.fillRect(6, 2, 4, 1);
+  ctx.fillStyle = liquid;
+  ctx.fillRect(3, 7, 10, 6);      // wider squat body
+  ctx.fillRect(5, 5, 6, 2);       // shoulder
+  ctx.fillStyle = light;
+  ctx.fillRect(4, 6, 2, 2);
+  ctx.fillRect(3, 7, 2, 2);
+  ctx.fillStyle = dark;
+  ctx.fillRect(12, 6, 1, 7);
+  ctx.fillRect(3, 12, 10, 1);
+  ctx.fillRect(3, 10, 1, 2);
+  ctx.fillStyle = '#8a683c';      // cork
+  ctx.fillRect(6, -0, 4, 1);
+  // sparkle
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(8, 8, 1, 1);
+  ctx.fillRect(10, 10, 1, 1);
+}
+
+/** brewing modifier ingredients (no Nether — drops carry MC parity: witches
+ *  shed redstone/glowstone dust, creepers gunpowder; glowstone block sheds
+ *  dust on mining). Base-ingredient table lives in blockEntities.ts. */
+ITEMS[ITEM.REDSTONE] = {
+  id: ITEM.REDSTONE, name: 'Redstone Dust',
+  icon: (ctx) => {
+    ctx.fillStyle = '#c22f22';
+    ctx.fillRect(4, 10, 8, 3);
+    ctx.fillRect(6, 8, 4, 2);
+    ctx.fillStyle = '#8f1a12';
+    ctx.fillRect(4, 12, 8, 1);
+    ctx.fillStyle = '#e8564a';
+    ctx.fillRect(6, 9, 2, 1);
+    ctx.fillRect(10, 10, 1, 1);
+  },
+};
+ITEMS[ITEM.GLOWSTONE_DUST] = {
+  id: ITEM.GLOWSTONE_DUST, name: 'Glowstone Dust',
+  icon: (ctx) => {
+    ctx.fillStyle = '#b8994a';
+    ctx.fillRect(4, 10, 8, 3);
+    ctx.fillRect(6, 8, 4, 2);
+    ctx.fillStyle = '#f8e08a';
+    ctx.fillRect(5, 10, 2, 1);
+    ctx.fillRect(9, 9, 2, 2);
+    ctx.fillRect(7, 12, 2, 1);
+    ctx.fillStyle = '#fff8c8';
+    ctx.fillRect(10, 10, 1, 1);
+  },
+};
+ITEMS[ITEM.GUNPOWDER] = {
+  id: ITEM.GUNPOWDER, name: 'Gunpowder',
+  icon: (ctx) => {
+    ctx.fillStyle = '#5a5a5a';
+    ctx.fillRect(4, 10, 8, 3);
+    ctx.fillRect(6, 8, 4, 2);
+    ctx.fillStyle = '#3a3a3a';
+    ctx.fillRect(4, 12, 8, 1);
+    ctx.fillStyle = '#8a8a8a';
+    ctx.fillRect(6, 9, 2, 1);
+    ctx.fillRect(10, 11, 1, 1);
+  },
+};
+
+// ── the 26 variant potions (extended / tier-2 / splash) ──
+// Data-driven factory — same pipeline as the 9 base defs (distinct item ids,
+// distinct icons, maxStack 1 via isPotionItem). Duration rules are MC-adapted:
+// redstone ×8/3, glowstone ×1/2 duration + amplifier II.
+interface PotionVariantSpec {
+  id: number;
+  effect: EffectKind;
+  base: string;              // EN display base ("Speed", "Jump Boost", …)
+  seconds: number;
+  amp?: number;
+  kind: 'long' | 'strong' | 'splash';
+}
+const POTION_VARIANTS: PotionVariantSpec[] = [
+  // extended (redstone)
+  { id: ITEM.POTION_SPEED_LONG, effect: 'speed', base: 'Speed', seconds: 240, kind: 'long' },
+  { id: ITEM.POTION_STRENGTH_LONG, effect: 'strength', base: 'Strength', seconds: 240, kind: 'long' },
+  { id: ITEM.POTION_REGEN_LONG, effect: 'regen', base: 'Regeneration', seconds: 120, kind: 'long' },
+  { id: ITEM.POTION_HASTE_LONG, effect: 'haste', base: 'Haste', seconds: 240, kind: 'long' },
+  { id: ITEM.POTION_NIGHT_VISION_LONG, effect: 'night_vision', base: 'Night Vision', seconds: 480, kind: 'long' },
+  { id: ITEM.POTION_WATER_BREATHING_LONG, effect: 'water_breathing', base: 'Water Breathing', seconds: 480, kind: 'long' },
+  { id: ITEM.POTION_JUMP_LONG, effect: 'jump', base: 'Jump Boost', seconds: 240, kind: 'long' },
+  { id: ITEM.POTION_POISON_LONG, effect: 'poison', base: 'Poison', seconds: 60, kind: 'long' },
+  // tier-2 (glowstone dust) — only effects an amplifier can deepen
+  { id: ITEM.POTION_SPEED_2, effect: 'speed', base: 'Speed', seconds: 45, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_STRENGTH_2, effect: 'strength', base: 'Strength', seconds: 45, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_REGEN_2, effect: 'regen', base: 'Regeneration', seconds: 22, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_HASTE_2, effect: 'haste', base: 'Haste', seconds: 45, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_JUMP_2, effect: 'jump', base: 'Jump Boost', seconds: 45, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_HEALING_2, effect: 'healing', base: 'Healing', seconds: 0, amp: 2, kind: 'strong' },
+  { id: ITEM.POTION_POISON_2, effect: 'poison', base: 'Poison', seconds: 11, amp: 2, kind: 'strong' },
+  // splash (gunpowder) — base durations, throwable
+  { id: ITEM.POTION_SPLASH_SPEED, effect: 'speed', base: 'Speed', seconds: 90, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_STRENGTH, effect: 'strength', base: 'Strength', seconds: 90, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_REGEN, effect: 'regen', base: 'Regeneration', seconds: 45, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_HASTE, effect: 'haste', base: 'Haste', seconds: 90, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_NIGHT_VISION, effect: 'night_vision', base: 'Night Vision', seconds: 180, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_WATER_BREATHING, effect: 'water_breathing', base: 'Water Breathing', seconds: 180, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_JUMP, effect: 'jump', base: 'Jump Boost', seconds: 90, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_HEALING, effect: 'healing', base: 'Healing', seconds: 0, kind: 'splash' },
+  { id: ITEM.POTION_SPLASH_POISON, effect: 'poison', base: 'Poison', seconds: 22, kind: 'splash' },
+];
+for (const v of POTION_VARIANTS) {
+  const [liquid, light, dark] = POTION_PALETTE[v.effect];
+  const name = v.kind === 'long' ? `Extended Potion of ${v.base}`
+    : v.kind === 'strong' ? `Potion of ${v.base} II`
+      : `Splash Potion of ${v.base}`;
+  ITEMS[v.id] = {
+    id: v.id, name,
+    potion: { effect: v.effect, seconds: v.seconds, amp: v.amp, splash: v.kind === 'splash' },
+    icon:
+      v.kind === 'splash'
+        ? (ctx) => drawSplashPotion(ctx, liquid, light, dark)
+        : v.kind === 'long'
+          ? (ctx) => {
+            // extended: base flask + white duration band under the neck
+            drawPotion(ctx, liquid, light, dark);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(5, 8, 2, 1);
+            ctx.fillRect(9, 8, 2, 1);
+          }
+          : (ctx) => {
+            // tier-2: base flask + extra bright sparkles
+            drawPotion(ctx, liquid, light, dark);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(6, 9, 1, 1);
+            ctx.fillRect(10, 8, 1, 1);
+            ctx.fillRect(8, 12, 1, 1);
+          },
+  };
+}
+
 // register bow
 ITEMS[ITEM.BOW] = {
   id: ITEM.BOW, name: 'Bow',
@@ -1176,7 +1363,7 @@ export function isShearsItem(id: number): boolean {
   return !!ITEMS[id]?.shears;
 }
 /** potion def for a potion item id (undefined for non-potions) */
-export function getPotionDef(id: number): { effect: EffectKind; seconds: number } | undefined {
+export function getPotionDef(id: number): { effect: EffectKind; seconds: number; amp?: number; splash?: boolean } | undefined {
   return ITEMS[id]?.potion;
 }
 export function isPotionItem(id: number): boolean {

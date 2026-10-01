@@ -79,6 +79,7 @@ const BREW_INGREDIENT = new Map<number, { effect: EffectKind; seconds: number }>
   [ITEM.BONE, { effect: 'regen', seconds: 45 }],            // adapted: bone broth → Regeneration
   [ITEM.LAPIS_LAZULI, { effect: 'haste', seconds: 90 }],    // adapted: enchanted mineral → Haste
   [BLOCK.GLOWSTONE, { effect: 'night_vision', seconds: 180 }], // MC-ish: glowstone dust → Night Vision
+  [ITEM.GLOWSTONE_DUST, { effect: 'night_vision', seconds: 180 }], // real dust (v0.56) — block kept for old stocks
   [ITEM.RAW_COD, { effect: 'water_breathing', seconds: 180 }], // MC-ish: fish → Water Breathing
   [ITEM.RAW_SALMON, { effect: 'water_breathing', seconds: 180 }],
   [ITEM.FEATHER, { effect: 'jump', seconds: 90 }],          // adapted: lightness → Jump Boost
@@ -115,6 +116,65 @@ const POTION_BY_EFFECT = new Map<EffectKind, number>([
 ]);
 export function potionItemFor(effect: EffectKind): number {
   return POTION_BY_EFFECT.get(effect) ?? 0;
+}
+
+// ── alchemy II (phase 14): brewing modifiers ──
+// Redstone extends, glowstone dust amplifies, gunpowder makes it throwable
+// (MC modifier semantics, applied to base potions only).
+type PotionVariant = 'long' | 'strong' | 'splash';
+const BREW_MODIFIER = new Map<number, PotionVariant>([
+  [ITEM.REDSTONE, 'long'],
+  [ITEM.GLOWSTONE_DUST, 'strong'],
+  [ITEM.GUNPOWDER, 'splash'],
+]);
+
+const POTION_VARIANT_BY_EFFECT: Record<PotionVariant, Partial<Record<EffectKind, number>>> = {
+  long: {
+    speed: ITEM.POTION_SPEED_LONG,
+    strength: ITEM.POTION_STRENGTH_LONG,
+    regen: ITEM.POTION_REGEN_LONG,
+    haste: ITEM.POTION_HASTE_LONG,
+    night_vision: ITEM.POTION_NIGHT_VISION_LONG,
+    water_breathing: ITEM.POTION_WATER_BREATHING_LONG,
+    jump: ITEM.POTION_JUMP_LONG,
+    poison: ITEM.POTION_POISON_LONG,
+  },
+  strong: {
+    speed: ITEM.POTION_SPEED_2,
+    strength: ITEM.POTION_STRENGTH_2,
+    regen: ITEM.POTION_REGEN_2,
+    haste: ITEM.POTION_HASTE_2,
+    jump: ITEM.POTION_JUMP_2,
+    healing: ITEM.POTION_HEALING_2,
+    poison: ITEM.POTION_POISON_2,
+  },
+  splash: {
+    speed: ITEM.POTION_SPLASH_SPEED,
+    strength: ITEM.POTION_SPLASH_STRENGTH,
+    regen: ITEM.POTION_SPLASH_REGEN,
+    haste: ITEM.POTION_SPLASH_HASTE,
+    night_vision: ITEM.POTION_SPLASH_NIGHT_VISION,
+    water_breathing: ITEM.POTION_SPLASH_WATER_BREATHING,
+    jump: ITEM.POTION_SPLASH_JUMP,
+    healing: ITEM.POTION_SPLASH_HEALING,
+    poison: ITEM.POTION_SPLASH_POISON,
+  },
+};
+
+/** what potion id a modifier brews a slot's potion into (0 = not applicable) */
+function potionVariantTarget(potionId: number, variant: PotionVariant): number {
+  const def = getPotionDef(potionId);
+  if (!def || def.splash) return 0;
+  if (variant === 'long') {
+    if (def.seconds <= 0 || (def.amp ?? 0) > 1) return 0; // instant/binary effects + II don't extend
+    return POTION_VARIANT_BY_EFFECT.long[def.effect] ?? 0;
+  }
+  if (variant === 'strong') {
+    if ((def.amp ?? 0) > 1) return 0;
+    return POTION_VARIANT_BY_EFFECT.strong[def.effect] ?? 0;
+  }
+  if ((def.amp ?? 0) > 1) return 0; // splash brews from base potions only
+  return POTION_VARIANT_BY_EFFECT.splash[def.effect] ?? 0;
 }
 
 function freshBE(kind: 'furnace' | 'chest' | 'brewing'): BlockEntity {
@@ -232,15 +292,39 @@ export class BlockEntityManager {
   /** fired after a brew operation completes (engine unlocks achievements) */
   onBrewed?: () => void;
 
-  /** one water bottle per bottle slot transforms into the ingredient's potion */
+  /** one bottle slot transforms per the ingredient: water + base ingredient →
+   *  potion; potion + modifier (redstone/glowstone dust/gunpowder) → variant */
   private tickBrewing(k: string, be: BrewingBE, dt: number): void {
     const [xs, ys, zs] = k.split(',');
     const x = +xs, y = +ys, z = +zs;
     if (this.world.getBlock(x, y, z) !== BLOCK.BREWING_STAND) return;
 
-    const recipe = !isEmptySlot(be.ing) ? brewResult(be.ing.blockId) : undefined;
-    const hasBottle = be.b.some((s) => !isEmptySlot(s) && s.blockId === ITEM.WATER_BOTTLE);
-    const canBrew = recipe !== undefined && hasBottle && (potionItemFor(recipe.effect) ?? 0) > 0;
+    // resolve per-slot targets for the current ingredient. An ingredient can be
+    // BOTH a base ingredient and a modifier (glowstone dust brews night vision
+    // from water, but amplifies existing potions) — slot content decides:
+    // water bottles take the base path, potions take the modifier path.
+    let targets: (number | null)[] | null = null;
+    if (!isEmptySlot(be.ing)) {
+      const base = brewResult(be.ing.blockId);
+      const variant = BREW_MODIFIER.get(be.ing.blockId);
+      const baseT = base
+        ? be.b.map((s) => {
+          const pid = potionItemFor(base.effect);
+          return !isEmptySlot(s) && s.blockId === ITEM.WATER_BOTTLE && pid > 0 ? pid : null;
+        })
+        : null;
+      const varT = variant
+        ? be.b.map((s) => {
+          if (isEmptySlot(s) || !isPotionItem(s.blockId)) return null;
+          const t = potionVariantTarget(s.blockId, variant);
+          return t > 0 && t !== s.blockId ? t : null;
+        })
+        : null;
+      const baseHit = baseT?.some((t) => t !== null) ?? false;
+      const varHit = varT?.some((t) => t !== null) ?? false;
+      targets = varHit ? varT : baseHit ? baseT : (variant ? varT : baseT);
+    }
+    const canBrew = targets !== null && targets.some((t) => t !== null);
 
     // consume a fuel piece when out of charges and there is something to brew
     if (be.fuelUses <= 0 && canBrew && !isEmptySlot(be.fuel) && brewFuelUses(be.fuel.blockId) > 0) {
@@ -254,12 +338,9 @@ export class BlockEntityManager {
       if (be.cookT >= BREW_TIME) {
         be.cookT = 0;
         be.fuelUses = Math.max(0, be.fuelUses - 1);
-        const potionId = potionItemFor(recipe!.effect);
         for (let i = 0; i < be.b.length; i++) {
-          const s = be.b[i];
-          if (!isEmptySlot(s) && s.blockId === ITEM.WATER_BOTTLE) {
-            be.b[i] = { blockId: potionId, count: 1 };
-          }
+          const t = targets![i];
+          if (t) be.b[i] = { blockId: t, count: 1 };
         }
         be.ing.count--;
         if (be.ing.count <= 0) be.ing = emptySlot();

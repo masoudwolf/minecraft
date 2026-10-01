@@ -48,7 +48,7 @@ const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration sourc
 interface SaveData {
   seed: number;
   time: number;
-  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number; effects?: { k: string; t: number }[] };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number; effects?: { k: string; t: number; amp?: number }[] };
   edits: Record<string, Record<number, number>>;
   blockEntities?: Record<string, unknown>;
   /** per-cell orientation meta (v0.52): torch wall dir / bed half+facing / door facing+half */
@@ -112,6 +112,8 @@ export class Game {
   /** creative hold-to-break cadence (MC: ~4 blocks/s held; 1 click = 1 block) */
   private creativeBreakCd = 0;
   private eatCooldown = 0;
+  /** splash potion throw cooldown (separate from eat so throw→drink chains feel right) */
+  private splashThrowCd = 0;
   private hungerRegenTimer = 0;
   private starveTimer = 0;
   private swingT = 0;
@@ -491,7 +493,7 @@ export class Game {
       this.player.fallStartY = save.player.y;
       this.player.level = save.player.level ?? 0;
       this.player.xp = save.player.xp ?? 0;
-      if (save.player.effects) this.player.effects = save.player.effects.filter((e) => e && typeof e.k === 'string' && e.t > 0);
+      if (save.player.effects) this.player.effects = save.player.effects.filter((e) => e && typeof e.k === 'string' && e.t > 0 && (e.amp === undefined || (typeof e.amp === 'number' && e.amp > 0)));
       if (save.achievements) this.achievements.restore(save.achievements);
     } else {
       this.player.entity.x = sx + 0.5;
@@ -581,7 +583,7 @@ export class Game {
         selected: this.player.selected,
         level: this.player.level,
         xp: this.player.xp,
-        effects: this.player.effects.length > 0 ? this.player.effects.map((e) => ({ k: e.k, t: e.t })) : undefined,
+        effects: this.player.effects.length > 0 ? this.player.effects.map((e) => ({ k: e.k, t: e.t, amp: e.amp })) : undefined,
       },
       edits,
       blockEntities: this.blockEnts.serialize(),
@@ -844,9 +846,11 @@ export class Game {
       this.rodInteract();
       return;
     }
-    // potions: drink (MC — the empty bottle comes back)
+    // potions: drink — or THROW if it's a splash variant (MC)
     if (held && held.count > 0 && isPotionItem(held.blockId)) {
-      this.drinkPotion(held.blockId);
+      const pd = getPotionDef(held.blockId);
+      if (pd?.splash) this.throwSplashPotion(held.blockId);
+      else this.drinkPotion(held.blockId);
       return;
     }
     // buckets: scoop water / milk a cow / pour water / drink milk
@@ -1462,24 +1466,45 @@ export class Game {
     if (!def) return;
     const p = this.player;
     const effDef = EFFECTS[def.effect];
+    const amp = def.amp ?? 1;
     if (def.effect === 'healing') {
-      p.heal(6); // Instant Health (4 hearts)
+      p.heal(amp >= 2 ? 12 : 6); // Instant Health (4 hearts / 8 at tier-2)
     } else if (def.effect === 'poison') {
       p.poisonT = Math.max(p.poisonT, def.seconds);
+      p.poisonAmp = Math.max(p.poisonAmp, amp);
       p.poisonTickT = 0;
     } else {
       const cur = p.effects.find((e) => e.k === def.effect);
-      if (cur) cur.t = Math.max(cur.t, def.seconds);
-      else p.effects.push({ k: def.effect, t: def.seconds });
+      if (cur) {
+        cur.t = Math.max(cur.t, def.seconds);
+        cur.amp = Math.max(cur.amp ?? 1, amp);
+      } else p.effects.push({ k: def.effect, t: def.seconds, amp: amp > 1 ? amp : undefined });
     }
     this.eatCooldown = 1.2;
     audio.milkDrink();
-    this.showToast(effDef.label + ' · ' + effDef.fa);
+    this.showToast(effDef.label + (amp >= 2 ? ' II' : '') + ' · ' + effDef.fa);
     this.replaceHeld(ITEM.GLASS_BOTTLE);
     this.placeCooldown = 0.35;
     this.startSwing();
     this.syncHUD();
     this.syncInventory();
+  }
+
+  /** throw the held splash potion (MC): parabolic projectile, AoE at impact.
+   *  Consumes the bottle (no glass back — MC Java behavior). */
+  private throwSplashPotion(id: number): void {
+    if (this.eatCooldown > 0 || this.splashThrowCd > 0) return;
+    const p = this.player;
+    const dir = p.forwardVector();
+    this.mobs.throwPlayerPotion(p.x, p.eyeY() - 0.08, p.z, dir.x, dir.y, dir.z, 13, id);
+    const slot = this.player.hotbar[this.player.selected];
+    slot.count--;
+    if (slot.count <= 0) this.player.hotbar[this.player.selected] = { blockId: 0, count: 0 };
+    this.splashThrowCd = 0.5;
+    this.eatCooldown = 0.4;
+    this.startSwing();
+    this.syncHUD();
+    this.updateHandMesh();
   }
 
   /** RMB on a cake block: eat one slice (7 slices total, 2 hunger each — MC) */
@@ -1846,8 +1871,9 @@ export class Game {
     // Efficiency: faster mining, but only when the held tool is the block's
     // matching class (MC behavior — a sword's Efficiency never digs faster)
     const effF = heldTool && heldSlot?.ench && heldTool.type === def.tool ? efficiencyFactor(heldSlot.ench) : 1;
-    // Haste potion: −26% break time on everything (MC Haste I ≈ +30% speed)
-    const hasteF = this.player.effects.some((e) => e.k === 'haste') ? 1.35 : 1;
+    // Haste potion: −26% break time on everything (MC Haste I ≈ +30% speed; II = −41%)
+    const hasteEff = this.player.effects.find((e) => e.k === 'haste');
+    const hasteF = hasteEff ? (hasteEff.amp !== undefined && hasteEff.amp >= 2 ? 1.7 : 1.35) : 1;
     const time = this.instantBreak ? 0.04 : (bi.time * effF) / hasteF; // cheat: instant break
     const harvest = bi.harvest;
     if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
@@ -1874,6 +1900,15 @@ export class Game {
       if (harvest && t.id === BLOCK.SPRUCE_LEAVES && Math.random() < 0.08) actualDrop = BLOCK.SPRUCE_SAPLING;
       // tall grass drops wheat seeds (~20%, MC-style foraging)
       if (harvest && t.id === BLOCK.TALL_GRASS && Math.random() < 0.2) actualDrop = ITEM.SEEDS;
+      // glowstone sheds 2-4 glowstone dust instead of the block (MC);
+      // 4 dust craft back into a block, so building stock isn't lost
+      if (t.id === BLOCK.GLOWSTONE) {
+        actualDrop = 0;
+        if (harvest) {
+          const dust = 2 + Math.floor(Math.random() * 3);
+          for (let g = 0; g < dust; g++) this.drops.spawn(ITEM.GLOWSTONE_DUST, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
+        }
+      }
       if (harvest && actualDrop && actualDrop > 0) {
         this.drops.spawn(actualDrop, t.x + 0.5, t.y + 0.3, t.z + 0.5, 1);
         // Fortune: chance of an extra gem (MC-lite)
@@ -3429,12 +3464,17 @@ export class Game {
       p.effects[i].t -= dt;
       if (p.effects[i].t <= 0) p.effects.splice(i, 1);
     }
-    p.jumpMultiplier = p.effects.some((e) => e.k === 'jump') ? 1.35 : 1;
+    p.jumpMultiplier = (() => {
+      const j = p.effects.find((e) => e.k === 'jump');
+      if (!j) return 1;
+      return j.amp !== undefined && j.amp >= 2 ? 1.7 : 1.35;
+    })();
     p.breathing = p.effects.some((e) => e.k === 'water_breathing');
-    // Regeneration: +1 hp / 2s, independent of hunger (MC regen)
-    if (p.effects.some((e) => e.k === 'regen') && p.health < p.maxHealth && !p.dead) {
+    // Regeneration: +1 hp / 2s (1s at tier-2), independent of hunger (MC regen)
+    const regen = p.effects.find((e) => e.k === 'regen');
+    if (regen && p.health < p.maxHealth && !p.dead) {
       this.regenTimer += dt;
-      if (this.regenTimer >= 2) {
+      if (this.regenTimer >= (regen.amp !== undefined && regen.amp >= 2 ? 1 : 2)) {
         this.regenTimer = 0;
         p.heal(1);
       }
@@ -3488,13 +3528,14 @@ export class Game {
     } else if (store.hud.air !== 10) {
       store.setHud({ air: 10 });
     }
-    // potion effect chips (whole-second hash → updates once per second)
+    // potion effect chips (whole-second hash → updates once per second;
+    // amplifier tier is part of the hash + payload so II chips render)
     const poisonActive = this.player.poisonT > 0;
-    const effHash = this.player.effects.map((e) => e.k + ':' + Math.ceil(e.t)).join(',') + (poisonActive ? '|poison:' + Math.ceil(this.player.poisonT) : '');
+    const effHash = this.player.effects.map((e) => e.k + (e.amp !== undefined && e.amp > 1 ? '2' : '') + ':' + Math.ceil(e.t)).join(',') + (poisonActive ? '|poison:' + Math.ceil(this.player.poisonT) : '');
     if (effHash !== this.lastHudEffects || force) {
       this.lastHudEffects = effHash;
-      const effs = this.player.effects.map((e) => ({ k: e.k, seconds: Math.ceil(e.t) }));
-      if (poisonActive) effs.push({ k: 'poison', seconds: Math.ceil(this.player.poisonT) });
+      const effs = this.player.effects.map((e) => ({ k: e.k, seconds: Math.ceil(e.t), amp: e.amp }));
+      if (poisonActive) effs.push({ k: 'poison', seconds: Math.ceil(this.player.poisonT), amp: this.player.poisonAmp > 1 ? this.player.poisonAmp : undefined });
       store.setHud({ effects: effs });
     }
   }
@@ -3694,8 +3735,9 @@ export class Game {
     }
 
     // camera
-    // speed compose: bow draw slowdown × Speed potion (phase 13)
-    p.speedMultiplier = (this.bowCharging ? 0.5 : 1) * (p.effects.some((e) => e.k === 'speed') ? 1.25 : 1);
+    // speed compose: bow draw slowdown × Speed potion (phase 13; tier-2 = 1.4×)
+    const speedEff = p.effects.find((e) => e.k === 'speed');
+    p.speedMultiplier = (this.bowCharging ? 0.5 : 1) * (speedEff ? (speedEff.amp !== undefined && speedEff.amp >= 2 ? 1.4 : 1.25) : 1);
     // sprint FOV kick (MC-like): smoothly widen when sprinting
     const sprintingNow = p.sprinting && Math.hypot(p.entity.vx, p.entity.vz) > 3.2;
     this.sprintFov += ((sprintingNow ? 7 : 0) - this.sprintFov) * Math.min(1, dt * 9);
@@ -3737,6 +3779,7 @@ export class Game {
     this.attackCooldown -= dt;
     this.creativeBreakCd -= dt;
     this.eatCooldown -= dt;
+    this.splashThrowCd -= dt;
 
     // hunger regen / starve
     this.hungerRegenTimer += dt;
@@ -3756,18 +3799,21 @@ export class Game {
       }
     }
 
-    // poison (witch splash potions): 1 damage every 1.5s, never lethal
+    // poison (witch splash potions): 1 damage every 1.5s (0.75s at amp II), never lethal
     if (p.poisonT > 0) {
       p.poisonT -= dt;
       p.poisonTickT -= dt;
       if (p.poisonTickT <= 0) {
-        p.poisonTickT = 1.5;
+        p.poisonTickT = 1.5 / Math.max(1, p.poisonAmp);
         if (p.health > 2) {
           p.damage(1);
           audio.hurt();
         }
       }
-      if (p.poisonT <= 0) p.poisonTickT = 0;
+      if (p.poisonT <= 0) {
+        p.poisonTickT = 0;
+        p.poisonAmp = 0;
+      }
     }
 
     // potion status effects (phase 13): tick down, apply per-frame modifiers
@@ -3918,6 +3964,20 @@ export class Game {
         poisonPlayer: (seconds) => {
           if (p.isCreative || p.dead) return;
           p.poisonT = Math.max(p.poisonT, seconds);
+        },
+        // player splash potions: apply a status effect to the player caught in
+        // the splash (movement buffs work in creative too — damage ticks no-op)
+        applyEffect: (k, seconds, amp) => {
+          if (p.dead) return;
+          const cur = p.effects.find((e) => e.k === k);
+          if (cur) {
+            cur.t = Math.max(cur.t, seconds);
+            cur.amp = Math.max(cur.amp ?? 1, amp ?? 1);
+          } else p.effects.push({ k, t: seconds, amp: amp !== undefined && amp > 1 ? amp : undefined });
+        },
+        // player splash healing: Instant Health caught in the splash
+        healPlayer: (n) => {
+          if (!p.dead) p.heal(n);
         },
         igniteTnt: (tx, ty, tz) => this.igniteTNT(tx, ty, tz, 0.25 + Math.random() * 0.7),
         killByPlayer: (dist) => {
