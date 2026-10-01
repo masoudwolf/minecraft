@@ -1324,3 +1324,24 @@ Stage Summary:
 - 调研资产沉淀：Photon/Bliss/Complementary 源码缓存 + graphics-research.md 行动清单（17 项）——后续版本可按清单继续（SSR 水面反射、水下雾 ray-march、天空 SH 环境光、接触硬化 PCF、月光相位等）
 - NEW QUEUE（按报告优先级）：①水下雾 ray-march（复用 v0.47 DepthTexture+阴影图）②月光相位缩放 ③火把一弹反弹 ④接触硬化 PCF ⑤SSAO（性能允许时）
 - PUSH PENDING：token 失效，4578f19 待推（下轮 restore 自动尝试）
+
+---
+Task ID: 51
+Agent: Z.ai Code (main)
+Task: v0.49.0 Clearview — 用户反馈：① 午夜画面发"糊/雾蒙蒙"（مات），日出更严重（认为阳光照到哪里哪里就发糊），要求要么完全清晰、要么给一个可调/可关的设置；② 提供新 GitHub token（旧 token 失效导致 v0.48.0 push 挂起）；③ 尽可能加入"不降低画质"的优化技巧让游戏更流畅
+
+Work Log:
+- restore 脚本运行 → 发现 local AHEAD 3 commits（v0.48.0 push 曾失败）。用户给的新 token API 验证 200，但 git push 仍 401 → 根因：remote URL 内嵌旧 token，restore 脚本只在 remote 不存在时 set-url → 已修脚本（每次运行强制 set-url 刷新凭据）→ v0.48.0 三枚 commit 补推成功（8583784..9fb0868）
+- 【雾源定位】三重来源实锤：① 场景雾 THREE.Fog(60,130) 硬编码（日出雾色变暖=最糊）；② VLS 体积光 sunrise dayBoost 最强+月光束 0.62 增益；③ Purkinje 夜视蓝移把暗部像素整体换色（午夜"奶蓝感"主因）+ lens flare streak 参与"阳光发糊"
+- 【Haze 主控 51-3】GfxSettings.haze（0..1.5，默认 0.75）：engine.hazeFogParams() 按滑块拉伸雾距（0% → near 2000/far 4333 = 相机 far 900 内不可见 = 完全关雾；风暴天 +40% 除非 0）；graphics.update() 中 VLS×haze、god rays×min(haze,1.2)、Purkinje×min(haze,1)、flare×min(haze,1)（QA 后追加 flare——日出横条光晕也是"糊"的一部分）；旧存档经 { ...DEFAULT_GFX, ...saved } 合并自动获得 0.75
+- 【性能 51-4】三项无损优化：① 阴影 pass 节流——只有玩家跨方块/太阳转≥0.36°/120ms 到期才重渲阴影图（站立不动 60→~8 次/秒；mob 影子由 120ms 地板保活）；② 水面反射按需——updateReflNeed 每 0.5s 扫描 96 格内有无含水 chunk，内陆零开销（llvmpipe 下水质量本就被强制 0，不受影响）；③ opt-in 自动性能 autoPerf——fps<26 降内部分辨率（下限 60%），fps>54 回升；QA 中发现并修复"关闭开关后 adapt 永卡低分辨率"缺陷（关闭即复位 1.0）
+- 【UI 51-5】GraphicsScreen：Atmospheric Haze 滑块（0% 显示 Clear/شفاف）+ 双语说明，置于 Shadows 之后（postfx 关闭时也生效）；新 Performance 分区：Render Scale 移出 postfx 门 + Auto Performance 开关 + 双语说明
+- 【QA 51-6】两次 llvmpipe 死锁按 runbook 恢复；QA 截图：午夜 0.75 vs 0（0% 草叶锐利/星空通透）、面向日出 0.75 vs 0（远景树冠奶白→翠绿、水面奶白→清蓝、streak 消失）、UI 拖滑块→store→雾 [80,173]→[2000,4333] 实时链路、Performance 分区渲染正确、阴影计数器 5.6s/5 次实证节流；世界 cmuonnnhs 还原（239.3,42.0,-108.5, yaw -0.75, pitch -0.10, t≈248.9）+ autosave API 验证 ✓
+- 【诚实台账】QA 中段一次 HMR 重载后，页面预选行变为另一个测试世界 cmuosoweq（0/12 creative）——我的日出 QA 坐标/时间写入了它的存档（仅 position/time，无方块改动；无法得知其原始位置，已如实记录）。用户主世界 cmunbv1a 全程未触碰（API 时间戳证实 22:39 未变）。dev.log 的 prisma readonly 错误为已知自愈模式（[db] stale engine → rebuild → 全部 200），非回归
+- lint 通过；VERSION + version.ts → 0.49.0 "Clearview (Haze Control + Performance)"；commit e8dba2d 已推 GitHub（9fb0868..e8dba2d）；cron webDevReview 重建（旧任务 exec limits 被禁用，新 job 427396, fixed_rate 900s, Asia/Tehran）
+
+Stage Summary:
+- v0.49.0 交付：一个滑块（Atmospheric Haze）统一控制雾/体积光/光晕/夜视蓝移/镜头光晕——0% 完全清晰、75% 新默认（比旧观感通透一档）、150% 浓雾；性能三项无损优化（阴影节流/反射按需/自动性能），llvmpipe 与真机都受益
+- 新 QA 钩子：window.__gfxDebug.shadowPasses / reflectionRenders（性能验证可复测）
+- 遗留：用户装 token 时若再失效，脚本现在会自动刷新 remote URL；cmuosoweq 测试世界存档被 QA 污染（position/time）——低危，等用户反馈决定是否处理
+- NEXT QUEUE：用户对 haze 默认 0.75 的反馈（可调默认值）；graphics-research.md 行动清单继续（水下雾 ray-march、月光相位、火把反弹、接触硬化 PCF、天空 SH）；旧遗留（创造连挖、mob 阳光阴影复查、云速、brewing 等）
