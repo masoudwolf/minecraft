@@ -17,7 +17,7 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate' | 'pane' | 'wall';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** horizontal shrink 0..1 (cake bites shrink like MC; 1 = full cell) */
@@ -147,6 +147,13 @@ export const BLOCK = {
   FENCE_GATE_SPRUCE_OPEN: 99,
   FENCE_GATE_JUNGLE: 100,
   FENCE_GATE_JUNGLE_OPEN: 101,
+  // ── phase 16: glasswork & masonry (panes / bars / walls) ──
+  GLASS_PANE: 102,
+  IRON_BARS: 103,
+  WALL_COBBLE: 104,
+  WALL_MOSSY: 105,
+  WALL_BRICK: 106,
+  WALL_SANDSTONE: 107,
 } as const;
 
 // ── orientation meta (v0.52 Carpentry) ────────────────────────────────────────
@@ -256,6 +263,34 @@ export function fenceConnects(id: number): boolean {
   const d = BLOCKS[id];
   return !!d && d.opaque && d.solid && !d.height && !d.width && (!d.model || d.model === 'cube');
 }
+
+/** ── phase 16: glasswork & masonry ──
+ *  thin (pane/bar/wall) ids — these auto-connect to each other and to full
+ *  opaque cubes, exactly like MC panes/bars/walls. */
+export function isThinId(id: number): boolean {
+  return id >= BLOCK.GLASS_PANE && id <= BLOCK.WALL_SANDSTONE;
+}
+/** does a pane/bar/wall extend an arm toward this neighbor id?
+ *  (does NOT include fences/gates — wood and masonry families stay separate,
+ *  matching MC where panes never connect to fences. Unlike fenceConnects this
+ *  DOES accept non-opaque full cubes — MC panes/walls connect to glass blocks
+ *  and leaves, greenhouse-style.) */
+export function thinConnects(id: number): boolean {
+  if (isThinId(id)) return true;
+  const d = BLOCKS[id];
+  return !!d && d.solid && !d.height && !d.width && (!d.model || d.model === 'cube');
+}
+/** face texture for pane/bar/wall boxes (def.tiles carries only the icon) */
+export function thinFaceTile(id: number): number {
+  switch (id) {
+    case BLOCK.GLASS_PANE: return TILE.glass;
+    case BLOCK.IRON_BARS: return TILE.iron_bars;
+    case BLOCK.WALL_MOSSY: return TILE.mossy_cobble;
+    case BLOCK.WALL_BRICK: return TILE.bricks;
+    case BLOCK.WALL_SANDSTONE: return TILE.sandstone;
+    default: return TILE.cobblestone; // WALL_COBBLE
+  }
+}
 /** per-wood plank tile (fence/gate box faces reuse the plank texture) */
 export function woodPlankTile(id: number): number {
   if (id === BLOCK.FENCE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE_OPEN) return TILE.spruce_planks;
@@ -341,6 +376,9 @@ export const TILE = {
   ladder: 87,
   gate_oak: 88, gate_spruce: 99, gate_jungle: 100,
   fence_icon_oak: 101, fence_icon_spruce: 102, fence_icon_jungle: 103,
+  // ── phase 16: glasswork & masonry ──
+  pane_icon: 104, iron_bars: 105,
+  wall_icon_cobble: 106, wall_icon_mossy: 107, wall_icon_brick: 108, wall_icon_sandstone: 109,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -433,6 +471,20 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.FENCE_GATE_SPRUCE_OPEN]: { id: BLOCK.FENCE_GATE_SPRUCE_OPEN, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_SPRUCE, sound: 'wood' },
   [BLOCK.FENCE_GATE_JUNGLE]: { id: BLOCK.FENCE_GATE_JUNGLE, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.6, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.FENCE_GATE_JUNGLE_OPEN]: { id: BLOCK.FENCE_GATE_JUNGLE_OPEN, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_JUNGLE, sound: 'wood' },
+
+  // ── phase 16: glasswork & masonry — thin connecting blocks (MC) ──
+  // panes/bars are 2/16 thin center columns with auto-connecting arms (full
+  // height); walls are 8/16 posts with 4..12/16 arms. All render in the cutout
+  // pass, connect to opaque cubes and to each other (thinConnects), and
+  // collide as full cells like the rest of the non-cube engine blocks.
+  // def.tiles carries the INVENTORY icon tile; the mesher picks face tiles via
+  // thinFaceTile(id) (same pattern as fences/woodPlankTile).
+  [BLOCK.GLASS_PANE]: { id: BLOCK.GLASS_PANE, name: 'Glass Pane', tiles: all(TILE.pane_icon), solid: true, opaque: false, cutout: true, model: 'pane', flatIcon: true, hardness: 0.4, drop: null, sound: 'glass' },
+  [BLOCK.IRON_BARS]: { id: BLOCK.IRON_BARS, name: 'Iron Bars', tiles: all(TILE.iron_bars), solid: true, opaque: false, cutout: true, model: 'pane', flatIcon: true, hardness: 3.5, tool: 'pickaxe', minTier: 1, sound: 'stone' },
+  [BLOCK.WALL_COBBLE]: { id: BLOCK.WALL_COBBLE, name: 'Cobblestone Wall', tiles: all(TILE.wall_icon_cobble), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
+  [BLOCK.WALL_MOSSY]: { id: BLOCK.WALL_MOSSY, name: 'Mossy Cobblestone Wall', tiles: all(TILE.wall_icon_mossy), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
+  [BLOCK.WALL_BRICK]: { id: BLOCK.WALL_BRICK, name: 'Brick Wall', tiles: all(TILE.wall_icon_brick), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
+  [BLOCK.WALL_SANDSTONE]: { id: BLOCK.WALL_SANDSTONE, name: 'Sandstone Wall', tiles: all(TILE.wall_icon_sandstone), solid: true, opaque: false, cutout: true, model: 'wall', flatIcon: true, hardness: 2, tool: 'pickaxe', minTier: 1, sound: 'stone' },
 
   // ── phase 3b ──
   ...flowDefs(),

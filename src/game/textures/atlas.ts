@@ -1067,6 +1067,93 @@ export function getAtlas(): AtlasData {
   drawFenceIcon(102, DOOR_WOODS[1]);
   drawFenceIcon(103, DOOR_WOODS[2]);
 
+  // ── phase 16: glasswork & masonry tiles (pane icon / iron bars / wall icons) ──
+  // glass pane inventory icon: transparent bg, thin glass cross (center column
+  // + horizontal band) with the classic glass edge glint.
+  p = T(104);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const glint = '#e6f4f5', edge = '#b7d7da', fill = 'rgba(200,232,236,0.55)', dark = '#9fc4c9';
+    ctx.fillStyle = fill;
+    ctx.fillRect(p[0] + 7, p[1], 2, 16);           // center column
+    ctx.fillRect(p[0], p[1] + 7, 16, 2);           // horizontal band
+    ctx.fillStyle = edge;
+    ctx.fillRect(p[0] + 7, p[1], 1, 16); ctx.fillRect(p[0], p[1] + 7, 16, 1);
+    ctx.fillStyle = dark;
+    ctx.fillRect(p[0] + 8, p[1], 1, 16); ctx.fillRect(p[0], p[1] + 8, 16, 1);
+    // corner glints (glass highlight specks)
+    ctx.fillStyle = glint;
+    px(ctx, p[0] + 3, p[1] + 4, glint); px(ctx, p[0] + 4, p[1] + 3, glint);
+    px(ctx, p[0] + 11, p[1] + 12, glint); px(ctx, p[0] + 12, p[1] + 11, glint);
+  }
+  // iron bars: transparent bg lattice — two vertical bars + horizontal bands
+  // (MC iron bars read as dark iron with bright top highlights)
+  p = T(105);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const hi = '#9aa0ad', mid = '#6f7580', dark = '#3d4149', deep = '#2a2d33';
+    for (const bx of [3, 10]) {
+      ctx.fillStyle = mid;
+      ctx.fillRect(p[0] + bx, p[1], 3, 16);
+      ctx.fillStyle = hi;                          // left highlight edge
+      ctx.fillRect(p[0] + bx, p[1], 1, 16);
+      ctx.fillStyle = dark;                        // right shade edge
+      ctx.fillRect(p[0] + bx + 2, p[1], 1, 16);
+    }
+    // horizontal connector bands (top/mid/bottom)
+    for (const by of [1, 7, 13]) {
+      ctx.fillStyle = deep;
+      ctx.fillRect(p[0], p[1] + by, 16, 2);
+      ctx.fillStyle = mid;
+      ctx.fillRect(p[0], p[1] + by, 16, 1);
+    }
+  }
+  // wall inventory icons: transparent bg, wide center post + short side stubs
+  // (masonry cousin of drawFenceIcon with 8/16-thick proportions)
+  const drawWallIcon = (ti: number, base: 'cobble' | 'mossy' | 'brick' | 'sand'): void => {
+    const q = T(ti);
+    ctx.clearRect(q[0], q[1], 16, 16);
+    if (base === 'cobble' || base === 'mossy') {
+      const stone = ['#8a8a8a', '#7c7c7c', '#949494', '#6f6f6f'];
+      const mossy = ['#7d8a6e', '#6f7d61', '#87947a', '#66735a'];
+      const pal = base === 'cobble' ? stone : mossy;
+      noiseFill(ctx, q[0] + 4, q[1], 8, 16, pal, rnd);
+      ctx.fillStyle = '#565656';
+      ctx.fillRect(q[0] + 4, q[1], 1, 16); ctx.fillRect(q[0] + 11, q[1], 1, 16);
+      noiseFill(ctx, q[0], q[1] + 6, 16, 4, pal, rnd);
+      ctx.fillStyle = '#565656';
+      ctx.fillRect(q[0], q[1] + 6, 16, 1); ctx.fillRect(q[0], q[1] + 9, 16, 1);
+      if (base === 'mossy') {                      // moss speckles
+        ctx.fillStyle = '#5f7a4a';
+        px(ctx, q[0] + 6, q[1] + 3, '#5f7a4a'); px(ctx, q[0] + 9, q[1] + 8, '#5f7a4a');
+        px(ctx, q[0] + 2, q[1] + 7, '#5f7a4a'); px(ctx, q[0] + 13, q[1] + 8, '#5f7a4a');
+      }
+    } else if (base === 'brick') {
+      // mini brick pattern: 4-row courses with offset joints
+      ctx.fillStyle = '#9c5a4a';
+      ctx.fillRect(q[0] + 4, q[1], 8, 16); ctx.fillRect(q[0], q[1] + 6, 16, 4);
+      ctx.fillStyle = '#d8d0c8';
+      for (const ry of [0, 4, 8, 12]) ctx.fillRect(q[0] + 4, q[1] + ry, 8, 1);
+      ctx.fillRect(q[0], q[1] + 6, 16, 1); ctx.fillRect(q[0], q[1] + 10, 16, 1);
+      ctx.fillStyle = '#b0aaa4';
+      ctx.fillRect(q[0] + 7, q[1], 1, 4); ctx.fillRect(q[0] + 11, q[1] + 4, 1, 4);
+      ctx.fillRect(q[0] + 5, q[1] + 8, 1, 2); ctx.fillRect(q[0] + 12, q[1] + 6, 1, 4);
+    } else {
+      // sandstone: smooth sand body + carved top band
+      noiseFill(ctx, q[0] + 4, q[1], 8, 16, ['#e0d3a0', '#d6c894', '#dccfa0', '#cdbf88'], rnd);
+      noiseFill(ctx, q[0], q[1] + 6, 16, 4, ['#e0d3a0', '#d6c894', '#dccfa0'], rnd);
+      ctx.fillStyle = '#b3a374';
+      ctx.fillRect(q[0] + 4, q[1], 1, 16); ctx.fillRect(q[0] + 11, q[1], 1, 16);
+      ctx.fillRect(q[0], q[1] + 6, 16, 1); ctx.fillRect(q[0], q[1] + 9, 16, 1);
+      ctx.fillStyle = '#efe6c0';
+      ctx.fillRect(q[0] + 4, q[1] + 1, 8, 1); ctx.fillRect(q[0], q[1] + 7, 16, 1);
+    }
+  };
+  drawWallIcon(106, 'cobble');
+  drawWallIcon(107, 'mossy');
+  drawWallIcon(108, 'brick');
+  drawWallIcon(109, 'sand');
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

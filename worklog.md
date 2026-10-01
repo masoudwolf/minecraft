@@ -1477,3 +1477,15 @@ Work Log:
 Stage Summary:
 - 项目已从旧分叉完整恢复至 v0.53.0（代码 + 存档 + 成就），用户可见版本号/特性恢复。无代码改动（reset），零回退。
 - NEXT：按 Task 55 NEXT QUEUE 继续本会话开发阶段。
+
+Stage Summary (Task 56 continuation — v0.54.0 implementation):
+- 【v0.54.0 "Glasswork & Masonry"】按 Task 55 NEXT QUEUE 与用户既定 "برو مرحله بعد" 指令交付：
+- 【方块】GLASS_PANE(102)/IRON_BARS(103)/WALL_COBBLE(104)/WALL_MOSSY(105)/WALL_BRICK(106)/WALL_SANDSTONE(107)；BlockDef.model 联合新增 'pane'|'wall'；pane=2/16 细芯+全高连臂、wall=8/16 中柱+4/16 连臂（MC 比例）；全部 cutout 通道 pushBox（属性 1:1 防线延续）；碰撞沿用引擎非立方块全格约定
+- 【连接规则】新 thinConnects()：细族互连 + 全尺寸立方体（含非不透明的玻璃块/树叶——MC 温室式连接；刻意不含栅栏族，木/石两族分离=MC 行为）；fenceConnects 保持不变
+- 【贴图】atlas 6 新 tile(104-109)：pane_icon（玻璃细十字+高光）、iron_bars（双竖杆+三横带铁栅）、wall_icon×4（圆石/苔石/砖纹/砂石）；def.tiles 只携带图标，面贴图经 thinFaceTile(id) 映射（栅栏同款模式）
+- 【配方】MC 版型 6 条：玻璃×6→16 板、铁锭×6→16 栏、圆石/苔石/砖/砂石×6→6 墙
+- 【QA（agent-browser 实测，world cmuonnnhs…）】注册表放置/回读 ✓（102-107 全对）；179 个 chunk 几何 aTint 不变量 0 违例 ✓；视觉截图：板行 stone→pane×3→stone 连臂成型、玻璃块连接臂成型（温室规则）、铁栏栅格+横带、墙行连续连接 + 独立墙柱、苔石/砖/砂石变体正确 ✓；tsc exit 0、lint clean、无页面/控制台错误
+- 【QA 环境备注】llvmpipe 会话两次 CDP 卡死（已知现象）→ 全新浏览器会话恢复，非回归；Fast Refresh 后 engine 半启动（player undefined）→ 整页重载恢复
+- 【存档卫生】测试方块全部清除（回读 0 残留）、玩家还原 (239.3, 42.0, -108.5, yaw -0.75, pitch -0.10)、sky.time 复位 248.9、autosave PUT 200 ×N
+- 【GitHub push 受阻】沙箱重置后 token 失效（repo 为 public，fetch 匿名可用；push 401 "Invalid username or token"）——本地已 commit，待用户新 token 后补推
+- NEXT QUEUE：item frames/armor stands、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐

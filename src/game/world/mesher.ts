@@ -1,6 +1,6 @@
 // ─── Chunk mesher: face culling + ambient occlusion + smooth lighting ────────
 import * as THREE from 'three';
-import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorOpenId, isGateOpenId, fenceConnects, woodPlankTile } from '../blocks';
+import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorOpenId, isGateOpenId, fenceConnects, woodPlankTile, thinConnects, thinFaceTile } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import { tileUV } from '../textures/atlas';
 import type { World, Chunk } from './world';
@@ -538,6 +538,63 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           if (fenceConnects(world.getBlock(wx, y, wz - 1))) {
             pushBox(cutout, lx + A0, y + R0, lz, lx + A1, y + R1, lz + P0, uv6, BOX_SHADES, sky, blk);
             pushBox(cutout, lx + A0, y + R2, lz, lx + A1, y + R3, lz + P0, uv6, BOX_SHADES, sky, blk);
+          }
+          continue;
+        }
+
+        // ── special model: pane (v0.54) — glass panes & iron bars: thin
+        // 2/16 center column + arms that auto-connect toward thinConnects
+        // neighbors (other thin blocks + full opaque cubes), full height. ──
+        if (def.model === 'pane') {
+          const uvRect = tileUV(thinFaceTile(id));
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uv6: [number, number, number, number][] = [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect];
+          const C0 = 7 / 16, C1 = 9 / 16;    // core cross-section
+          // center column, full cell height
+          pushBox(cutout, lx + C0, y, lz + C0, lx + C1, y + 1, lz + C1, uv6, BOX_SHADES, sky, blk);
+          // arms toward connected neighbors (single full-height band)
+          if (thinConnects(world.getBlock(wx + 1, y, wz))) {
+            pushBox(cutout, lx + C1, y, lz + C0, lx + 1, y + 1, lz + C1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx - 1, y, wz))) {
+            pushBox(cutout, lx, y, lz + C0, lx + C0, y + 1, lz + C1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx, y, wz + 1))) {
+            pushBox(cutout, lx + C0, y, lz + C1, lx + C1, y + 1, lz + 1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx, y, wz - 1))) {
+            pushBox(cutout, lx + C0, y, lz, lx + C1, y + 1, lz + C0, uv6, BOX_SHADES, sky, blk);
+          }
+          continue;
+        }
+
+        // ── special model: wall (v0.54) — cobble/mossy/brick/sandstone walls:
+        // 8/16 center post + 4/16-thick arms toward thinConnects neighbors,
+        // full height (MC cobblestone-wall proportions, no low-arm nuance). ──
+        if (def.model === 'wall') {
+          const uvRect = tileUV(thinFaceTile(id));
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uv6: [number, number, number, number][] = [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect];
+          const W0 = 4 / 16, W1 = 12 / 16;   // post cross-section
+          const A0 = 6 / 16, A1 = 10 / 16;   // arm thickness
+          // center post, full cell height
+          pushBox(cutout, lx + W0, y, lz + W0, lx + W1, y + 1, lz + W1, uv6, BOX_SHADES, sky, blk);
+          // arms toward connected neighbors (single full-height band)
+          if (thinConnects(world.getBlock(wx + 1, y, wz))) {
+            pushBox(cutout, lx + W1, y, lz + A0, lx + 1, y + 1, lz + A1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx - 1, y, wz))) {
+            pushBox(cutout, lx, y, lz + A0, lx + W0, y + 1, lz + A1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx, y, wz + 1))) {
+            pushBox(cutout, lx + A0, y, lz + W1, lx + A1, y + 1, lz + 1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (thinConnects(world.getBlock(wx, y, wz - 1))) {
+            pushBox(cutout, lx + A0, y, lz, lx + A1, y + 1, lz + W0, uv6, BOX_SHADES, sky, blk);
           }
           continue;
         }
