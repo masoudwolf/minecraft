@@ -589,6 +589,98 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           continue;
         }
 
+        // ── special model: lectern (v0.57) — dark-oak podium: base plinth +
+        // center pillar + slanted top slab with the open-book tile + front lip.
+        // No orientation meta (village houses bake the facing into placement).
+        if (def.model === 'lectern') {
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uvTop = tileUV(TILE.lectern_top);
+          const uvSide = tileUV(TILE.lectern_side);
+          const uvBase = tileUV(TILE.lectern_base);
+          const s6 = (r: [number, number, number, number]): [number, number, number, number][] => [r, r, r, r, r, r];
+          // base plinth: 10/16 footprint, 2/16 tall
+          pushBox(cutout, lx + 3 / 16, y, lz + 3 / 16, lx + 13 / 16, y + 2 / 16, lz + 13 / 16, s6(uvBase), BOX_SHADES, sky, blk);
+          // center pillar up to 11/16
+          pushBox(cutout, lx + 6 / 16, y + 2 / 16, lz + 6 / 16, lx + 10 / 16, y + 11 / 16, lz + 10 / 16, s6(uvSide), BOX_SHADES, sky, blk);
+          // slanted top: front edge (z=13.5) at 11/16, back edge (z=2.5) at 14/16
+          const topQuad: [number, number, number][] = [
+            [2 / 16, 11 / 16, 13.5 / 16], [14 / 16, 11 / 16, 13.5 / 16],
+            [14 / 16, 14 / 16, 2.5 / 16], [2 / 16, 14 / 16, 2.5 / 16],
+          ];
+          const underQuad: [number, number, number][] = [
+            [2 / 16, 14 / 16, 2.5 / 16], [14 / 16, 14 / 16, 2.5 / 16],
+            [14 / 16, 11 / 16, 13.5 / 16], [2 / 16, 11 / 16, 13.5 / 16],
+          ];
+          const quads: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number; n: [number, number, number] }[] = [
+            { c: topQuad, uv: uvTop, sh: 1.0, n: [0, 1, 0] },
+            { c: underQuad, uv: uvSide, sh: 0.65, n: [0, -1, 0] },
+          ];
+          for (const f of quads) {
+            const basePos = cutout.positions.length / 3;
+            for (let c = 0; c < 4; c++) {
+              const cr = f.c[c];
+              cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+              cutout.normals.push(f.n[0], f.n[1], f.n[2]);
+              const uvc = UV_CORNERS[c];
+              cutout.uvs.push(f.uv[0] + (f.uv[2] - f.uv[0]) * uvc[0], f.uv[1] + (f.uv[3] - f.uv[1]) * uvc[1]);
+              cutout.shades.push(f.sh);
+              cutout.skies.push(sky);
+              cutout.blocks.push(blk);
+              pushTint(cutout, TINT_WHITE);
+              cutout.sways.push(0); // rigid furniture
+              cutout.depths.push(0);
+            }
+            cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+          }
+          // front lip (book stopper): pokes above the slope near the front edge
+          pushBox(cutout, lx + 2 / 16, y + 11 / 16, lz + 12 / 16, lx + 14 / 16, y + 12.5 / 16, lz + 14 / 16, s6(uvSide), BOX_SHADES, sky, blk);
+          continue;
+        }
+
+        // ── special model: cauldron (v0.57) — hollow riveted-iron pot: four
+        // 2/16 walls (13/16 tall) + an inset floor; the open mouth reads from
+        // the dark inner tile on the cavity floor.
+        if (def.model === 'cauldron') {
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uvSide = tileUV(TILE.cauldron_side);
+          const uvInner = tileUV(TILE.cauldron_inner);
+          const s6 = (r: [number, number, number, number]): [number, number, number, number][] => [r, r, r, r, r, r];
+          const W0 = 1 / 16, W1 = 15 / 16, TH = 2 / 16, H = 13 / 16;
+          // four walls (their top faces form the rim ring)
+          pushBox(cutout, lx + W0, y, lz + W0, lx + W1, y + H, lz + W0 + TH, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W0, y, lz + W1 - TH, lx + W1, y + H, lz + W1, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W0, y, lz + W0 + TH, lx + W0 + TH, y + H, lz + W1 - TH, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W1 - TH, y, lz + W0 + TH, lx + W1, y + H, lz + W1 - TH, s6(uvSide), BOX_SHADES, sky, blk);
+          // cavity floor: ε-inset so its side faces never z-fight the wall inner faces
+          const E = 0.004;
+          pushBox(cutout, lx + W0 + TH + E, y, lz + W0 + TH + E, lx + W1 - TH - E, y + TH, lz + W1 - TH - E, s6(uvInner), BOX_SHADES, sky, blk);
+          continue;
+        }
+
+        // ── special model: composter (v0.57) — same hollow-frame pattern as
+        // the cauldron but wooden (12/16 walls) with the dark compost fill
+        // rising to 5/16 inside.
+        if (def.model === 'composter') {
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uvSide = tileUV(TILE.composter_side);
+          const uvFill = tileUV(TILE.composter_top);
+          const s6 = (r: [number, number, number, number]): [number, number, number, number][] => [r, r, r, r, r, r];
+          const W0 = 1 / 16, W1 = 15 / 16, TH = 2 / 16, H = 12 / 16, FH = 5 / 16;
+          pushBox(cutout, lx + W0, y, lz + W0, lx + W1, y + H, lz + W0 + TH, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W0, y, lz + W1 - TH, lx + W1, y + H, lz + W1, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W0, y, lz + W0 + TH, lx + W0 + TH, y + H, lz + W1 - TH, s6(uvSide), BOX_SHADES, sky, blk);
+          pushBox(cutout, lx + W1 - TH, y, lz + W0 + TH, lx + W1, y + H, lz + W1 - TH, s6(uvSide), BOX_SHADES, sky, blk);
+          const E = 0.004;
+          pushBox(cutout, lx + W0 + TH + E, y, lz + W0 + TH + E, lx + W1 - TH - E, y + FH, lz + W1 - TH - E, s6(uvFill), BOX_SHADES, sky, blk);
+          continue;
+        }
+
         // ── special model: fence (v0.53) — center post + rail arms that
         // auto-connect to fences, gates and full opaque cubes (MC behavior) ──
         if (def.model === 'fence') {

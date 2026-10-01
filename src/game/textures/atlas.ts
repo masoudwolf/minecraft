@@ -1240,6 +1240,177 @@ export function getAtlas(): AtlasData {
     px(ctx, p[0] + 6, p[1] + 13, '#8a4f2e'); px(ctx, p[0] + 14, p[1] + 3, '#8a4f2e');
   }
 
+  // ── v0.57 village life: profession work-block tiles (115-126) ──
+  // lectern top: dark-oak desk surface with an OPEN BOOK drawn on it — the
+  // slanted top quad samples this whole tile so the book reads at no extra
+  // geometry cost (librarian profession signature item)
+  p = T(115);
+  {
+    ctx.fillStyle = '#4a3520';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#4a3520', '#42301d', '#523b25', '#3e2c1a'], rnd);
+    // open book: two parchment pages with a spine line + scribble rows
+    ctx.fillStyle = '#e8dfc4';
+    ctx.fillRect(p[0] + 2, p[1] + 4, 5, 8); ctx.fillRect(p[0] + 9, p[1] + 4, 5, 8);
+    ctx.fillStyle = '#d4c8a4';                    // page curvature shading
+    ctx.fillRect(p[0] + 2, p[1] + 4, 1, 8); ctx.fillRect(p[0] + 13, p[1] + 4, 1, 8);
+    ctx.fillRect(p[0] + 2, p[1] + 11, 5, 1); ctx.fillRect(p[0] + 9, p[1] + 11, 5, 1);
+    ctx.fillStyle = '#5a4630';                    // spine + cover edge
+    ctx.fillRect(p[0] + 7, p[1] + 4, 2, 8);
+    ctx.fillStyle = '#8a7a5a';                    // scribble text rows
+    ctx.fillRect(p[0] + 3, p[1] + 6, 3, 1); ctx.fillRect(p[0] + 10, p[1] + 6, 3, 1);
+    ctx.fillRect(p[0] + 3, p[1] + 8, 3, 1); ctx.fillRect(p[0] + 10, p[1] + 8, 3, 1);
+  }
+  // lectern side: dark oak with vertical grain + a carved accent line
+  p = T(116);
+  {
+    ctx.fillStyle = '#4a3520';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#4a3520', '#42301d', '#523b25', '#3e2c1a'], rnd);
+    ctx.fillStyle = '#3a2a18';                    // vertical grain streaks
+    for (let i = 0; i < 16; i += 3) ctx.fillRect(p[0] + i + (i % 2), p[1], 1, 16);
+    ctx.fillStyle = '#5f4628';                    // carved decorative band
+    ctx.fillRect(p[0], p[1] + 6, 16, 1);
+    ctx.fillStyle = '#332414';
+    ctx.fillRect(p[0], p[1] + 7, 16, 1);
+  }
+  // lectern base: heavier dark-oak plinth tone
+  p = T(117);
+  {
+    ctx.fillStyle = '#3e2c1a';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#3e2c1a', '#372616', '#463320', '#332312'], rnd);
+    ctx.fillStyle = '#2c1f10';
+    ctx.fillRect(p[0], p[1] + 13, 16, 3);         // shadowed foot
+    ctx.fillStyle = '#523b25';
+    ctx.fillRect(p[0], p[1] + 2, 16, 1);
+  }
+  // cauldron side: dark riveted iron with rim highlight + hanging bracket
+  p = T(118);
+  {
+    ctx.fillStyle = '#3c3c42';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#3c3c42', '#36363c', '#44444b', '#313137'], rnd);
+    ctx.fillStyle = '#5a5a63';                    // rolled rim
+    ctx.fillRect(p[0], p[1], 16, 2);
+    ctx.fillStyle = '#6b6b75';
+    ctx.fillRect(p[0], p[1], 16, 1);
+    ctx.fillStyle = '#26262b';                    // body shading + foot band
+    ctx.fillRect(p[0], p[1] + 13, 16, 3);
+    ctx.fillStyle = '#5a5a63';                    // rivets
+    px(ctx, p[0] + 3, p[1] + 4, '#5a5a63'); px(ctx, p[0] + 12, p[1] + 4, '#5a5a63');
+    px(ctx, p[0] + 3, p[1] + 9, '#5a5a63'); px(ctx, p[0] + 12, p[1] + 9, '#5a5a63');
+  }
+  // cauldron top: iron ring with a dark open center (the hole reads as the pot mouth)
+  p = T(119);
+  {
+    ctx.fillStyle = '#3c3c42';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#3c3c42', '#44444b', '#38383e'], rnd);
+    ctx.fillStyle = '#5a5a63';
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1] + 15, 16, 1);
+    ctx.fillRect(p[0], p[1], 1, 16); ctx.fillRect(p[0] + 15, p[1], 1, 16);
+    ctx.fillStyle = '#1d1d21';                    // open mouth
+    ctx.fillRect(p[0] + 3, p[1] + 3, 10, 10);
+    ctx.fillStyle = '#26262b';
+    ctx.fillRect(p[0] + 3, p[1] + 3, 10, 1);
+  }
+  // cauldron inner: near-black iron (inner walls + floor of the cavity)
+  p = T(120);
+  {
+    ctx.fillStyle = '#1d1d21';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#1d1d21', '#232329', '#17171b'], rnd);
+  }
+  // composter top: dark compost fill — speckled rotting organic matter
+  p = T(121);
+  {
+    ctx.fillStyle = '#3d2e1c';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#3d2e1c', '#332616', '#473621', '#2c2012'], rnd);
+    ctx.fillStyle = '#55452a';                    // lighter organic flecks
+    px(ctx, p[0] + 2, p[1] + 3, '#55452a'); px(ctx, p[0] + 7, p[1] + 5, '#55452a');
+    px(ctx, p[0] + 12, p[1] + 2, '#55452a'); px(ctx, p[0] + 5, p[1] + 10, '#55452a');
+    px(ctx, p[0] + 10, p[1] + 12, '#55452a'); px(ctx, p[0] + 13, p[1] + 8, '#55452a');
+    ctx.fillStyle = '#251a0d';                    // wet patches
+    px(ctx, p[0] + 4, p[1] + 6, '#251a0d'); px(ctx, p[0] + 11, p[1] + 9, '#251a0d');
+  }
+  // composter side: plank frame with horizontal slat gaps (wooden barrel-like frame)
+  p = T(122);
+  {
+    ctx.fillStyle = '#7a5a34';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#7a5a34', '#6e502e', '#856339', '#654a29'], rnd);
+    ctx.fillStyle = '#4e3820';                    // slat gaps between staves
+    ctx.fillRect(p[0], p[1] + 4, 16, 1);
+    ctx.fillRect(p[0], p[1] + 11, 16, 1);
+    ctx.fillStyle = '#8f6c3f';                    // stave highlights
+    ctx.fillRect(p[0], p[1] + 1, 16, 1);
+    ctx.fillRect(p[0], p[1] + 8, 16, 1);
+    ctx.fillStyle = '#3a2917';                    // top/bottom frame edge
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1] + 15, 16, 1);
+  }
+  // smithing top: gunmetal work surface with a lighter anvil face plate
+  p = T(123);
+  {
+    ctx.fillStyle = '#43434b';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#43434b', '#3c3c44', '#4b4b54', '#35353c'], rnd);
+    ctx.fillStyle = '#5c5c66';                    // raised anvil face plate
+    ctx.fillRect(p[0] + 3, p[1] + 3, 10, 10);
+    ctx.fillStyle = '#6d6d78';
+    ctx.fillRect(p[0] + 3, p[1] + 3, 10, 1); ctx.fillRect(p[0] + 3, p[1] + 3, 1, 10);
+    ctx.fillStyle = '#2c2c32';                    // plate edge shadow
+    ctx.fillRect(p[0] + 3, p[1] + 12, 10, 1); ctx.fillRect(p[0] + 12, p[1] + 3, 1, 10);
+    ctx.fillStyle = '#75757f';                    // tool scorch specks
+    px(ctx, p[0] + 5, p[1] + 5, '#75757f'); px(ctx, p[0] + 9, p[1] + 7, '#75757f');
+    px(ctx, p[0] + 7, p[1] + 10, '#75757f');
+  }
+  // smithing side: dark wood legs/body with a wide metal band across the top
+  p = T(124);
+  {
+    ctx.fillStyle = '#4a3520';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#4a3520', '#42301d', '#523b25'], rnd);
+    ctx.fillStyle = '#5a5a63';                    // iron band
+    ctx.fillRect(p[0], p[1], 16, 3);
+    ctx.fillStyle = '#6d6d78';
+    ctx.fillRect(p[0], p[1], 16, 1);
+    ctx.fillStyle = '#33333a';
+    ctx.fillRect(p[0], p[1] + 3, 16, 1);
+    ctx.fillStyle = '#3a2a18';                    // leg shadows
+    ctx.fillRect(p[0] + 1, p[1] + 8, 3, 8); ctx.fillRect(p[0] + 12, p[1] + 8, 3, 8);
+  }
+  // barrel side: vertical oak staves with two dark iron hoops (fisherman storage)
+  p = T(125);
+  {
+    ctx.fillStyle = '#9a7442';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#9a7442', '#8f6c3c', '#a67e4a', '#866338'], rnd);
+    ctx.fillStyle = '#6e5230';                    // stave gaps
+    for (let i = 2; i < 16; i += 4) ctx.fillRect(p[0] + i, p[1], 1, 16);
+    ctx.fillStyle = '#4a4a52';                    // iron hoops
+    ctx.fillRect(p[0], p[1] + 2, 16, 2);
+    ctx.fillRect(p[0], p[1] + 12, 16, 2);
+    ctx.fillStyle = '#5f5f68';                    // hoop highlights
+    ctx.fillRect(p[0], p[1] + 2, 16, 1);
+    ctx.fillRect(p[0], p[1] + 12, 16, 1);
+  }
+  // barrel top: planks inside an iron hoop rim
+  p = T(126);
+  {
+    ctx.fillStyle = '#9a7442';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#9a7442', '#a67e4a', '#8f6c3c'], rnd);
+    ctx.fillStyle = '#4a4a52';                    // hoop rim
+    ctx.fillRect(p[0], p[1], 16, 2); ctx.fillRect(p[0], p[1] + 14, 16, 2);
+    ctx.fillRect(p[0], p[1], 2, 16); ctx.fillRect(p[0] + 14, p[1], 2, 16);
+    ctx.fillStyle = '#6e5230';                    // plank seams
+    ctx.fillRect(p[0] + 5, p[1] + 2, 1, 12); ctx.fillRect(p[0] + 10, p[1] + 2, 1, 12);
+    ctx.fillStyle = '#5f5f68';
+    ctx.fillRect(p[0], p[1], 16, 1); ctx.fillRect(p[0], p[1], 1, 16);
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

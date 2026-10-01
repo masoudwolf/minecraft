@@ -17,7 +17,7 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate' | 'pane' | 'wall' | 'itemframe' | 'flowerpot';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate' | 'pane' | 'wall' | 'itemframe' | 'flowerpot' | 'lectern' | 'cauldron' | 'composter';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** horizontal shrink 0..1 (cake bites shrink like MC; 1 = full cell) */
@@ -156,6 +156,12 @@ export const BLOCK = {
   WALL_SANDSTONE: 107,
   ITEM_FRAME: 108,
   FLOWER_POT: 109,
+  // ── v0.57 village life: villager profession work blocks ──
+  LECTERN: 110,
+  CAULDRON: 111,
+  COMPOSTER: 112,
+  SMITHING_TABLE: 113,
+  BARREL: 114,
 } as const;
 
 // ── orientation meta (v0.52 Carpentry) ────────────────────────────────────────
@@ -410,6 +416,12 @@ export const TILE = {
   // ── phase 17: showcase & décor ──
   frame_icon: 110, frame_ring: 111,
   pot_icon: 112, pot_rim_top: 113, pot_side: 114,
+  // ── v0.57 village life: profession work blocks ──
+  lectern_top: 115, lectern_side: 116, lectern_base: 117,
+  cauldron_side: 118, cauldron_top: 119, cauldron_inner: 120,
+  composter_top: 121, composter_side: 122,
+  smithing_top: 123, smithing_side: 124,
+  barrel_side: 125, barrel_top: 126,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -523,6 +535,16 @@ export const BLOCKS: Record<number, BlockDef> = {
   // layer (packed frame meta / plant id) so saves stay schema-free.
   [BLOCK.ITEM_FRAME]: { id: BLOCK.ITEM_FRAME, name: 'Item Frame', tiles: all(TILE.frame_icon), solid: true, opaque: false, cutout: true, model: 'itemframe', flatIcon: true, hardness: 0.4, sound: 'wood' },
   [BLOCK.FLOWER_POT]: { id: BLOCK.FLOWER_POT, name: 'Flower Pot', tiles: all(TILE.pot_icon), solid: true, opaque: false, cutout: true, model: 'flowerpot', flatIcon: true, hardness: 0.1, needsGround: true, sound: 'stone' },
+
+  // ── v0.57 village life — villager profession work blocks. All full-cell
+  // solid (engine convention for non-cubes). Lectern / cauldron / composter
+  // are custom cutout mesher models; smithing table + barrel are plain cubes
+  // so the standard isometric icon pipeline renders them.
+  [BLOCK.LECTERN]: { id: BLOCK.LECTERN, name: 'Lectern', tiles: all(TILE.lectern_top), solid: true, opaque: false, cutout: true, model: 'lectern', flatIcon: true, hardness: 1.5, tool: 'axe', sound: 'wood' },
+  [BLOCK.CAULDRON]: { id: BLOCK.CAULDRON, name: 'Cauldron', tiles: all(TILE.cauldron_side), solid: true, opaque: false, cutout: true, model: 'cauldron', flatIcon: true, hardness: 2.5, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.COMPOSTER]: { id: BLOCK.COMPOSTER, name: 'Composter', tiles: all(TILE.composter_top), solid: true, opaque: false, cutout: true, model: 'composter', flatIcon: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
+  [BLOCK.SMITHING_TABLE]: { id: BLOCK.SMITHING_TABLE, name: 'Smithing Table', tiles: t(TILE.smithing_side, TILE.smithing_side, TILE.smithing_top, TILE.spruce_planks, TILE.smithing_side, TILE.smithing_side), solid: true, opaque: true, hardness: 1.8, tool: 'axe', sound: 'wood' },
+  [BLOCK.BARREL]: { id: BLOCK.BARREL, name: 'Barrel', tiles: t(TILE.barrel_side, TILE.barrel_side, TILE.barrel_top, TILE.barrel_top, TILE.barrel_side, TILE.barrel_side), solid: true, opaque: true, hardness: 1.6, tool: 'axe', sound: 'wood' },
 
   // ── phase 3b ──
   ...flowDefs(),

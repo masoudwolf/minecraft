@@ -81,6 +81,10 @@ export function getMobSkins(type: string): MobSkins {
   } else if (type.startsWith('snowgolem')) {
     const variant = type.split(':')[1] ?? 'pumpkin';
     skins = buildSnowGolem(variant);
+  } else if (type.startsWith('villager')) {
+    // v0.57: 'villager:farmer' etc — profession robe tint over the vanilla base
+    const prof = type.split(':')[1] ?? 'none';
+    skins = buildVillager(prof);
   } else
   switch (type) {
     case 'pig': skins = buildPig(); break;
@@ -247,14 +251,36 @@ function buildEnderman(): MobSkins {
 // nose(24,0)2x4x2 · body(16,20)8x12x6 · robe legs(0,22)4x12x4 ·
 // ARMS: ONE folded assembly = two 4x8x4 boxes (44,22) + bridge 8x4x4 (40,38),
 // all in a group rotated x=−0.75 (the classic clasped-hands pose)
-function buildVillager(): MobSkins {
+// v0.57 professions: the robe (body + robe legs + folded arms) takes a
+// region-limited multiply tint; head/nose stay vanilla. Zero new art —
+// same tintedTex-region pattern the sheep dye uses. 'none' = plain robe.
+const VILLAGER_PROFESSION_TINTS: Record<string, string> = {
+  none: '',
+  farmer: '#8a5a2a',      // earthy brown robe
+  librarian: '#e6e0d2',   // white robe
+  smith: '#4a4a4f',       // dark apron
+  brewer: '#7b4fa6',      // cleric purple
+  butcher: '#d9cfc2',     // stained-white apron
+  fisherman: '#a68a52',   // weathered kelp tan
+};
+function buildVillager(profession = 'none'): MobSkins {
+  const tint = VILLAGER_PROFESSION_TINTS[profession] ?? '';
+  // region = the part's full box-UV footprint: width 2·(d+w), height d+h
+  const robe = (part: MobSkinPart): MobSkinPart => {
+    if (!tint) return part;
+    const { lay, texW, texH } = part;
+    return {
+      tex: tintedTex('villager', tint, 0.62, [[lay.u, lay.v, 2 * (lay.d + lay.w), lay.d + lay.h]]),
+      lay, texW, texH,
+    };
+  };
   return {
     head: p('villager', 64, 64, 0, 0, 8, 10, 8),
     head2: p('villager', 64, 64, 24, 0, 2, 4, 2),
-    body: p('villager', 64, 64, 16, 20, 8, 12, 6),
-    limb: p('villager', 64, 64, 0, 22, 4, 12, 4),
-    limb2: p('villager', 64, 64, 44, 22, 4, 8, 4),
-    armBridge: p('villager', 64, 64, 40, 38, 8, 4, 4),
+    body: robe(p('villager', 64, 64, 16, 20, 8, 12, 6)),
+    limb: robe(p('villager', 64, 64, 0, 22, 4, 12, 4)),
+    limb2: robe(p('villager', 64, 64, 44, 22, 4, 8, 4)),
+    armBridge: robe(p('villager', 64, 64, 40, 38, 8, 4, 4)),
   };
 }
 

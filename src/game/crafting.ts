@@ -127,6 +127,19 @@ export const RECIPES: Recipe[] = [
   // flower pot: 3 bricks in a V (MC uses brick items; our economy keeps
   // brickwork at block granularity so the Bricks block stands in)
   shaped(3, 2, [BLOCK.BRICKS, 0, BLOCK.BRICKS, 0, BLOCK.BRICKS, 0], BLOCK.FLOWER_POT, 1),
+  // ── v0.57 village life — profession work blocks (MC patterns) ──
+  // barrel: 8 planks around an empty center (MC adds 2 slabs to the ring;
+  // our slab-less economy fills the ring with planks — log-identical shape)
+  shaped(3, 3, [P, P, P, P, 0, P, P, P, P], BLOCK.BARREL, 1),
+  // composter: 7 planks in a U (MC: 7 wood slabs in the same U)
+  shaped(3, 3, [P, 0, P, P, 0, P, P, P, P], BLOCK.COMPOSTER, 1),
+  // lectern: bookshelf over a 3-plank row (MC: bookshelf + 4 slabs; 4-plank
+  // pedestal shape, our slab-less economy uses a solid plank base row)
+  shaped(3, 2, [0, BLOCK.BOOKSHELF, 0, P, P, P], BLOCK.LECTERN, 1),
+  // smithing table: 2 iron across the top, 4 planks under (MC exact shape)
+  shaped(2, 3, [I, I, P, P, P, P], BLOCK.SMITHING_TABLE, 1),
+  // cauldron: 7 iron ingots in a U (MC exact shape)
+  shaped(3, 3, [I, 0, I, I, 0, I, I, I, I], BLOCK.CAULDRON, 1),
   // ── ranged combat ──
   // bow: MC pattern (sticks diagonal, strings right column)
   shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),

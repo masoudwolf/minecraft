@@ -7,6 +7,7 @@ import { getEngine } from '@/game/engine';
 import { audio } from '@/game/audio';
 import { slotIconUrl, slotName } from './slotIcon';
 import { McButton, useMenuBackground } from './ui';
+import { PROFESSION_LABELS, TRADE_EPOCH_MS, type VillagerProfession } from '@/game/trades';
 
 export function PauseMenu() {
   const hud = useGameStore((s) => s.hud);
@@ -207,6 +208,11 @@ export function TradePanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // v0.57: profession from the store (set by openTrade) → bilingual header + restock hint
+  const prof = useGameStore((s) => s.tradeProfession);
+  const label = prof && prof in PROFESSION_LABELS ? PROFESSION_LABELS[prof as VillagerProfession] : null;
+  const restockMin = Math.max(1, Math.ceil((TRADE_EPOCH_MS - (Date.now() % TRADE_EPOCH_MS)) / 60000));
+
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
       {/* dim world slightly */}
@@ -236,10 +242,13 @@ export function TradePanel() {
           </div>
           <div className="min-w-0">
             <div className="text-[15px]" style={{ fontFamily: 'var(--font-mc)', color: '#3f3f3f' }}>
-              Villager
+              {label ? `${label.en} Villager · ${label.fa}` : 'Villager · روستایی'}
             </div>
             <div className="text-[10px] text-[#5a5a5a]" style={{ fontFamily: 'var(--font-mc)' }}>
-              Hmmm! Take a look at my wares…
+              Hmmm! Take a look at my wares… · نگاهی به اجناس من بنداز
+            </div>
+            <div className="mt-0.5 text-[9px] text-[#7a7a7a]" style={{ fontFamily: 'var(--font-mc)' }}>
+              Stock rotates every 5 min · restock in ~{restockMin} min · بازپرستی تا {restockMin} دقیقه
             </div>
           </div>
         </div>
@@ -301,7 +310,7 @@ export function TradePanel() {
         </div>
 
         <div className="mt-3 text-center text-[10px] text-[#5a5a5a]" style={{ fontFamily: 'var(--font-mc)' }}>
-          Esc to close
+          Esc to close · خروج با Esc
         </div>
       </div>
     </div>

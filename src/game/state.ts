@@ -109,6 +109,8 @@ interface GameStore {
   advancement: { title: string; desc: string; icon: string } | null;
   /** villager trade panel open (playing screen only) */
   tradeOpen: boolean;
+  /** profession of the villager being traded with (v0.57, for the panel header) */
+  tradeProfession: string | null;
   /** enchanting table panel open (playing screen only) */
   enchantOpen: boolean;
   /** known worlds (menu list) */
@@ -128,6 +130,7 @@ interface GameStore {
   setInv: (inv: Partial<InvUIState>) => void;
   setAdvancement: (a: { title: string; desc: string; icon: string } | null) => void;
   setTradeOpen: (v: boolean) => void;
+  setTradeProfession: (v: string | null) => void;
   setEnchantOpen: (v: boolean) => void;
   setWorlds: (w: WorldMeta[]) => void;
   setCurrentWorld: (id: string | null, name: string) => void;
@@ -169,6 +172,7 @@ export const useGameStore = create<GameStore>((set) => ({
   inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, brewing: null, creative: false, armor: [null, null, null, null] },
   advancement: null,
   tradeOpen: false,
+  tradeProfession: null,
   enchantOpen: false,
   worlds: [],
   currentWorldId: null,
@@ -189,6 +193,7 @@ export const useGameStore = create<GameStore>((set) => ({
   setInv: (inv) => set((st) => ({ inv: { ...st.inv, ...inv } })),
   setAdvancement: (a) => set({ advancement: a }),
   setTradeOpen: (v) => set({ tradeOpen: v }),
+  setTradeProfession: (v) => set({ tradeProfession: v }),
   setEnchantOpen: (v) => set({ enchantOpen: v }),
   setWorlds: (w) => set({ worlds: w }),
   setCurrentWorld: (id, name) => set({ currentWorldId: id, currentWorldName: name }),

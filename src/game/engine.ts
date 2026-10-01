@@ -15,7 +15,7 @@ import { AchievementManager, type AchievementDef } from './achievements';
 import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, isPotionItem, getPotionDef, ITEM } from './items';
 import { EFFECTS } from './effects';
 import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
-import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
+import { villagerTrades, tradeEpoch, villagerTradeSeed, VILLAGER_PROFESSIONS, type VillagerProfession, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, hasInfinity, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
 import { BlockEntityManager, BREW_TIME } from './blockEntities';
@@ -1152,12 +1152,18 @@ export class Game {
   /** offers currently shown in the trade panel (set by openTrade) */
   private activeTrades: TradeOffer[] = [];
 
-  openTrade(mob?: { x: number; z: number }): void {
+  openTrade(mob?: { x: number; z: number; variant?: string }): void {
     audio.click();
     // per-villager stock: deterministic pick from the pool, rotating every epoch (MC restock)
+    // v0.57: the villager's profession weights the pool + labels the panel
     const seed = mob ? villagerTradeSeed(mob.x, mob.z) : 0;
-    this.activeTrades = villagerTrades(seed, tradeEpoch());
-    useGameStore.getState().setTradeOpen(true);
+    const prof = mob?.variant && (VILLAGER_PROFESSIONS as string[]).includes(mob.variant)
+      ? (mob.variant as VillagerProfession)
+      : undefined;
+    this.activeTrades = villagerTrades(seed, tradeEpoch(), prof);
+    const st = useGameStore.getState();
+    st.setTradeProfession(prof ?? null);
+    st.setTradeOpen(true);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
@@ -1165,6 +1171,7 @@ export class Game {
     const st = useGameStore.getState();
     if (!st.tradeOpen) return;
     st.setTradeOpen(false);
+    st.setTradeProfession(null);
     if (st.screen === 'playing') this.requestLock();
   }
 

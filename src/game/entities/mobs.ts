@@ -8,6 +8,7 @@ import { buildKnight, animateKnight, getKnightRig } from './knightSkin';
 import { audio } from '../audio';
 import { ITEM, getPotionDef, POTION_PALETTE } from '../items';
 import { shadowState } from '../graphics/shadowState';
+import { pickVillagerProfession } from '../trades';
 
 export type MobType = 'pig' | 'cow' | 'sheep' | 'chicken' | 'zombie' | 'creeper' | 'skeleton' | 'spider' | 'enderman' | 'villager' | 'witch' | 'mooshroom' | 'golem' | 'snowgolem' | 'knight';
 
@@ -1002,7 +1003,7 @@ export class MobManager {
         ...(m.variant ? { variant: m.variant } : {}),
         ...(m.sheared ? { sheared: true } : {}),
       });
-      if (out.length >= 28) break;
+      if (out.length >= 36) break;
     }
     return out;
   }
@@ -1025,7 +1026,7 @@ export class MobManager {
 
   private spawn(type: MobType, x: number, y: number, z: number, variant = ''): Mob | null {
     const def = MOB_DEFS[type];
-    const skinKey = variant && (type === 'sheep' || type === 'snowgolem' || type === 'knight') ? `${type}:${variant}` : type;
+    const skinKey = variant && (type === 'sheep' || type === 'snowgolem' || type === 'knight' || type === 'villager') ? `${type}:${variant}` : type;
     const skins = getMobSkins(skinKey);
     const parts = def.builder(skins, variant);
     // SAFETY NET: rebuild the material list from a FULL recursive traversal so
@@ -1070,7 +1071,7 @@ export class MobManager {
       burnTimer: 0, burning: false,
       fuse: -1, dead: false, deathT: 0,
       provoked: false, teleportCd: 0, waterHurtT: 0,
-      variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : type === 'knight' ? (variant || 'cyber') : '',
+      variant: type === 'sheep' ? (variant || 'white') : type === 'snowgolem' ? (variant || 'pumpkin') : type === 'knight' ? (variant || 'cyber') : type === 'villager' ? (variant || 'none') : '',
       sheared: false,
       woolRegrowT: 0,
       wanderX: x, wanderZ: z,
@@ -1139,9 +1140,12 @@ export class MobManager {
         return;
       }
       const villagerCount = this.mobs.filter((m) => m.type === 'villager').length;
-      if (villagerCount < 5 && skyL >= 9 && sunLevel > 0.55) {
-        const herd = 1 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < herd; i++) this.spawn('villager', x + (Math.random() - 0.5) * 2, sy + 1, z + (Math.random() - 0.5) * 2);
+      // v0.57: bigger cap + herds of 2-3 with random professions — villages
+      // feel inhabited, and the despawn exemption below keeps them around
+      if (villagerCount < 9 && skyL >= 9 && sunLevel > 0.55) {
+        const herd = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < herd; i++)
+          this.spawn('villager', x + (Math.random() - 0.5) * 2.5, sy + 1, z + (Math.random() - 0.5) * 2.5, pickVillagerProfession());
       }
       return;
     }
@@ -1317,9 +1321,12 @@ export class MobManager {
 
       // despawn far / invalid: NaN or below-world positions never heal on their
       // own and NaN breaks the distance check (NaN > 64 === false), so mobs that
-      // glitch out would otherwise persist forever
+      // glitch out would otherwise persist forever.
+      // v0.57: villagers linger at 1.5× the radius so a village keeps its
+      // residents while you explore nearby (they persist through saves too).
+      const despawnR = m.type === 'villager' ? 96 : 64;
       if (
-        distToPlayer > 64 ||
+        distToPlayer > despawnR ||
         !Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.z) ||
         m.y < -20
       ) {

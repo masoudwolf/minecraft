@@ -77,7 +77,7 @@ export interface CreativeTab {
 
 const NATURE_WORDS = ['grass', 'dirt', 'sand', 'gravel', 'log', 'leaves', 'flower', 'poppy', 'dandelion', 'cactus', 'sugarcane', 'dead bush', 'lily', 'mycelium', 'mushroom', 'water', 'ice', 'snowy', 'snow block', 'ore', 'podzol', 'clay', 'vine'];
 const BUILDING_WORDS = ['stone', 'cobble', 'planks', 'brick', 'sandstone', 'glass', 'wool', 'obsidian', 'bedrock', 'bookshelf', 'quartz', 'terracotta', 'concrete', 'slab', 'stairs', 'fence', 'door', 'trapdoor'];
-const FUNCTIONAL_WORDS = ['crafting', 'furnace', 'chest', 'torch', 'tnt', 'bed', 'glowstone', 'ladder', 'rail', 'boat', 'sign', 'lantern', 'jack', 'enchanting', 'brewing', 'cake'];
+const FUNCTIONAL_WORDS = ['crafting', 'furnace', 'chest', 'torch', 'tnt', 'bed', 'glowstone', 'ladder', 'rail', 'boat', 'sign', 'lantern', 'jack', 'enchanting', 'brewing', 'cake', 'lectern', 'cauldron', 'composter', 'smithing', 'barrel'];
 
 function classify(e: CreativeEntry): CreativeCat {
   const n = e.name.toLowerCase();

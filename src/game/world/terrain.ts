@@ -155,7 +155,7 @@ export class TerrainGenerator {
   }
 
   /** fill a chunk's block data */
-  generateChunk(cx: number, cz: number, data: Uint8Array): void {
+  generateChunk(cx: number, cz: number, data: Uint8Array, metaOut?: Map<string, number>): void {
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
 
@@ -221,7 +221,7 @@ export class TerrainGenerator {
     }
 
     // village structures (plains): deterministic per chunk — house / well / farm
-    this.placeVillageStructures(data, cx, cz);
+    this.placeVillageStructures(data, cx, cz, metaOut);
 
     // witch hut (swamp): stilted hut over a water pool, Phase 10
     this.placeWitchHut(data, cx, cz);
@@ -367,7 +367,7 @@ export class TerrainGenerator {
   }
 
   /** place a village structure in this chunk (plains only, fully in-chunk): house / well / farm */
-  private placeVillageStructures(data: Uint8Array, cx: number, cz: number): void {
+  private placeVillageStructures(data: Uint8Array, cx: number, cz: number, metaOut?: Map<string, number>): void {
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
     const midX = x0 + CHUNK_SIZE / 2, midZ = z0 + CHUNK_SIZE / 2;
@@ -379,75 +379,10 @@ export class TerrainGenerator {
     if (cx % 2 === 0 && this.hash2(cx - 1, cz, 500) < 0.105) return;
 
     if (v < 0.055) {
-      // ── house: 7x7 footprint, plank walls, log corners, glass windows, torch ──
-      const ox = 2 + Math.floor(this.hash2(cx, cz, 501) * 7); // 2..8
-      const oz = 2 + Math.floor(this.hash2(cx, cz, 502) * 7);
-      // flatness gate
-      let hMin = 999, hMax = -999;
-      for (const [dx, dz] of [[0, 0], [6, 0], [0, 6], [6, 6]] as [number, number][]) {
-        const h = this.heightAt(x0 + ox + dx, z0 + oz + dz);
-        if (h <= SEA_LEVEL + 1) return;
-        hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
-      }
-      if (hMax - hMin > 3) return;
-      const floorY = hMax;
-      const wallTop = floorY + 4;
-      const setF = (lx: number, y: number, lz: number, block: number): void => {
-        const idx = blockIndex(lx, y, lz);
-        data[idx] = block;
-      };
-      const setIf = (lx: number, y: number, lz: number, block: number, replaceSolid: boolean): void => {
-        if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
-        if (!replaceSolid) {
-          const cur = data[blockIndex(lx, y, lz)];
-          if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
-        }
-        data[blockIndex(lx, y, lz)] = block;
-      };
-      // clear the volume (kill trees inside), then build
-      for (let lx = 0; lx < 7; lx++)
-        for (let lz = 0; lz < 7; lz++)
-          for (let y = floorY + 1; y <= wallTop + 1; y++)
-            setF(ox + lx, y, oz + lz, BLOCK.AIR);
-      // foundation + cobble floor
-      for (let lx = 0; lx < 7; lx++)
-        for (let lz = 0; lz < 7; lz++) {
-          setF(ox + lx, floorY, oz + lz, BLOCK.COBBLESTONE);
-          const ground = this.heightAt(x0 + ox + lx, z0 + oz + lz);
-          for (let y = ground; y < floorY && y > ground - 12; y++) setIf(ox + lx, y, oz + lz, BLOCK.COBBLESTONE, true);
-        }
-      // walls: planks with log corners
-      for (let y = floorY + 1; y <= wallTop; y++) {
-        for (let i = 0; i < 7; i++) {
-          const isCorner = (i === 0 || i === 6);
-          // -z wall (door side), +z, -x, +x
-          const doorCols = i >= 3 && i <= 3;
-          if (y <= floorY + 2 && doorCols) {
-            setIf(ox + i, y, oz, BLOCK.AIR, true); // doorway (2 tall)
-          } else {
-            setIf(ox + i, y, oz, BLOCK.PLANKS, true);
-          }
-          setIf(ox + i, y, oz + 6, BLOCK.PLANKS, true);
-          const glassRow = y === floorY + 2;
-          setIf(ox, y, oz + i, glassRow && i >= 2 && i <= 4 ? BLOCK.GLASS : BLOCK.PLANKS, true);
-          setIf(ox + 6, y, oz + i, glassRow && i >= 2 && i <= 4 ? BLOCK.GLASS : BLOCK.PLANKS, true);
-          // corners = logs
-          if (isCorner) {
-            setIf(ox, y, oz, BLOCK.LOG, true);
-            setIf(ox + 6, y, oz, BLOCK.LOG, true);
-            setIf(ox, y, oz + 6, BLOCK.LOG, true);
-            setIf(ox + 6, y, oz + 6, BLOCK.LOG, true);
-          }
-        }
-      }
-      // flat roof: spruce log rim + planks
-      for (let lx = 0; lx < 7; lx++)
-        for (let lz = 0; lz < 7; lz++) {
-          const rim = lx === 0 || lx === 6 || lz === 0 || lz === 6;
-          setIf(ox + lx, wallTop + 1, oz + lz, rim ? BLOCK.SPRUCE_LOG : BLOCK.PLANKS, true);
-        }
-      // interior torch on the floor (light + cozy)
-      setIf(ox + 5, floorY + 1, oz + 5, BLOCK.TORCH, true);
+      // ── house: v0.57 six diverse building types × 4 rotations, each
+      // furnished with the profession work block of the villager who
+      // "owns" it (cottage / big house / library / smithy / farmstead / brewery)
+      this.placeVillageHouse(data, cx, cz, x0, z0, metaOut);
       return;
     }
 
@@ -521,6 +456,170 @@ export class TerrainGenerator {
         setIf(ox + dx, gy + 1, oz + dz, BLOCK.SPRUCE_LOG, true);
         setIf(ox + dx, gy + 2, oz + dz, BLOCK.TORCH, true);
       }
+    }
+  }
+
+  // ── v0.57 village houses ────────────────────────────────────────────────────
+  // Six building types × 4 rotations, each themed to the villager profession
+  // that "owns" it: every house gets a bed + torches + furniture, plus the
+  // profession's signature work block (lectern / smithing table / composter /
+  // brewing stand / cauldron / barrel). Rotation is a pure coordinate
+  // transform of template-space coords, so generation stays fully
+  // deterministic per chunk. Bed facing lives in the orientation-meta layer
+  // (metaOut → World.meta) exactly like player-placed beds.
+  private placeVillageHouse(data: Uint8Array, cx: number, cz: number, x0: number, z0: number, metaOut?: Map<string, number>): void {
+    const kind = Math.floor(this.hash2(cx, cz, 508) * 6);   // building type 0..5
+    const rot = Math.floor(this.hash2(cx, cz, 509) * 4);    // quarter turns
+    // template footprints (tw × td) — odd rotations swap the axes
+    const SIZES: [number, number][] = [[5, 5], [9, 7], [7, 9], [7, 7], [7, 6], [5, 6]];
+    const [tw, td] = SIZES[kind];
+    const w = rot % 2 === 0 ? tw : td;
+    const d = rot % 2 === 0 ? td : tw;
+    const ox = 2 + Math.floor(this.hash2(cx, cz, 501) * (CHUNK_SIZE - 3 - w));
+    const oz = 2 + Math.floor(this.hash2(cx, cz, 502) * (CHUNK_SIZE - 3 - d));
+    // flatness gate across the (rotated) footprint corners
+    let hMin = 999, hMax = -999;
+    for (const [dx, dz] of [[0, 0], [w - 1, 0], [0, d - 1], [w - 1, d - 1]] as [number, number][]) {
+      const h = this.heightAt(x0 + ox + dx, z0 + oz + dz);
+      if (h <= SEA_LEVEL + 1) return;
+      hMin = Math.min(hMin, h); hMax = Math.max(hMax, h);
+    }
+    if (hMax - hMin > 3) return;
+    const floorY = hMax;
+    const wallTop = floorY + 4;
+
+    // template-space → chunk-local rotation
+    const R = (lx: number, lz: number): [number, number] => {
+      if (rot === 1) return [td - 1 - lz, lx];
+      if (rot === 2) return [tw - 1 - lx, td - 1 - lz];
+      if (rot === 3) return [lz, tw - 1 - lx];
+      return [lx, lz];
+    };
+    const put = (lx: number, y: number, lz: number, block: number, replaceSolid = true): void => {
+      const [rx, rz] = R(lx, lz);
+      const ax = ox + rx, az = oz + rz;
+      if (ax < 0 || ax >= CHUNK_SIZE || az < 0 || az >= CHUNK_SIZE || y < 0 || y >= WORLD_HEIGHT) return;
+      if (!replaceSolid) {
+        const cur = data[blockIndex(ax, y, az)];
+        if (cur !== BLOCK.AIR && cur !== BLOCK.WATER && cur !== BLOCK.LEAVES) return;
+      }
+      data[blockIndex(ax, y, az)] = block;
+    };
+    const putMeta = (lx: number, lz: number, y: number, v: number): void => {
+      const [rx, rz] = R(lx, lz);
+      metaOut?.set((x0 + ox + rx) + ',' + y + ',' + (z0 + oz + rz), v);
+    };
+    // bed: feet cell + head cell + rotated facing meta (0=+X,1=-X,2=+Z,3=-Z)
+    const putBed = (lx: number, lz: number, facing: number): void => {
+      const rotMap = ([[0, 1, 2, 3], [2, 3, 1, 0], [1, 0, 3, 2], [3, 2, 0, 1]] as [number, number, number, number][])[rot & 3];
+      const f = rotMap[facing & 3];
+      const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const [dx, dz] = dirs[f];
+      put(lx, floorY + 1, lz, BLOCK.BED);
+      put(lx + dx, floorY + 1, lz + dz, BLOCK.BED);
+      putMeta(lx, lz, floorY + 1, f);
+      putMeta(lx + dx, lz + dz, floorY + 1, f | 4);
+    };
+
+    // palette per building type
+    const P = [
+      { wall: BLOCK.PLANKS,        corner: BLOCK.LOG,         rim: BLOCK.SPRUCE_LOG,  deck: BLOCK.PLANKS },        // 0 cottage
+      { wall: BLOCK.SPRUCE_PLANKS, corner: BLOCK.SPRUCE_LOG,  rim: BLOCK.SPRUCE_LOG,  deck: BLOCK.SPRUCE_PLANKS }, // 1 big house
+      { wall: BLOCK.PLANKS,        corner: BLOCK.LOG,         rim: BLOCK.LOG,         deck: BLOCK.PLANKS },        // 2 library
+      { wall: BLOCK.COBBLESTONE,   corner: BLOCK.COBBLESTONE, rim: BLOCK.COBBLESTONE, deck: BLOCK.COBBLESTONE },   // 3 smithy
+      { wall: BLOCK.PLANKS,        corner: BLOCK.SPRUCE_LOG,  rim: BLOCK.SPRUCE_LOG,  deck: BLOCK.JUNGLE_PLANKS }, // 4 farmstead
+      { wall: BLOCK.JUNGLE_PLANKS, corner: BLOCK.LOG,         rim: BLOCK.SPRUCE_LOG,  deck: BLOCK.JUNGLE_PLANKS }, // 5 brewery
+    ][kind];
+    const doorX = Math.floor(tw / 2);
+    const isCornerX = (i: number): boolean => i === 0 || i === tw - 1;
+    // window columns (template coords) on the ±x walls / +z wall per type
+    const winXs: number[][] = [[2], [2, 3, 4], [2, 4], [3], [2], [2]];
+    const winZs: number[][] = [[], [2, 4, 6], [], [3], [2, 4], []];
+
+    // clear the volume (kill trees inside), then build
+    for (let lx = 0; lx < tw; lx++)
+      for (let lz = 0; lz < td; lz++)
+        for (let y = floorY + 1; y <= wallTop + 1; y++)
+          put(lx, y, lz, BLOCK.AIR);
+    // foundation + cobble floor (keeps the villager spawn heuristic working)
+    for (let lx = 0; lx < tw; lx++)
+      for (let lz = 0; lz < td; lz++) {
+        put(lx, floorY, lz, BLOCK.COBBLESTONE);
+        const [rx, rz] = R(lx, lz);
+        const ground = this.heightAt(x0 + ox + rx, z0 + oz + rz);
+        for (let y = ground; y < floorY && y > ground - 12; y++) put(lx, y, lz, BLOCK.COBBLESTONE);
+      }
+    // walls: door hole on the -z face, windows per type, corners per palette
+    for (let y = floorY + 1; y <= wallTop; y++) {
+      for (let i = 0; i < tw; i++) {
+        const isDoor = i === doorX && y <= floorY + 2;
+        put(i, y, 0, isDoor ? BLOCK.AIR : (isCornerX(i) ? P.corner : P.wall));
+        const winZ = y === floorY + 2 && winZs[kind].includes(i);
+        put(i, y, td - 1, winZ ? BLOCK.GLASS : (isCornerX(i) ? P.corner : P.wall));
+      }
+      for (let j = 1; j < td - 1; j++) {
+        const winX = y === floorY + 2 && winXs[kind].includes(j);
+        const mat = winX ? BLOCK.GLASS : P.wall;
+        put(0, y, j, mat);
+        put(tw - 1, y, j, mat);
+      }
+    }
+    // flat roof: rim band + deck planks
+    for (let lx = 0; lx < tw; lx++)
+      for (let lz = 0; lz < td; lz++) {
+        const rim = isCornerX(lx) || lz === 0 || lz === td - 1;
+        put(lx, wallTop + 1, lz, rim ? P.rim : P.deck);
+      }
+
+    // interior furniture (template coords; y = floorY + 1) — door faces -z
+    switch (kind) {
+      case 0: // cottage: bed + crafting table + torch
+        putBed(3, 1, 2);           // feet (3,1) → head (3,2), facing +z
+        put(1, floorY + 1, 3, BLOCK.CRAFTING_TABLE);
+        put(1, floorY + 1, 1, BLOCK.TORCH);
+        break;
+      case 1: // big house: bed + bookshelf row + wool rug + barrel + torches
+        putBed(7, 1, 2);
+        put(1, floorY + 1, 5, BLOCK.BOOKSHELF);
+        put(2, floorY + 1, 5, BLOCK.BOOKSHELF);
+        put(3, floorY + 1, 5, BLOCK.BOOKSHELF);
+        put(3, floorY + 1, 2, BLOCK.WOOL);
+        put(4, floorY + 1, 2, BLOCK.WOOL);
+        put(5, floorY + 1, 2, BLOCK.WOOL);
+        put(7, floorY + 1, 5, BLOCK.BARREL);
+        put(1, floorY + 1, 1, BLOCK.TORCH);
+        put(4, floorY + 1, 4, BLOCK.TORCH);
+        break;
+      case 2: // library: bookshelf walls + lectern + torches
+        for (let i = 1; i <= 5; i++) put(i, floorY + 1, 7, BLOCK.BOOKSHELF);
+        put(1, floorY + 1, 6, BLOCK.BOOKSHELF);
+        put(5, floorY + 1, 6, BLOCK.BOOKSHELF);
+        put(3, floorY + 1, 4, BLOCK.LECTERN);
+        put(3, floorY + 1, 2, BLOCK.WOOL);
+        put(1, floorY + 1, 1, BLOCK.TORCH);
+        put(5, floorY + 1, 1, BLOCK.TORCH);
+        break;
+      case 3: // smithy: smithing table + furnace + barrels, stone shell
+        put(2, floorY + 1, 2, BLOCK.SMITHING_TABLE);
+        put(4, floorY + 1, 2, BLOCK.FURNACE);
+        put(1, floorY + 1, 5, BLOCK.BARREL);
+        put(5, floorY + 1, 5, BLOCK.BARREL);
+        put(5, floorY + 1, 1, BLOCK.TORCH);
+        put(1, floorY + 1, 1, BLOCK.TORCH);
+        break;
+      case 4: // farmstead: composter + cauldron + bed + crafting table
+        putBed(1, 1, 0);           // feet (1,1) → head (2,1), facing +x
+        put(1, floorY + 1, 4, BLOCK.COMPOSTER);
+        put(5, floorY + 1, 4, BLOCK.CAULDRON);
+        put(3, floorY + 1, 2, BLOCK.CRAFTING_TABLE);
+        put(5, floorY + 1, 1, BLOCK.TORCH);
+        break;
+      default: // 5 brewery: brewing stand + cauldron + barrel (cleric's hut)
+        put(2, floorY + 1, 3, BLOCK.BREWING_STAND);
+        put(1, floorY + 1, 1, BLOCK.CAULDRON);
+        put(3, floorY + 1, 1, BLOCK.BARREL);
+        put(1, floorY + 1, 4, BLOCK.TORCH);
+        break;
     }
   }
 

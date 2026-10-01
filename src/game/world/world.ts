@@ -96,7 +96,12 @@ export class World {
     if (!chunk) {
       chunk = new Chunk(cx, cz);
       this.chunks.set(key, chunk);
-      this.terrain.generateChunk(cx, cz, chunk.data);
+      // v0.57: terrain can stamp orientation meta for generated furniture
+      // (village-house beds) — merged into the world meta map, never
+      // overriding a value restored from the save
+      const genMeta = new Map<string, number>();
+      this.terrain.generateChunk(cx, cz, chunk.data, genMeta);
+      for (const [k, v] of genMeta) if (!this.meta.has(k)) this.meta.set(k, v);
       // apply saved edits
       const edits = this.edits.get(key);
       if (edits) for (const [idx, id] of edits) chunk.data[idx] = id;
