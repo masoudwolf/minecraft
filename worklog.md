@@ -1462,3 +1462,18 @@ Stage Summary:
 - 物理层新能力：hit 码区分实心/幻影延伸，为未来墙栏(wall)、玻璃板(pane)连接与 1.5 格碰撞铺路
 - 已知边界：梯子/贴墙 trapdoor 无下方支撑弹出（与 v0.52 爆炸不联动同级别低危）；fence 不向下连接（MC 亦然）；gate open 面板退缩式（非铰链旋转）视觉近似
 - NEXT QUEUE：item frames / armor stands（展示类，meta+BE 已就绪）、villager profession/restock UI、药水抛掷(splash)/延长二级、cake 放置朝向对齐咬痕侧、玻璃板+墙栏（fenceConnects/tall 已铺路）
+
+---
+Task ID: 56
+Agent: Z.ai Code (main)
+Task: 用户报告 "باز برگشتی به ورژن قدیمی که"（你又回到旧版本了）→ 诊断 + 从 GitHub 恢复 + 校验，随后按既定 "برو مرحله بعد" 指令继续 NEXT QUEUE 开发。
+
+Work Log:
+- 【诊断】沙箱被平台重置后，本地工作树恢复到了一条**陈旧分叉谱系**（"VoxelCraft 0.11.0 — Phase 11"，17 个本地 commit、无 remote、无 version.ts）——用户预览看到的就是这个旧版本。GitHub（唯一真相源）上真实进度为 v0.53.0（Task 55, commit 2d07f61）。
+- 【恢复】写入新 token → `git remote add origin …masoudwolf/minecraft.git` + fetch → 本地旧谱系先存分支 `snapshot-phase11-0.11.0`（保留备查）→ `git reset --hard origin/main`（1407 个文件恢复）→ 重建 dev server。
+- 【校验（agent-browser 实测）】主菜单显示 "VoxelCraft 0.53.0 — Woodwork II (Trapdoors · Climbable Ladders · Fences · Fence Gates)" ✓；加载用户最新存档（cmuonnnhs…, 10/12 成就）✓；玩家位置 (239.3, 42.0, -108.5) 与交接记录完全一致 ✓；55 chunks 流式加载 ✓；setMeta 方向元数据层存在 ✓；渲染截图：绿树冠（v0.45.1 黑树冠修复在位）、水面深浅梯度、云、雪坡、竹/甘蔗全部正常 ✓；worlds API 返回全部 35 个存档 ✓。headless llvmpipe 4fps 为已知 QA 环境现象（用户真机 3060 ~180fps），非回归。
+- 【教训】沙箱重置会回滚到平台快照（可能为远古分叉），每轮开头 restore 脚本必须无条件执行；db/custom.db 随 reset 一并回到 GitHub 状态（用户存档随之恢复）。
+
+Stage Summary:
+- 项目已从旧分叉完整恢复至 v0.53.0（代码 + 存档 + 成就），用户可见版本号/特性恢复。无代码改动（reset），零回退。
+- NEXT：按 Task 55 NEXT QUEUE 继续本会话开发阶段。
