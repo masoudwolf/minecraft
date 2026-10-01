@@ -3010,7 +3010,8 @@ export class Game {
     } else {
       // still render (paused view behind menu)
       if (this.player && this.world && this.sky) {
-        this.sky.update(0, this.camera, this.scene, 60, 130);
+        const [fn, ff] = this.hazeFogParams();
+        this.sky.update(0, this.camera, this.scene, fn, ff);
         this.applySkyFog();
         this.gfx.update(0, this.camera, this.sky, this.player.x, this.player.y, this.player.z, false);
       }
@@ -3400,7 +3401,8 @@ export class Game {
     }
 
     // sky + fog + lighting uniforms
-    this.sky.update(dt, this.camera, this.scene, 60, 130);
+    const [fogNear, fogFar] = this.hazeFogParams();
+    this.sky.update(dt, this.camera, this.scene, fogNear, fogFar);
     // weather (needs camera + ground height for rain collision)
     this.sky.weatherDarkness = this.weather.darkness;
     this.sky.lightningFlash = this.weather.flash;
@@ -3443,6 +3445,19 @@ export class Game {
       this.weather ? (this.weather.raining ? this.weather.intensity : 0) : 0);
 
     this.syncHUD();
+  }
+
+  /** v0.49 — haze-scaled fog distances. The old hardcoded (60,130) made every
+   *  view "matte" (user report: midnight haze + worst at sunrise when the fog
+   *  color warms up). The haze slider stretches BOTH fog distances: 0% pushes
+   *  fog far beyond the camera far plane (= off), 100% = the old tuned look,
+   *  150% = thick. Weather adds up to +40% unless the slider is at 0. */
+  private hazeFogParams(): [number, number] {
+    const user = Math.min(1.5, Math.max(0, this.settings?.gfx?.haze ?? 1));
+    const storm = this.sky?.weatherDarkness ?? 0;
+    const h = user * (1 + storm * 0.4);
+    const inv = 1 / Math.max(h, 0.03); // 0% → near 2000 / far 4333 → invisible
+    return [60 * inv, 130 * inv];
   }
 
   private applySkyFog(): void {

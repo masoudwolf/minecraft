@@ -106,6 +106,17 @@ export function GraphicsScreen() {
         {cycle('Water Quality / کیفیت آب', gfx.waterQuality, ['Basic', 'Reflections', 'Ultra'], (v) => setGfx({ waterQuality: v }))}
         {cycle('Shadows / سایه‌ها', gfx.shadows, ['Off', 'Low (1K)', 'Medium (2K)', 'High (4K)'], (v) => setGfx({ shadows: v }))}
 
+        {/* ── atmospheric haze (v0.49 — works with or without postfx) ── */}
+        <Slider
+          label={`Atmospheric Haze / مه آلودگی: ${gfx.haze === 0 ? 'Clear / شفاف' : `${Math.round(gfx.haze * 100)}%`}`}
+          min={0} max={1.5} step={0.05} value={gfx.haze ?? 1}
+          onChange={(v) => setGfx({ haze: v })}
+        />
+        <div className="-mt-2 text-center text-[9px] leading-3 text-[#a8a8a8]" style={{ fontFamily: 'var(--font-mc)' }}>
+          Fog · light shafts · night tint — 0% = crystal clear view
+          <br />مه و پرتوهای نور — صفر = کاملاً شفاف
+        </div>
+
         {/* ── post fx ── */}
         <Toggle label="Post-Processing" value={gfx.postfx} onChange={(v) => setGfx({ postfx: v })} />
         {gfx.postfx && (
@@ -141,9 +152,19 @@ export function GraphicsScreen() {
             <Slider label={`Saturation: ${Math.round(gfx.saturation * 100)}%`} min={0.4} max={1.6} step={0.02} value={gfx.saturation} onChange={(v) => setGfx({ saturation: v })} />
             <Slider label={`Contrast: ${Math.round(gfx.contrast * 100)}%`} min={0.7} max={1.3} step={0.01} value={gfx.contrast} onChange={(v) => setGfx({ contrast: v })} />
             <Slider label={`Vignette: ${Math.round(gfx.vignette * 100)}%`} min={0} max={1} step={0.05} value={gfx.vignette} onChange={(v) => setGfx({ vignette: v })} />
-            <Slider label={`Render Scale / مقیاس رندر: ${Math.round(gfx.renderScale * 100)}%`} min={0.4} max={1} step={0.05} value={gfx.renderScale} onChange={(v) => setGfx({ renderScale: v })} />
           </>
         )}
+
+        {/* ── performance (v0.49 — render scale works without postfx too) ── */}
+        <div className="mt-1 text-[11px] text-[#ffd66e]" style={{ fontFamily: 'var(--font-mc)', textShadow: '1px 1px 0 #000' }}>
+          Performance / عملکرد
+        </div>
+        <Slider label={`Render Scale / مقیاس رندر: ${Math.round(gfx.renderScale * 100)}%`} min={0.4} max={1} step={0.05} value={gfx.renderScale} onChange={(v) => setGfx({ renderScale: v })} />
+        <Toggle label="Auto Performance / عملکرد خودکار" value={gfx.autoPerf ?? false} onChange={(v) => setGfx({ autoPerf: v })} />
+        <div className="-mt-2 text-center text-[9px] leading-3 text-[#a8a8a8]" style={{ fontFamily: 'var(--font-mc)' }}>
+          Lowers render scale only when fps drops — restores it automatically
+          <br />فقط زمانی که فریم پایین بیاید رزولوشن را کم می‌کند
+        </div>
 
         <McButton onClick={back} className="mt-3">Done</McButton>
       </div>

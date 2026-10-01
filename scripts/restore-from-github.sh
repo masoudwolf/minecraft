@@ -24,6 +24,9 @@ echo "[restore] local HEAD: $CURRENT"
 # 1. ensure remote exists + fetch
 if ! git remote get-url origin >/dev/null 2>&1; then
   git remote add origin "$REMOTE_URL"
+else
+  # always refresh credentials (token may have been rotated)
+  git remote set-url origin "$REMOTE_URL"
 fi
 git fetch origin main 2>&1 | tail -1
 REMOTE=$(git rev-parse --short origin/main 2>/dev/null || echo "none")

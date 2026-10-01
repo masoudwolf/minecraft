@@ -103,6 +103,26 @@ export class GraphicsSystem {
   /** true when GPU reports as software renderer (llvmpipe etc.) */
   isSoftware = false;
 
+  // ── v0.49 performance: shadow-pass throttle + on-demand reflections ────
+  // The sun shadow map is a FULL extra scene render — on software GL it is
+  // the single most expensive per-frame item. It only NEEDS re-rendering
+  // when something changed: the shadow target (player block), the sun
+  // direction, or 120 ms elapsed (mob shadows stay alive at ≥8 Hz).
+  private lastShadowRun = -1;
+  private lastShadowTarget = new THREE.Vector3(1e9, 0, 0);
+  private lastShadowSun = new THREE.Vector3(1e9, 0, 0);
+  /** QA counters — readable via window.__gfxDebug */
+  shadowPasses = 0;
+  reflectionRenders = 0;
+  /** reflections only render when water actually exists near the camera */
+  private reflNeeded = true;
+  private reflScanTimer = 0;
+  /** auto perf mode (opt-in): EMA-frame-time → internal scale adaptation */
+  private perfFrames = 0;
+  private perfTime = 0;
+  private perfAdapt = 1;
+  private basePR = 1;
+
   // ── lens-flare occlusion gate (v0.47) ──
   // The flare overlays used to draw unconditionally from the sun's screen
   // position, so standing indoors facing a wall produced a giant sun blob in
@@ -158,7 +178,8 @@ export class GraphicsSystem {
 
     // internal resolution scale
     const base = Math.min(window.devicePixelRatio, 2);
-    this.renderer.setPixelRatio(base * CLAMP(gfx.renderScale, 0.4, 1));
+    this.basePR = base;
+    this.renderer.setPixelRatio(base * CLAMP(gfx.renderScale, 0.4, 1) * this.perfAdapt);
     this.resize();
 
     // post-processing
@@ -472,6 +493,7 @@ export class GraphicsSystem {
   update(dt: number, camera: THREE.PerspectiveCamera, sky: SkySystem, playerX: number, playerY: number, playerZ: number, underwater: boolean, rain = 0): void {
     if (!this.gfx || !this.atmosphere) return;
     const gfx = this.gfx;
+    this.updateReflNeed(dt);
 
     // retire the legacy sun/moon quads once — the atmosphere dome owns both now
     if (!this.legacyBodiesHidden) {
@@ -546,6 +568,12 @@ export class GraphicsSystem {
     }
     this.grass.update(performance.now() / 1000, sky.sunLevel, this.lastFogColor, this.lastFogNear, this.lastFogFar);
 
+    // v0.49 — atmospheric haze master (user: midnight/sunrise looked "matte")
+    // Scales EVERY airy-light effect with one slider: volumetric shafts,
+    // radial god rays and the Purkinje night shift. Scene fog density is
+    // handled in the engine (hazeFogParams) since it owns sky.update.
+    const haze = CLAMP(gfx.haze ?? 1, 0, 1.5);
+
     // voxel sun/shadow uniforms — sun dir + strength; the MAP itself is filled
     // by runShadowPass() every frame (terrain opaque/cutout AND water share it)
     const shadowOn = (gfx.shadows ?? 0) > 0 && this.shadowRT !== null;
@@ -618,7 +646,7 @@ export class GraphicsSystem {
       // effect self-gates per pixel in the grade shader via scotopic luminance.
       // Fades in as the sun drops below ~-0.08 (civil twilight end).
       const purkNight = CLAMP((0.02 - sunHeight) / 0.10, 0, 1);
-      this.postfx.setPurkinje(0.055 * purkNight * (1 - storm * 0.5));
+      this.postfx.setPurkinje(0.055 * purkNight * (1 - storm * 0.5) * Math.min(haze, 1));
 
       // ── flare gate: voxel occlusion × camera facing (v0.47) ──
       // Raycast from the eye toward the light through the voxel grid — walls
@@ -634,7 +662,9 @@ export class GraphicsSystem {
       }
       this.flareVis = flareVis;
       this.postfx.setFlareVis(flareVis);
-      this.postfx.setFlare(gfx.godRays ? 0.55 : 0, camera.aspect);
+      // v0.49: the anamorphic streak/halos are part of the "sun wash" the user
+      // flags as haze — scale them with the haze master too (0% = no flare)
+      this.postfx.setFlare(gfx.godRays ? 0.55 * Math.min(haze, 1) : 0, camera.aspect);
 
       // sun screen position for god rays
       let gx = -1, gy = -1, strength = 0;
@@ -649,7 +679,7 @@ export class GraphicsSystem {
           // the bright opening pixels toward the sun direction)
           const onScreen = gx > -0.55 && gx < 1.55 && gy > -0.55 && gy < 1.55;
           const dayBoost = CLAMP(sunHeight * 4 + 0.35, 0, 1); // strongest near horizon
-          strength = onScreen ? gfx.godRaysStrength * dayBoost * (1 - storm * 0.85) * (1 - cover * 0.55) : 0;
+          strength = onScreen ? gfx.godRaysStrength * dayBoost * (1 - storm * 0.85) * (1 - cover * 0.55) * Math.min(haze, 1.2) : 0;
         }
       }
       const samples = gfx.preset === 'ultra' || gfx.preset === 'high' ? 48 : gfx.preset === 'medium' ? 36 : 24;
@@ -661,7 +691,7 @@ export class GraphicsSystem {
       // a roof reads shadowed, so real shafts paint themselves into the room.
       if (gfx.godRays && !underwater) {
         const vlsSteps = gfx.preset === 'ultra' ? 16 : gfx.preset === 'high' ? 12 : gfx.preset === 'medium' ? 8 : 6;
-        const vlsStrength = gfx.godRaysStrength * 0.5 * (1 - storm * 0.7) * (1 - cover * 0.4);
+        const vlsStrength = gfx.godRaysStrength * 0.5 * (1 - storm * 0.7) * (1 - cover * 0.4) * haze;
         // v0.48: night gain raised (0.5 → 0.62 floor) — moonlight shafts through
         // trees/window must READ on the darker night (they're the fear-factor
         // beauty anchor; Photon keeps visible moon shafts at its 9.4% moon)
@@ -868,17 +898,33 @@ export class GraphicsSystem {
     }
   }
 
-  // ── render ──────────────────────────────────────────────────────────────────
+  // ── render ──────────────────────────────────────────────────────────────
   render(_dt: number): void {
     if (this.gfx && this.gfx.shadows > 0 && this.shadowRT) {
-      this.runShadowPass();
+      // v0.49 throttle: skip the shadow pass when NOTHING it depicts changed.
+      // The map re-renders when the player crosses a block, the sun rotates
+      // ≥0.36°, or 120 ms elapsed (moving mobs keep fresh shadows either way);
+      // standing still goes from 60 → ~8 shadow renders/sec with zero visible
+      // difference (sun shadows crawl imperceptibly between updates).
+      const nowMs = performance.now();
+      const moved = this.shadowTarget.distanceToSquared(this.lastShadowTarget) > 0.001;
+      const sunMoved = this.shadowLightDir.dot(this.lastShadowSun) < 0.99998;
+      const stale = nowMs - this.lastShadowRun > 120;
+      if (this.lastShadowRun < 0 || moved || sunMoved || stale) {
+        this.runShadowPass();
+        this.shadowPasses++;
+        this.lastShadowRun = nowMs;
+        this.lastShadowTarget.copy(this.shadowTarget);
+        this.lastShadowSun.copy(this.shadowLightDir);
+      }
     } else {
       // no shadow map → volumetric shafts lose their occlusion source
       this.postfx?.setVlsShadow(null, this.shadowMatrix);
     }
     const useComposer = this.gfx?.postfx === true && this.postfx !== null;
-    if (useComposer && this.gfx!.waterQuality >= 1 && !this.underwaterCam) {
+    if (useComposer && this.gfx!.waterQuality >= 1 && !this.underwaterCam && this.reflNeeded) {
       this.renderReflection();
+      this.reflectionRenders++;
     }
     // truthful triangle stats: composer passes would reset info per pass
     this.renderer.info.autoReset = false;
@@ -889,6 +935,60 @@ export class GraphicsSystem {
       this.renderer.render(this.scene, this.camera);
     }
     this.renderer.info.autoReset = true;
+    this.perfTick(_dt);
+  }
+
+  /** every 0.5 s: does ANY loaded chunk with water sit within 96 blocks?
+   *  If not, the planar-reflection pass is skipped entirely — inland gameplay
+   *  pays zero for reflections (the water shader keeps its last texture and
+   *  nothing on screen samples it while water is out of range). */
+  private updateReflNeed(dt: number): void {
+    this.reflScanTimer -= dt;
+    if (this.reflScanTimer > 0) return;
+    this.reflScanTimer = 0.5;
+    let need = false;
+    if (this.world) {
+      const cx = this.camera.position.x;
+      const cz = this.camera.position.z;
+      for (const chunk of this.world.chunks.values()) {
+        if (!chunk.meshes?.water) continue;
+        const dx = chunk.cx * 16 + 8 - cx;
+        const dz = chunk.cz * 16 + 8 - cz;
+        if (dx * dx + dz * dz < 96 * 96) { need = true; break; }
+      }
+    }
+    this.reflNeeded = need;
+  }
+
+  /** v0.49 auto performance (opt-in): every 2 s, if avg fps dropped below 26,
+   *  quietly step the internal scale down (floor 60% of the user's Render
+   *  Scale) and climb back toward it when fps recovers past 54. */
+  private perfTick(dt: number): void {
+    if (!this.gfx?.autoPerf) {
+      // toggling the feature OFF must restore the user's full render scale —
+      // otherwise a dropped adapt level would stick forever at low res
+      if (this.perfAdapt < 1) {
+        this.perfAdapt = 1;
+        if (this.gfx) {
+          this.renderer.setPixelRatio(this.basePR * CLAMP(this.gfx.renderScale, 0.4, 1));
+          this.resize();
+        }
+      }
+      return;
+    }
+    this.perfFrames++;
+    this.perfTime += dt;
+    if (this.perfTime < 2) return;
+    const fps = this.perfFrames / this.perfTime;
+    this.perfFrames = 0;
+    this.perfTime = 0;
+    const before = this.perfAdapt;
+    if (fps < 26) this.perfAdapt = Math.max(0.6, this.perfAdapt - 0.06);
+    else if (fps > 54) this.perfAdapt = Math.min(1, this.perfAdapt + 0.03);
+    if (this.perfAdapt !== before && this.gfx) {
+      this.renderer.setPixelRatio(this.basePR * CLAMP(this.gfx.renderScale, 0.4, 1) * this.perfAdapt);
+      this.resize();
+    }
   }
 
   resize(): void {

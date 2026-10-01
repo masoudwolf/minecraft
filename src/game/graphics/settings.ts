@@ -30,6 +30,15 @@ export interface GfxSettings {
   saturation: number; // 0.4..1.6
   contrast: number;   // 0.7..1.3
   vignette: number;   // 0..1
+  /** v0.49 — atmospheric haze master: scales scene fog density, volumetric
+   *  shafts, radial god rays and the Purkinje night shift. 0 = crystal-clear
+   *  (fog off), 1 = tuned default, 1.5 = thick. User-reported midnight/sunrise
+   *  "matte" look was fog+VLS+Purkinje stacking — one knob now rules them all. */
+  haze: number;       // 0..1.5
+  /** v0.49 — auto performance mode: when fps stays low, quietly lower the
+   *  internal render scale (never below 60%), and climb back when there is
+   *  headroom. Opt-in; the manual Render Scale slider is always respected. */
+  autoPerf: boolean;
 }
 
 export const DEFAULT_GFX: GfxSettings = {
@@ -51,6 +60,8 @@ export const DEFAULT_GFX: GfxSettings = {
   saturation: 1.08,
   contrast: 1.02,
   vignette: 0.3,
+  haze: 0.75,
+  autoPerf: false,
 };
 
 /** preset bundles — applied on top, only overriding what the preset defines */
