@@ -968,6 +968,105 @@ export function getAtlas(): AtlasData {
   p = T(98);
   drawPlanksPal(ctx, p[0], p[1], rnd, ['#c08a5c', '#b07d50', '#c69464', '#a8744a'], '#7c5432', '#8a5f3a');
 
+  // ── phase 15: woodwork II tiles (trapdoors / ladder / gates / fence icons) ──
+  // trapdoors: plank base + 1px frame; oak gets an X-brace lattice (MC oak
+  // trapdoor), spruce horizontal slats, jungle a center stile + bars.
+  const drawTrapdoor = (ti: number, w: typeof DOOR_WOODS[number], style: 'oak' | 'spruce' | 'jungle'): void => {
+    const q = T(ti);
+    const [pl, pm, pd, fr] = w;
+    noiseFill(ctx, q[0], q[1], 16, 16, [pm, pl, pm, pd], rnd);
+    // frame border
+    ctx.fillStyle = fr;
+    ctx.fillRect(q[0], q[1], 16, 1); ctx.fillRect(q[0], q[1] + 15, 16, 1);
+    ctx.fillRect(q[0], q[1], 1, 16); ctx.fillRect(q[0] + 15, q[1], 1, 16);
+    if (style === 'oak') {
+      // diagonal lattice (two crossing braces) like MC oak trapdoors
+      for (let i = 0; i < 14; i++) px(ctx, q[0] + 1 + i, q[1] + 1 + i, fr);
+      for (let i = 0; i < 14; i++) px(ctx, q[0] + 14 - i, q[1] + 1 + i, fr);
+    } else if (style === 'spruce') {
+      // three horizontal slats with dark grooves
+      for (const ry of [3, 7, 11]) {
+        ctx.fillStyle = pd;
+        ctx.fillRect(q[0] + 1, q[1] + ry, 14, 2);
+        ctx.fillStyle = pl;
+        ctx.fillRect(q[0] + 1, q[1] + ry + 2, 14, 1);
+      }
+    } else {
+      // jungle: center vertical stile + two side bars
+      ctx.fillStyle = fr;
+      ctx.fillRect(q[0] + 7, q[1] + 1, 2, 14);
+      ctx.fillStyle = pd;
+      ctx.fillRect(q[0] + 2, q[1] + 3, 3, 10);
+      ctx.fillRect(q[0] + 11, q[1] + 3, 3, 10);
+      ctx.fillStyle = pl;
+      ctx.fillRect(q[0] + 3, q[1] + 4, 1, 8);
+      ctx.fillRect(q[0] + 12, q[1] + 4, 1, 8);
+    }
+  };
+  drawTrapdoor(84, DOOR_WOODS[0], 'oak');
+  drawTrapdoor(85, DOOR_WOODS[1], 'spruce');
+  drawTrapdoor(86, DOOR_WOODS[2], 'jungle');
+  // ladder: transparent background, two vertical rails + four rungs (cutout)
+  p = T(87);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    const railL = '#8a6a3c', railD = '#6b4f2a', rung = '#9a7843', rungD = '#5d4527';
+    // vertical rails
+    ctx.fillStyle = railL;
+    ctx.fillRect(p[0] + 2, p[1], 3, 16);
+    ctx.fillRect(p[0] + 11, p[1], 3, 16);
+    ctx.fillStyle = railD;
+    ctx.fillRect(p[0] + 4, p[1], 1, 16);
+    ctx.fillRect(p[0] + 13, p[1], 1, 16);
+    // rungs with a dark underline for depth
+    for (const ry of [1, 6, 11]) {
+      ctx.fillStyle = rung;
+      ctx.fillRect(p[0] + 4, p[1] + ry, 8, 2);
+      ctx.fillStyle = rungD;
+      ctx.fillRect(p[0] + 4, p[1] + ry + 2, 8, 1);
+    }
+  }
+  // fence gates: plank panel with top/bottom rails + X brace (panel texture)
+  const drawGate = (ti: number, w: typeof DOOR_WOODS[number]): void => {
+    const q = T(ti);
+    const [pl, pm, pd, fr] = w;
+    noiseFill(ctx, q[0], q[1], 16, 16, [pm, pl, pm, pd], rnd);
+    // top + bottom rails
+    ctx.fillStyle = fr;
+    ctx.fillRect(q[0], q[1], 16, 2); ctx.fillRect(q[0], q[1] + 14, 16, 2);
+    // center vertical stile
+    ctx.fillStyle = pd;
+    ctx.fillRect(q[0] + 7, q[1] + 2, 2, 12);
+    // X brace between the rails
+    ctx.fillStyle = fr;
+    for (let i = 0; i < 12; i++) {
+      px(ctx, q[0] + 2 + i, q[1] + 2 + i, fr);
+      px(ctx, q[0] + 13 - i, q[1] + 2 + i, fr);
+    }
+  };
+  drawGate(88, DOOR_WOODS[0]);
+  drawGate(99, DOOR_WOODS[1]);
+  drawGate(100, DOOR_WOODS[2]);
+  // fence inventory icons: transparent bg, center post + side rail stubs
+  const drawFenceIcon = (ti: number, w: typeof DOOR_WOODS[number]): void => {
+    const q = T(ti);
+    const [pl, pm, pd, fr] = w;
+    ctx.clearRect(q[0], q[1], 16, 16);
+    // center post (full height)
+    noiseFill(ctx, q[0] + 6, q[1], 4, 16, [pm, pl, pm], rnd);
+    ctx.fillStyle = fr;
+    ctx.fillRect(q[0] + 6, q[1], 1, 16); ctx.fillRect(q[0] + 9, q[1], 1, 16);
+    // rail stubs left + right at two heights
+    for (const ry of [3, 10]) {
+      noiseFill(ctx, q[0], q[1] + ry, 16, 3, [pm, pl, pd], rnd);
+      ctx.fillStyle = fr;
+      ctx.fillRect(q[0], q[1] + ry, 16, 1);
+    }
+  };
+  drawFenceIcon(101, DOOR_WOODS[0]);
+  drawFenceIcon(102, DOOR_WOODS[1]);
+  drawFenceIcon(103, DOOR_WOODS[2]);
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

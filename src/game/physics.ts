@@ -1,5 +1,5 @@
 // ─── Voxel physics: AABB collision + DDA raycast ─────────────────────────────
-import { isSolid, isLiquid, blockHeight } from './blocks';
+import { isSolid, isLiquid, blockHeight, getBlockDef } from './blocks';
 import { WORLD_HEIGHT } from './constants';
 import type { World } from './world/world';
 
@@ -65,10 +65,19 @@ function collides(world: VoxelAccess, e: AABBEntity, half: number): boolean {
         if (y < 0) return true;
         if (y >= WORLD_HEIGHT) continue;
         const id = world.getBlock(x, y, z);
-        if (!isSolid(id)) continue;
-        // partial-height blocks (bed = 9/16): only collide when feet are below the top
-        if (e.y >= y + blockHeight(id)) continue;
-        return true;
+        if (isSolid(id)) {
+          // partial-height blocks (bed = 9/16): only collide when feet are below the top
+          if (e.y >= y + blockHeight(id)) continue;
+          return true;
+        }
+        // MC-style tall solids (fences/gates = 1.5 blocks, v0.53): the cell
+        // ABOVE a tall block is blocked while the entity's feet are within the
+        // extension band — so fences can't be jumped over or walked through.
+        if (y > 0) {
+          const below = world.getBlock(x, y - 1, z);
+          const bd = getBlockDef(below);
+          if (bd?.solid && bd.tall && e.y < y + bd.tall) return true;
+        }
       }
   return false;
 }

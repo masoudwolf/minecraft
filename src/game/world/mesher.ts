@@ -1,6 +1,6 @@
 // ─── Chunk mesher: face culling + ambient occlusion + smooth lighting ────────
 import * as THREE from 'three';
-import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ } from '../blocks';
+import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorOpenId, isGateOpenId, fenceConnects, woodPlankTile } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import { tileUV } from '../textures/atlas';
 import type { World, Chunk } from './world';
@@ -454,6 +454,133 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
             [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect],
             BOX_SHADES, sky, blk);
+          continue;
+        }
+
+        // ── special model: trapdoor (v0.53) — closed = 3/16 bottom slab, open =
+        // panel hugging the meta edge (5 = ceiling mount → flush with the top) ──
+        if (def.model === 'trapdoor') {
+          const meta = world.getMeta(wx, y, wz);
+          const open = isTrapdoorOpenId(id);
+          const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const uvRect = tileUV(tile);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const T3 = 3 / 16;
+          if (!open) {
+            // closed: flat slab across the cell floor (MC trapdoors always rest here)
+            pushBox(cutout, lx, y, lz, lx + 1, y + T3, lz + 1,
+              [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk);
+          } else if (meta === 5) {
+            // ceiling-mounted: open panel lies flush with the cell TOP
+            pushBox(cutout, lx, y + 1 - T3, lz, lx + 1, y + 1, lz + 1,
+              [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk);
+          } else {
+            let x0 = 0, x1 = 1, z0 = 0, z1 = 1;
+            const edge = meta & 3;
+            if (edge === 0) { x0 = 1 - T3; x1 = 1; }       // panel hugs +X edge
+            else if (edge === 1) { x1 = T3; }              // -X edge
+            else if (edge === 2) { z0 = 1 - T3; z1 = 1; }  // +Z edge
+            else { z1 = T3; }                              // -Z edge
+            pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
+              [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk);
+          }
+          continue;
+        }
+
+        // ── special model: ladder (v0.53) — 1/16 panel flush against the wall ──
+        if (def.model === 'ladder') {
+          const meta = world.getMeta(wx, y, wz);
+          const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const uvRect = tileUV(tile);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const D = 1 / 16;
+          let x0 = 0, x1 = 1, z0 = 0, z1 = 1;
+          if (meta === TORCH_WALL_PX) { x0 = 1 - D; }       // wall on the +X side
+          else if (meta === TORCH_WALL_NX) { x1 = D; }      // wall on the -X side
+          else if (meta === TORCH_WALL_PZ) { z0 = 1 - D; }  // wall on the +Z side
+          else { z1 = D; }                                  // wall on the -Z side (default)
+          pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
+            [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect], BOX_SHADES, sky, blk);
+          continue;
+        }
+
+        // ── special model: fence (v0.53) — center post + rail arms that
+        // auto-connect to fences, gates and full opaque cubes (MC behavior) ──
+        if (def.model === 'fence') {
+          const uvRect = tileUV(woodPlankTile(id));
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const uv6: [number, number, number, number][] = [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect];
+          const P0 = 6 / 16, P1 = 10 / 16;   // post cross-section
+          const A0 = 7 / 16, A1 = 9 / 16;    // arm thickness
+          const R0 = 6 / 16, R1 = 9 / 16;    // lower rail band
+          const R2 = 12 / 16, R3 = 15 / 16;  // upper rail band
+          // center post, full cell height
+          pushBox(cutout, lx + P0, y, lz + P0, lx + P1, y + 1, lz + P1, uv6, BOX_SHADES, sky, blk);
+          // arms toward connected neighbors (two rails each)
+          if (fenceConnects(world.getBlock(wx + 1, y, wz))) {
+            pushBox(cutout, lx + P1, y + R0, lz + A0, lx + 1, y + R1, lz + A1, uv6, BOX_SHADES, sky, blk);
+            pushBox(cutout, lx + P1, y + R2, lz + A0, lx + 1, y + R3, lz + A1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (fenceConnects(world.getBlock(wx - 1, y, wz))) {
+            pushBox(cutout, lx, y + R0, lz + A0, lx + P0, y + R1, lz + A1, uv6, BOX_SHADES, sky, blk);
+            pushBox(cutout, lx, y + R2, lz + A0, lx + P0, y + R3, lz + A1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (fenceConnects(world.getBlock(wx, y, wz + 1))) {
+            pushBox(cutout, lx + A0, y + R0, lz + P1, lx + A1, y + R1, lz + 1, uv6, BOX_SHADES, sky, blk);
+            pushBox(cutout, lx + A0, y + R2, lz + P1, lx + A1, y + R3, lz + 1, uv6, BOX_SHADES, sky, blk);
+          }
+          if (fenceConnects(world.getBlock(wx, y, wz - 1))) {
+            pushBox(cutout, lx + A0, y + R0, lz, lx + A1, y + R1, lz + P0, uv6, BOX_SHADES, sky, blk);
+            pushBox(cutout, lx + A0, y + R2, lz, lx + A1, y + R3, lz + P0, uv6, BOX_SHADES, sky, blk);
+          }
+          continue;
+        }
+
+        // ── special model: fence gate (v0.53) — bar perpendicular to the
+        // player's approach (meta facing, like doors). Closed = full panel;
+        // open = two panels retracted to the ends (walk-through center gap). ──
+        if (def.model === 'gate') {
+          const meta = world.getMeta(wx, y, wz);
+          const open = isGateOpenId(id);
+          const gateTile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const uvG = tileUV(gateTile);
+          const uvP = tileUV(woodPlankTile(id));
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const T3 = 3 / 16;
+          const H = 14 / 16;                       // MC gate panel height
+          const C0 = 0.5 - T3 / 2, C1 = 0.5 + T3 / 2; // centered thickness
+          const spanZ = (meta & 3) === 0 || (meta & 3) === 1; // bar spans Z when the player is ±X
+          if (!open) {
+            if (spanZ) {
+              // panel along Z: big faces are ±X (gate texture), edges planks
+              pushBox(cutout, lx + C0, y, lz, lx + C1, y + H, lz + 1,
+                [uvG, uvG, uvP, uvP, uvP, uvP], BOX_SHADES, sky, blk);
+            } else {
+              pushBox(cutout, lx, y, lz + C0, lx + 1, y + H, lz + C1,
+                [uvP, uvP, uvP, uvP, uvG, uvG], BOX_SHADES, sky, blk);
+            }
+          } else {
+            // open: two 4/16 panels retracted against the span ends
+            if (spanZ) {
+              pushBox(cutout, lx + C0, y, lz, lx + C1, y + H, lz + 4 / 16,
+                [uvG, uvG, uvP, uvP, uvP, uvP], BOX_SHADES, sky, blk);
+              pushBox(cutout, lx + C0, y, lz + 12 / 16, lx + C1, y + H, lz + 1,
+                [uvG, uvG, uvP, uvP, uvP, uvP], BOX_SHADES, sky, blk);
+            } else {
+              pushBox(cutout, lx, y, lz + C0, lx + 4 / 16, y + H, lz + C1,
+                [uvP, uvP, uvP, uvP, uvG, uvG], BOX_SHADES, sky, blk);
+              pushBox(cutout, lx + 12 / 16, y, lz + C0, lx + 1, y + H, lz + C1,
+                [uvP, uvP, uvP, uvP, uvG, uvG], BOX_SHADES, sky, blk);
+            }
+          }
           continue;
         }
 

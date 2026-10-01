@@ -39,6 +39,8 @@ const F = ITEM.FLINT;
 const FE = ITEM.FEATHER;
 const O = BLOCK.OBSIDIAN;
 const CANE = BLOCK.SUGARCANE;
+const SP = BLOCK.SPRUCE_PLANKS;
+const JP = BLOCK.JUNGLE_PLANKS;
 
 function shaped(w: number, h: number, cells: number[], id: number, count = 1): ShapedRecipe {
   return { kind: 'shaped', w, h, cells, out: { id, count } };
@@ -93,6 +95,22 @@ export const RECIPES: Recipe[] = [
   shaped(2, 3, [P, P, P, P, P, P], BLOCK.DOOR_OAK, 3),
   shaped(2, 3, [BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS], BLOCK.DOOR_SPRUCE, 3),
   shaped(2, 3, [BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS], BLOCK.DOOR_JUNGLE, 3),
+  // ── v0.53 woodwork II — MC patterns ──
+  // trapdoors: 3 wide × 2 tall planks → 2 (deliberately the TRANSPOSE of the
+  // 2×3 door shape so the two recipes never collide in the matcher)
+  shaped(3, 2, [P, P, P, P, P, P], BLOCK.TRAPDOOR_OAK, 2),
+  shaped(3, 2, [SP, SP, SP, SP, SP, SP], BLOCK.TRAPDOOR_SPRUCE, 2),
+  shaped(3, 2, [JP, JP, JP, JP, JP, JP], BLOCK.TRAPDOOR_JUNGLE, 2),
+  // ladder: 7 sticks in an H → 3
+  shaped(3, 3, [S, 0, S, S, S, S, S, 0, S], BLOCK.LADDER, 3),
+  // fences: planks/sticks/planks rows → 3
+  shaped(3, 2, [P, S, P, P, S, P], BLOCK.FENCE_OAK, 3),
+  shaped(3, 2, [SP, S, SP, SP, S, SP], BLOCK.FENCE_SPRUCE, 3),
+  shaped(3, 2, [JP, S, JP, JP, S, JP], BLOCK.FENCE_JUNGLE, 3),
+  // fence gates: sticks/planks/sticks rows → 1
+  shaped(3, 2, [S, P, S, S, P, S], BLOCK.FENCE_GATE_OAK),
+  shaped(3, 2, [S, SP, S, S, SP, S], BLOCK.FENCE_GATE_SPRUCE),
+  shaped(3, 2, [S, JP, S, S, JP, S], BLOCK.FENCE_GATE_JUNGLE),
   // ── ranged combat ──
   // bow: MC pattern (sticks diagonal, strings right column)
   shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),

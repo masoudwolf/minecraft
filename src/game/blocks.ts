@@ -17,7 +17,7 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door' | 'trapdoor' | 'ladder' | 'fence' | 'gate';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** horizontal shrink 0..1 (cake bites shrink like MC; 1 = full cell) */
@@ -28,6 +28,10 @@ export interface BlockDef {
   container?: 'furnace' | 'chest' | 'brewing';
   /** needs solid ground below to be placed (torch, flowers) */
   needsGround?: boolean;
+  /** extra collision height ABOVE the cell (fences/gates = 0.5 → MC 1.5-tall:
+   *  entities standing in the cell above are blocked up to y+0.5, so fences
+   *  can't be jumped or walked over — v0.53) */
+  tall?: number;
 }
 
 import { ITEM } from './items';
@@ -125,6 +129,23 @@ export const BLOCK = {
   DOOR_JUNGLE_OPEN: 83,
   SPRUCE_PLANKS: 84,
   JUNGLE_PLANKS: 85,
+  // ── phase 15: woodwork II (trapdoors / ladder / fences / fence gates) ──
+  TRAPDOOR_OAK: 86,
+  TRAPDOOR_OAK_OPEN: 87,
+  TRAPDOOR_SPRUCE: 88,
+  TRAPDOOR_SPRUCE_OPEN: 89,
+  TRAPDOOR_JUNGLE: 90,
+  TRAPDOOR_JUNGLE_OPEN: 91,
+  LADDER: 92,
+  FENCE_OAK: 93,
+  FENCE_SPRUCE: 94,
+  FENCE_JUNGLE: 95,
+  FENCE_GATE_OAK: 96,
+  FENCE_GATE_OAK_OPEN: 97,
+  FENCE_GATE_SPRUCE: 98,
+  FENCE_GATE_SPRUCE_OPEN: 99,
+  FENCE_GATE_JUNGLE: 100,
+  FENCE_GATE_JUNGLE_OPEN: 101,
 } as const;
 
 // ── orientation meta (v0.52 Carpentry) ────────────────────────────────────────
@@ -135,6 +156,12 @@ export const BLOCK = {
 //   BED:   bits 0-1 = facing (direction feet→head), bit 2 (value 4) = head half
 //   DOOR:  bits 0-1 = facing (the edge the CLOSED panel hugs),
 //          bit 3 (value 8) = upper half (open state lives in the block id)
+//   TRAPDOOR: 0..3 = the edge the OPEN panel hugs (side-face attach edge, or
+//          the hinge edge picked at placement for floor clicks), 5 = mounted
+//          under a ceiling (open panel lies flush with the cell TOP)
+//   LADDER: 1..4 = the wall the ladder hangs on (TORCH_WALL_* numbering)
+//   FENCE_GATE: bits 0-1 = facing (the bar spans perpendicular to the player's
+//          approach, exactly like doors)
 export const TORCH_FLOOR = 0;
 export const TORCH_WALL_PX = 1;
 export const TORCH_WALL_NX = 2;
@@ -175,6 +202,64 @@ export function doorOpenIdOf(closedId: number): number {
 export function doorOpenFacing(closedFacing: number): number {
   // 0(+X)→2(+Z), 2(+Z)→1(-X), 1(-X)→3(-Z), 3(-Z)→0(+X)
   return [2, 3, 1, 0][closedFacing & 3] ?? 2;
+}
+
+// ── v0.53 woodwork II helpers ─────────────────────────────────────────────────
+/** is this id any trapdoor (closed or open)? */
+export function isTrapdoorId(id: number): boolean {
+  return id === BLOCK.TRAPDOOR_OAK || id === BLOCK.TRAPDOOR_OAK_OPEN || id === BLOCK.TRAPDOOR_SPRUCE || id === BLOCK.TRAPDOOR_SPRUCE_OPEN || id === BLOCK.TRAPDOOR_JUNGLE || id === BLOCK.TRAPDOOR_JUNGLE_OPEN;
+}
+export function isTrapdoorOpenId(id: number): boolean {
+  return id === BLOCK.TRAPDOOR_OAK_OPEN || id === BLOCK.TRAPDOOR_SPRUCE_OPEN || id === BLOCK.TRAPDOOR_JUNGLE_OPEN;
+}
+/** the placeable (closed) item id for any trapdoor block id */
+export function trapdoorClosedId(id: number): number {
+  if (id === BLOCK.TRAPDOOR_OAK || id === BLOCK.TRAPDOOR_OAK_OPEN) return BLOCK.TRAPDOOR_OAK;
+  if (id === BLOCK.TRAPDOOR_SPRUCE || id === BLOCK.TRAPDOOR_SPRUCE_OPEN) return BLOCK.TRAPDOOR_SPRUCE;
+  return BLOCK.TRAPDOOR_JUNGLE;
+}
+/** open-state block id for a closed trapdoor id */
+export function trapdoorOpenIdOf(closedId: number): number {
+  if (closedId === BLOCK.TRAPDOOR_OAK) return BLOCK.TRAPDOOR_OAK_OPEN;
+  if (closedId === BLOCK.TRAPDOOR_SPRUCE) return BLOCK.TRAPDOOR_SPRUCE_OPEN;
+  return BLOCK.TRAPDOOR_JUNGLE_OPEN;
+}
+export function isLadderId(id: number): boolean {
+  return id === BLOCK.LADDER;
+}
+export function isFenceId(id: number): boolean {
+  return id === BLOCK.FENCE_OAK || id === BLOCK.FENCE_SPRUCE || id === BLOCK.FENCE_JUNGLE;
+}
+export function isGateId(id: number): boolean {
+  return id === BLOCK.FENCE_GATE_OAK || id === BLOCK.FENCE_GATE_OAK_OPEN || id === BLOCK.FENCE_GATE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE_OPEN || id === BLOCK.FENCE_GATE_JUNGLE || id === BLOCK.FENCE_GATE_JUNGLE_OPEN;
+}
+export function isGateOpenId(id: number): boolean {
+  return id === BLOCK.FENCE_GATE_OAK_OPEN || id === BLOCK.FENCE_GATE_SPRUCE_OPEN || id === BLOCK.FENCE_GATE_JUNGLE_OPEN;
+}
+/** the placeable (closed) item id for any fence-gate block id */
+export function gateClosedId(id: number): number {
+  if (id === BLOCK.FENCE_GATE_OAK || id === BLOCK.FENCE_GATE_OAK_OPEN) return BLOCK.FENCE_GATE_OAK;
+  if (id === BLOCK.FENCE_GATE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE_OPEN) return BLOCK.FENCE_GATE_SPRUCE;
+  return BLOCK.FENCE_GATE_JUNGLE;
+}
+/** open-state block id for a closed fence-gate id */
+export function gateOpenIdOf(closedId: number): number {
+  if (closedId === BLOCK.FENCE_GATE_OAK) return BLOCK.FENCE_GATE_OAK_OPEN;
+  if (closedId === BLOCK.FENCE_GATE_SPRUCE) return BLOCK.FENCE_GATE_SPRUCE_OPEN;
+  return BLOCK.FENCE_GATE_JUNGLE_OPEN;
+}
+/** does a fence post extend a rail arm toward this neighbor id?
+ *  MC fences connect to other fences, fence gates, and full opaque cubes. */
+export function fenceConnects(id: number): boolean {
+  if (isFenceId(id) || isGateId(id)) return true;
+  const d = BLOCKS[id];
+  return !!d && d.opaque && d.solid && !d.height && !d.width && (!d.model || d.model === 'cube');
+}
+/** per-wood plank tile (fence/gate box faces reuse the plank texture) */
+export function woodPlankTile(id: number): number {
+  if (id === BLOCK.FENCE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE || id === BLOCK.FENCE_GATE_SPRUCE_OPEN) return TILE.spruce_planks;
+  if (id === BLOCK.FENCE_JUNGLE || id === BLOCK.FENCE_GATE_JUNGLE || id === BLOCK.FENCE_GATE_JUNGLE_OPEN) return TILE.jungle_planks;
+  return TILE.planks;
 }
 
 /** is this id any cake stage (0..6 bites eaten)? */
@@ -250,6 +335,11 @@ export const TILE = {
   door_spruce_top: 93, door_spruce_bottom: 94,
   door_jungle_top: 95, door_jungle_bottom: 96,
   spruce_planks: 97, jungle_planks: 98,
+  // ── phase 15: woodwork II ──
+  trapdoor_oak: 84, trapdoor_spruce: 85, trapdoor_jungle: 86,
+  ladder: 87,
+  gate_oak: 88, gate_spruce: 99, gate_jungle: 100,
+  fence_icon_oak: 101, fence_icon_spruce: 102, fence_icon_jungle: 103,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -318,6 +408,29 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.DOOR_JUNGLE_OPEN]: { id: BLOCK.DOOR_JUNGLE_OPEN, name: 'Jungle Door', tiles: t(TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_bottom, TILE.door_jungle_top, TILE.door_jungle_top), solid: false, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', drop: BLOCK.DOOR_JUNGLE, sound: 'wood' },
   [BLOCK.SPRUCE_PLANKS]: { id: BLOCK.SPRUCE_PLANKS, name: 'Spruce Planks', tiles: TILE.spruce_planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
   [BLOCK.JUNGLE_PLANKS]: { id: BLOCK.JUNGLE_PLANKS, name: 'Jungle Planks', tiles: TILE.jungle_planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
+
+  // ── phase 15: woodwork II — trapdoors / ladder / fences / fence gates ──
+  // Trapdoors: closed = solid 3/16 bottom slab (walkable), open = walk-through
+  // panel hugging the attach edge (open state = block id, attach edge = meta).
+  // Ladders: non-solid wall decoration with climb physics (player.ts).
+  // Fences: 1.5-tall via `tall: 0.5` — the cell above is blocked for the lower
+  // half, so mobs and players can't jump or walk over (MC pen behavior).
+  [BLOCK.TRAPDOOR_OAK]: { id: BLOCK.TRAPDOOR_OAK, name: 'Oak Trapdoor', tiles: TILE.trapdoor_oak, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.TRAPDOOR_OAK_OPEN]: { id: BLOCK.TRAPDOOR_OAK_OPEN, name: 'Oak Trapdoor', tiles: TILE.trapdoor_oak, solid: false, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.TRAPDOOR_OAK, sound: 'wood' },
+  [BLOCK.TRAPDOOR_SPRUCE]: { id: BLOCK.TRAPDOOR_SPRUCE, name: 'Spruce Trapdoor', tiles: TILE.trapdoor_spruce, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.TRAPDOOR_SPRUCE_OPEN]: { id: BLOCK.TRAPDOOR_SPRUCE_OPEN, name: 'Spruce Trapdoor', tiles: TILE.trapdoor_spruce, solid: false, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.TRAPDOOR_SPRUCE, sound: 'wood' },
+  [BLOCK.TRAPDOOR_JUNGLE]: { id: BLOCK.TRAPDOOR_JUNGLE, name: 'Jungle Trapdoor', tiles: TILE.trapdoor_jungle, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.TRAPDOOR_JUNGLE_OPEN]: { id: BLOCK.TRAPDOOR_JUNGLE_OPEN, name: 'Jungle Trapdoor', tiles: TILE.trapdoor_jungle, solid: false, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.TRAPDOOR_JUNGLE, sound: 'wood' },
+  [BLOCK.LADDER]: { id: BLOCK.LADDER, name: 'Ladder', tiles: TILE.ladder, solid: false, opaque: false, cutout: true, model: 'ladder', flatIcon: true, hardness: 0.4, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_OAK]: { id: BLOCK.FENCE_OAK, name: 'Oak Fence', tiles: TILE.fence_icon_oak, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_SPRUCE]: { id: BLOCK.FENCE_SPRUCE, name: 'Spruce Fence', tiles: TILE.fence_icon_spruce, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_JUNGLE]: { id: BLOCK.FENCE_JUNGLE, name: 'Jungle Fence', tiles: TILE.fence_icon_jungle, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_OAK]: { id: BLOCK.FENCE_GATE_OAK, name: 'Oak Fence Gate', tiles: TILE.gate_oak, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_OAK_OPEN]: { id: BLOCK.FENCE_GATE_OAK_OPEN, name: 'Oak Fence Gate', tiles: TILE.gate_oak, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_OAK, sound: 'wood' },
+  [BLOCK.FENCE_GATE_SPRUCE]: { id: BLOCK.FENCE_GATE_SPRUCE, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_SPRUCE_OPEN]: { id: BLOCK.FENCE_GATE_SPRUCE_OPEN, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_SPRUCE, sound: 'wood' },
+  [BLOCK.FENCE_GATE_JUNGLE]: { id: BLOCK.FENCE_GATE_JUNGLE, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_JUNGLE_OPEN]: { id: BLOCK.FENCE_GATE_JUNGLE_OPEN, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_JUNGLE, sound: 'wood' },
 
   // ── phase 3b ──
   ...flowDefs(),

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { moveEntity, type AABBEntity } from './physics';
 import { GRAVITY, JUMP_VELOCITY, WALK_SPEED, SPRINT_SPEED, SNEAK_SPEED, SWIM_SPEED, PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_EYE } from './constants';
+import { isLadderId } from './blocks';
 import { getArmorDef } from './items';
 import { featherFallingFactor } from './enchanting';
 import { audio } from './audio';
@@ -164,6 +165,13 @@ export class Player {
     const len = Math.hypot(wx, wz);
     if (len > 0) { wx /= len; wz /= len; }
 
+    // ── v0.53: ladder climbing — any body overlap with a ladder cell latches
+    // on (MC behavior): movement input climbs, sneak holds, idle slides.
+    // Gravity is replaced by the climb velocity while latched. ──
+    const fx = Math.floor(e.x), fz = Math.floor(e.z);
+    const onLadder = isLadderId(world.getBlock(fx, Math.floor(e.y + 0.4), fz)) ||
+      isLadderId(world.getBlock(fx, Math.floor(e.y + 1.2), fz));
+
     // ── creative flight: no gravity, vertical thrust, damped glide ──
     if (this.flying && this.isCreative) {
       const flySpeed = this.sprinting ? SPRINT_SPEED * 2.1 : WALK_SPEED * 1.35;
@@ -180,7 +188,15 @@ export class Player {
       return;
     }
 
-    if (e.inWater) {
+    if (onLadder) {
+      const accel = Math.min(1, dt * 8);
+      e.vx += (wx * WALK_SPEED * 0.55 - e.vx) * accel;
+      e.vz += (wz * WALK_SPEED * 0.55 - e.vz) * accel;
+      if (wishSneak && len === 0) e.vy = 0;               // sneak = hold position
+      else if (len > 0 || wishJump) e.vy = 2.8;           // climb (jump also crests the top)
+      else e.vy = Math.max(e.vy - 24 * dt, -2.2);         // idle = slow slide (MC −2.3)
+      this.sprinting = false;
+    } else if (e.inWater) {
       const accel = Math.min(1, dt * 6);
       e.vx += (wx * SWIM_SPEED - e.vx) * accel;
       e.vz += (wz * SWIM_SPEED - e.vz) * accel;
@@ -231,6 +247,8 @@ export class Player {
         this.fallStartY = e.y;
       } else if (e.onGround) {
         this.fallStartY = e.y;
+      } else if (onLadder) {
+        this.fallStartY = e.y; // climbing resets the fall meter — dismount is free
       } else if (e.vy > 0) {
         this.fallStartY = e.y;
       }

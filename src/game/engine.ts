@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage, isDoorId, isDoorOpenId, doorClosedId, doorOpenIdOf, doorUpper, bedHead, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage, isDoorId, isDoorOpenId, doorClosedId, doorOpenIdOf, doorUpper, bedHead, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ, isTrapdoorId, isTrapdoorOpenId, trapdoorClosedId, trapdoorOpenIdOf, isLadderId, isGateId, isGateOpenId, gateClosedId, gateOpenIdOf } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -1968,6 +1968,9 @@ export class Game {
       if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
       // doors swing open/closed on right-click (sneak+use places against them)
       if (isDoorId(targetId)) { this.toggleDoor(this.target.x, this.target.y, this.target.z, targetId); return; }
+      // v0.53: trapdoors + fence gates toggle the same way
+      if (isTrapdoorId(targetId)) { this.toggleTrapdoor(this.target.x, this.target.y, this.target.z, targetId); return; }
+      if (isGateId(targetId)) { this.toggleGate(this.target.x, this.target.y, this.target.z, targetId); return; }
       // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
       if (targetId === BLOCK.TNT) {
         const held = this.player.hotbar[this.player.selected];
@@ -2077,6 +2080,42 @@ export class Game {
       this.world.setMeta(bx, by, bz, facing);
       this.world.setBlock(bx, by + 1, bz, slot.blockId);
       this.world.setMeta(bx, by + 1, bz, facing | 8);
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
+    }
+    // ── v0.53: trapdoors — closed = 3/16 floor slab; meta records the edge the
+    // OPEN panel hugs (side-click attach edge / floor-click hinge toward the
+    // player / 5 = ceiling mount) ──
+    if (isTrapdoorId(slot.blockId)) {
+      const meta = this.target.ny > 0
+        ? cardinalToward(this.player.entity.x, this.player.entity.z, bx, bz)
+        : this.target.ny < 0 ? 5
+        : (this.target.nx < 0 ? 0 : this.target.nx > 0 ? 1 : this.target.nz < 0 ? 2 : 3);
+      this.world.setBlock(bx, by, bz, slot.blockId);
+      this.world.setMeta(bx, by, bz, meta);
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
+    }
+    // ── v0.53: ladders — side faces only, flush against the clicked wall ──
+    if (slot.blockId === BLOCK.LADDER) {
+      if (this.target.ny !== 0 || !getBlockDef(targetId)?.solid) {
+        this.showToast('Ladders need a solid wall');
+        return;
+      }
+      const wallMeta = this.target.nx < 0 ? TORCH_WALL_PX : this.target.nx > 0 ? TORCH_WALL_NX : this.target.nz < 0 ? TORCH_WALL_PZ : TORCH_WALL_NZ;
+      this.world.setBlock(bx, by, bz, BLOCK.LADDER);
+      this.world.setMeta(bx, by, bz, wallMeta);
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
+    }
+    // ── v0.53: fence gates — bar perpendicular to the player's approach ──
+    if (isGateId(slot.blockId)) {
+      const facing = cardinalToward(this.player.entity.x, this.player.entity.z, bx, bz);
+      this.world.setBlock(bx, by, bz, slot.blockId);
+      this.world.setMeta(bx, by, bz, facing);
       audio.place('wood');
       this.finishPlace(slot, def);
       return;
@@ -2289,6 +2328,41 @@ export class Game {
     this.startSwing();
   }
 
+  /** right-click a trapdoor: swing open/closed (single cell). Closing is denied
+   *  only when the player's body dips into the 3/16 slab band (standing ON a
+   *  closed trapdoor is fine — the panel just closes beneath the feet). */
+  private toggleTrapdoor(x: number, y: number, z: number, _id: number): void {
+    const id = this.world.getBlock(x, y, z);
+    const opening = !isTrapdoorOpenId(id);
+    if (!opening) {
+      const p = this.player.entity;
+      const half = p.width / 2;
+      const inBand = p.y < y + 0.19 && p.y + p.height > y;
+      const inXZ = p.x + half > x && p.x - half < x + 1 && p.z + half > z && p.z - half < z + 1;
+      if (inBand && inXZ) return;
+    }
+    const closed = trapdoorClosedId(id);
+    const open = trapdoorOpenIdOf(closed);
+    this.world.setBlock(x, y, z, opening ? open : closed);
+    audio.click();
+    this.placeCooldown = 0.25;
+    this.startSwing();
+  }
+
+  /** right-click a fence gate: swing open/closed. Closing is denied while the
+   *  player stands in the gate cell (same rule as doors). */
+  private toggleGate(x: number, y: number, z: number, _id: number): void {
+    const id = this.world.getBlock(x, y, z);
+    const opening = !isGateOpenId(id);
+    if (!opening && aabbIntersectsBlock(this.player.entity, x, y, z)) return;
+    const closed = gateClosedId(id);
+    const open = gateOpenIdOf(closed);
+    this.world.setBlock(x, y, z, opening ? open : closed);
+    audio.click();
+    this.placeCooldown = 0.25;
+    this.startSwing();
+  }
+
   /** after removing a block: break its paired half (bed/door), pop wall torches
    *  that were mounted on its side faces. Survival mode also drops one torch
    *  per popped mount. The pair item itself drops exactly once — from the cell
@@ -2308,6 +2382,28 @@ export class Game {
       const py = upper ? y - 1 : y + 1;
       if (isDoorId(this.world.getBlock(x, py, z))) {
         this.world.setBlock(x, py, z, BLOCK.AIR);
+      }
+    }
+    // v0.53: ladders hanging on the removed block's side faces pop off
+    const sideCells: [number, number, number][] = [[x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1]];
+    for (const [ax, ay, az] of sideCells) {
+      const nid = this.world.getBlock(ax, ay, az);
+      if (isLadderId(nid)) {
+        // ladder meta uses TORCH_WALL_* numbering: the wall is on that side
+        const want = (ax === x + 1) ? TORCH_WALL_NX : (ax === x - 1) ? TORCH_WALL_PX : (az === z + 1) ? TORCH_WALL_NZ : TORCH_WALL_PZ;
+        if (this.world.getMeta(ax, ay, az) === want) {
+          this.world.setBlock(ax, ay, az, BLOCK.AIR);
+          if (survival) this.drops.spawn(BLOCK.LADDER, ax + 0.5, ay + 0.3, az + 0.5, 1);
+        }
+      } else if (isTrapdoorId(nid)) {
+        // trapdoor meta 0..3 = attach edge direction (0=+X, 1=-X, 2=+Z, 3=-Z);
+        // meta 5 (ceiling mount) and vertical pop loop handle the rest
+        const m = this.world.getMeta(ax, ay, az);
+        const want = (ax === x + 1) ? 1 : (ax === x - 1) ? 0 : (az === z + 1) ? 3 : 2;
+        if (m < 5 && (m & 3) === want) {
+          this.world.setBlock(ax, ay, az, BLOCK.AIR);
+          if (survival) this.drops.spawn(trapdoorClosedId(nid), ax + 0.5, ay + 0.3, az + 0.5, 1);
+        }
       }
     }
     // wall torches mounted on the removed block's four side faces
