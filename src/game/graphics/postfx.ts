@@ -179,6 +179,7 @@ const GradeShader = {
     uUnderwater: { value: 0 },
     uTime: { value: 0 },
     uPurkinje: { value: 0 }, // 0 day → 0.055 deep night (v0.48)
+    uGrain: { value: 0 },    // v0.50: shadow grain — masks banding, fear factor
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -196,10 +197,14 @@ const GradeShader = {
     uniform float uUnderwater;
     uniform float uTime;
     uniform float uPurkinje;
+    uniform float uGrain;
     varying vec2 vUv;
     vec3 aces(vec3 x) {
       const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
       return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+    }
+    float grainHash(vec2 p) {
+      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
     }
     void main() {
       vec2 uv = vUv;
@@ -237,6 +242,14 @@ const GradeShader = {
       c = (c - 0.16) * uContrast + 0.16;
       vec2 d = vUv - 0.5;
       c *= clamp(1.0 - dot(d, d) * uVignette * 1.55, 0.0, 1.0);
+      // ── v0.50 shadow grain (Photon/BSL film-grain staple): a single hash
+      // term, weighted toward DARK pixels — masks 8-bit gradient banding on
+      // the smooth night falloffs and adds the subtle unease horror titles
+      // dial in. Invisible in bright daylight (weight → 0).
+      if (uGrain > 0.0005) {
+        float g = grainHash(gl_FragCoord.xy + fract(uTime) * 61.7) - 0.5;
+        c += g * uGrain * (1.0 - clamp(l, 0.0, 1.0));
+      }
       gl_FragColor = vec4(max(c, vec3(0.0)), 1.0);
     }
   `,
@@ -373,6 +386,11 @@ export class PostFX {
   /** Purkinje shift strength (0 day → ~0.055 night, Photon-scaled) */
   setPurkinje(v: number): void {
     this.gradePass.uniforms.uPurkinje.value = v;
+  }
+
+  /** v0.50 shadow-grain strength (0 day → ~0.03 deep night) */
+  setGrain(v: number): void {
+    this.gradePass.uniforms.uGrain.value = v;
   }
 
   setBloomEnabled(v: boolean): void {

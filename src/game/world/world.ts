@@ -613,6 +613,10 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform vec2 uShadowTexel;
     uniform float uShadowStrength;
     uniform float uShadowAmbient;
+    // v0.50 — contour ambient (cheap sky-SH): per-face sky tint + blue-hour boost
+    uniform vec3 uAmbZenith;
+    uniform vec3 uAmbHorizon;
+    uniform float uAmbBoost;
     uniform vec3 uSunDirW;
     uniform vec3 uSunColorW;
     uniform vec3 uTorchPos0;
@@ -642,9 +646,10 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     void main() {
       vec4 tex = texture2D(uAtlas, vUv);
       if (tex.a < uAlphaTest) discard;
+      vec3 nrmW = normalize(vNormalW);
       float sf = 1.0;
       if (uShadowStrength > 0.001) {
-        float ndl = clamp(dot(normalize(vNormalW), uSunDirW), 0.0, 1.0);
+        float ndl = clamp(dot(nrmW, uSunDirW), 0.0, 1.0);
         sf = gfxShadow(uShadowMap, uShadowMatrix, uShadowTexel, vWorldPos, vNormalW, ndl);
         sf = mix(1.0, sf, uShadowStrength);
       }
@@ -663,8 +668,14 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       // light BFS through), so rooms go bright at noon while outdoor shadows
       // keep their shape. Direct sun patches through windows read hot.
       float direct = vSky * uSunLevel * sf * cloudS;
-      float ambient = vSky * uSunLevel * uShadowAmbient * cloudS;
-      float sunL = max(direct, ambient);
+      float ambient = vSky * uSunLevel * uShadowAmbient * cloudS * uAmbBoost;
+      // v0.50 one-bounce GI proxy (Photon diffuse_lighting.glsl bounce term):
+      // shadowed outdoor ground picks up light bounced off neighboring lit
+      // faces — 0.055 · (1−shadow) · sky⁴ — so moonlit/daytime shadows are
+      // never flat black, and the effect dies naturally indoors (sky⁴).
+      float vSky2 = vSky * vSky;
+      float bounce = 0.055 * (1.0 - sf) * vSky2 * vSky2 * min(uSunLevel, 1.0) * cloudS;
+      float sunL = max(max(direct, ambient), bounce);
       // torch (block) light vs sun light are SEPARATE terms: the torch term is
       // modulated by the point-light cube shadow map (fences/trees/mobs cast
       // real radial shadows), and torch-dominant areas get a warm Unreal-style
@@ -688,6 +699,19 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       light = clamp(light, 0.045, 1.0);
       float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
       vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
+      // ── v0.50 contour ambient (Complementary "contour shading" / sky-SH
+      // lite): the ambient contribution is tinted per-face from the LIVE sky —
+      // up faces drift toward the zenith color, walls toward the horizon, so
+      // sunset paints west walls warm while east walls cool, and night ground
+      // reads cold blue instead of flat gray. Weighted by how ambient-dominated
+      // the pixel is (sunlit/torch pixels barely shift). Energy-neutral: the
+      // tint is luminance-normalized, only its HUE varies.
+      float hemi = nrmW.y * 0.5 + 0.5;
+      vec3 ambTint = mix(uAmbHorizon, uAmbZenith, hemi);
+      float ambLum = max(dot(ambTint, vec3(0.3333)), 0.001);
+      vec3 ambTintN = ambTint * (1.0 / ambLum);
+      float ambDom = clamp((ambient - max(direct, torchL)) * 2.2 + 0.35, 0.0, 1.0);
+      lightCol *= mix(vec3(1.0), ambTintN, ambDom * 0.55);
       // ── sun/moon color grading of the terrain itself (BSL-style): warm
       // sunlight at sunset, cool blue moonlight at night — the sky and the
       // ground finally agree on the time of day.
@@ -742,6 +766,9 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
         uShadowStrength: { value: 0 },
         uShadowAmbient: { value: opts.shadowAmbient }, // sky-dome ambient strength (NOT shadow-gated — see v0.47 ambient split)
+        uAmbZenith: { value: new THREE.Color(1, 1, 1) },
+        uAmbHorizon: { value: new THREE.Color(1, 1, 1) },
+        uAmbBoost: { value: 1 },
         uSunDirW: { value: new THREE.Vector3(0.5, 0.8, 0.2).normalize() },
         uTorchPos0: { value: new THREE.Vector3() },
         uTorchPos1: { value: new THREE.Vector3() },

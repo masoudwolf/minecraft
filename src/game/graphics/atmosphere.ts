@@ -14,6 +14,7 @@ export const SKY_COLOR_GLSL = /* glsl */ `
   uniform float uStorm;    // 0..1 weather darkening
   uniform float uFlash;    // 0..1 lightning flash
   uniform float uCover;    // 0 clear → 1 overcast (cloud coverage)
+  uniform float uMoonIllum; // v0.50: 0 new moon → 1 full moon (phase cycle)
 
   // rd: normalized view ray; sd: normalized direction TOWARD the sun
   vec3 gfxSkyColor(vec3 rd, bool withSunDisk) {
@@ -54,11 +55,25 @@ export const SKY_COLOR_GLSL = /* glsl */ `
       col += sunCol * pow(max(mu, 0.0), 350.0) * 2.0 * rise * (1.0 - uStorm * 0.8);
     }
 
-    // moon (opposite the sun) — soft disk + glow, fades with daylight
+    // moon (opposite the sun) — phased disk + glow, fades with daylight.
+    // v0.50: the terminator sweeps across the disk with the 8-day phase cycle
+    // (Photon moon_phase_brightness family). Full moon keeps the original
+    // 1.6 HDR brightness; new moon leaves a faint dark disc + weak glow so
+    // the sky reads truly moonless while stars carry the night.
     float muM = clamp(dot(rd, -uSunDir), -1.0, 1.0);
-    float moonDisk = smoothstep(0.99955, 0.99985, muM);
     float night = 1.0 - uDay;
-    col += vec3(0.85, 0.90, 1.0) * (moonDisk * 1.6 + pow(max(muM, 0.0), 90.0) * 0.25) * night;
+    {
+      vec3 md = -uSunDir;
+      vec3 t1 = normalize(cross(md, vec3(0.0, 1.0, 0.001)));
+      vec3 t2 = cross(md, t1);
+      float disk = smoothstep(0.99955, 0.99985, muM);
+      // terminator line across the disk in the disk's tangent plane
+      float r0 = 0.0189; // ≈ acos(0.99982) — the disk's angular radius
+      float term = (1.0 - 2.0 * uMoonIllum) * r0 * 1.15;
+      float lit = smoothstep(term - r0 * 0.12, term + r0 * 0.12, dot(rd, t1));
+      float glow = pow(max(muM, 0.0), 90.0) * 0.25 * (0.35 + 0.65 * uMoonIllum);
+      col += vec3(0.85, 0.90, 1.0) * (disk * (0.35 + 1.25 * uMoonIllum * lit) + glow) * night;
+    }
 
     // overcast + storm desaturation
     float gray = dot(col, vec3(0.3333));
@@ -98,6 +113,7 @@ export class AtmosphereSky {
     uStorm: { value: number };
     uFlash: { value: number };
     uCover: { value: number };
+    uMoonIllum: { value: number };
   };
 
   constructor(scene: THREE.Scene) {
@@ -108,6 +124,7 @@ export class AtmosphereSky {
       uStorm: { value: 0 },
       uFlash: { value: 0 },
       uCover: { value: 0.2 },
+      uMoonIllum: { value: 1 },
     };
     const geo = new THREE.SphereGeometry(470, 32, 20);
     const mat = new THREE.ShaderMaterial({
@@ -134,6 +151,7 @@ export class AtmosphereSky {
     storm: number,
     flash: number,
     cover: number,
+    moonIllum = 1,
   ): void {
     this.mesh.position.copy(camera.position);
     this.uniforms.uSunDir.value.copy(sunDir);
@@ -142,6 +160,7 @@ export class AtmosphereSky {
     this.uniforms.uStorm.value = storm;
     this.uniforms.uFlash.value = flash;
     this.uniforms.uCover.value = cover;
+    this.uniforms.uMoonIllum.value = moonIllum;
   }
 
   dispose(): void {

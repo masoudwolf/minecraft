@@ -170,6 +170,10 @@ export class Game {
   private handBlockId = -1;
   private sunLight: THREE.DirectionalLight;
   private ambient: THREE.HemisphereLight;
+  // v0.50 — pre-allocated night tints for the entity lights (zero-alloc lerp targets)
+  private nightSkyAmb = new THREE.Color(0.72, 0.82, 1.10);
+  private nightGroundAmb = new THREE.Color(0.30, 0.36, 0.55);
+  private dayGroundAmb = new THREE.Color(0.4, 0.4, 0.4);
   /** shader-pack graphics (sky/volumetric water/shadows/grass/postfx) */
   private gfx: GraphicsSystem;
 
@@ -3472,7 +3476,11 @@ export class Game {
       m.uniforms.uSunLevel.value = this.sky.sunLevel;
       m.uniforms.uTime.value = performance.now() / 1000;
       if (underwater) {
-        m.uniforms.uFogColor.value.setRGB(0.09, 0.24, 0.55);
+        // v0.50: murk follows the daylight — midnight water used to swim in
+        // the same bright blue fog as noon (graphics-audit finding). Noon is
+        // unchanged; night dims toward the same moon-dim blue as the sky.
+        const wl = 0.25 + 0.75 * this.sky.sunLevel;
+        m.uniforms.uFogColor.value.setRGB(0.09 * wl, 0.24 * wl, 0.55 * wl);
         m.uniforms.uFogNear.value = 4;
         m.uniforms.uFogFar.value = 26;
       } else if (fog) {
@@ -3486,10 +3494,28 @@ export class Game {
     // drops, boats) follow the darker night instead of the old "dim day".
     // Daytime output is unchanged (1.0 / 0.95); midnight drops to 0.20 / 0.13
     // so silhouettes read at the edge of torch pools — survival fear factor.
+    // v0.50 (graphics audit): entity light COLOR + DIRECTION now follow the
+    // active source as well — mobs used to be lit white-noon at every hour
+    // while the terrain around them went warm at sunset / cold blue at night.
+    // The direction also used to be forced "up" at night; it now points at
+    // the actual moon, matching the terrain's shadow-map light.
     this.ambient.intensity = 0.12 + this.sky.sunLevel * 0.88;
     this.sunLight.intensity = 0.05 + this.sky.sunLevel * 0.9;
-    const angle = ((this.sky.time / DAY_LENGTH) - 0.25) * Math.PI * 2;
-    this.sunLight.position.set(Math.cos(angle), Math.max(0.2, Math.sin(angle)), 0.3).normalize().multiplyScalar(50);
+    const gfxCol = this.gfx?.lastSunColor;
+    if (gfxCol) {
+      this.sunLight.color.copy(gfxCol);
+      const lum = gfxCol.r * 0.299 + gfxCol.g * 0.587 + gfxCol.b * 0.114;
+      const nightW = THREE.MathUtils.clamp((0.5 - lum) / 0.42, 0, 1);
+      this.ambient.color.setRGB(1, 1, 1).lerp(this.nightSkyAmb, nightW);
+      this.ambient.groundColor.copy(this.dayGroundAmb).lerp(this.nightGroundAmb, nightW);
+    }
+    const ld = this.gfx?.lastLightDir;
+    if (ld) {
+      this.sunLight.position.set(ld.x, Math.max(0.12, ld.y), ld.z).normalize().multiplyScalar(50);
+    } else {
+      const angle = ((this.sky.time / DAY_LENGTH) - 0.25) * Math.PI * 2;
+      this.sunLight.position.set(Math.cos(angle), Math.max(0.2, Math.sin(angle)), 0.3).normalize().multiplyScalar(50);
+    }
   }
 
   private updateDebug(): void {

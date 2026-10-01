@@ -87,7 +87,11 @@ export class GraphicsSystem {
   private maxTorchShadows = 0;
 
   private lastSunDir = new THREE.Vector3(0, 1, 0);
-  private lastSunColor = new THREE.Color(1, 1, 1);
+  // v0.50: public — engine.applySkyFog reads these so entity lights (mobs,
+  // drops, hand) follow the SAME time-of-day grading as the terrain
+  lastSunColor = new THREE.Color(1, 1, 1);
+  /** direction TO the ACTIVE light source (moon at night) */
+  lastLightDir = new THREE.Vector3(0, 1, 0);
   private lastFogColor = new THREE.Color(0x9fc7ff);
   private lastFogNear = 60;
   private lastFogFar = 130;
@@ -111,6 +115,12 @@ export class GraphicsSystem {
   private lastShadowRun = -1;
   private lastShadowTarget = new THREE.Vector3(1e9, 0, 0);
   private lastShadowSun = new THREE.Vector3(1e9, 0, 0);
+  private tmpTexel = new THREE.Vector2();
+  // v0.50 — pre-allocated reflection temporaries (zero per-frame allocation)
+  private reflDir = new THREE.Vector3();
+  private reflTarget = new THREE.Vector3();
+  private reflPlanePoint = new THREE.Vector3();
+  private reflClip = new THREE.Vector4();
   /** QA counters — readable via window.__gfxDebug */
   shadowPasses = 0;
   reflectionRenders = 0;
@@ -433,7 +443,7 @@ export class GraphicsSystem {
     // texture matrix: raw proj*view — gfxShadow adds the NDC bias itself
     this.shadowMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     const sz = this.shadowRT.width;
-    const texel = new THREE.Vector2(1 / sz, 1 / sz);
+    const texel = this.tmpTexel.set(1 / sz, 1 / sz);
     for (const m of this.voxelMats()) {
       m.uniforms.uShadowMap.value = this.shadowRT.texture;
       m.uniforms.uShadowMatrix.value.copy(this.shadowMatrix);
@@ -527,12 +537,16 @@ export class GraphicsSystem {
       // moonlight — Photon's REAL moon tint from source (MOON_R/G/B =
       // 0.75/0.83/1.00 ≈ #BFD4FF, ~8500K perceptual cold blue). Shader packs
       // exaggerate the blue because viewers READ "cold blue" as night.
-      sunCol.set(0.75, 0.83, 1.00).multiplyScalar(0.30);
+      // v0.50: brightness follows the MOON PHASE (Photon moon_phase_brightness
+      // 0.35–1.0 of the 0.30 base) — new-moon nights are genuinely dark
+      // survival milestones, full moons keep the familiar v0.48 look.
+      sunCol.set(0.75, 0.83, 1.00).multiplyScalar(0.30 * (0.35 + 0.65 * sky.moonIllum));
       lightDir.multiplyScalar(-1);
     }
+    this.lastLightDir.copy(lightDir);
     this.lastSunColor.setRGB(sunCol.x, sunCol.y, sunCol.z);
 
-    this.atmosphere.update(camera, sunDir, dayAmount, sunsetAmount, storm, sky.lightningFlash, cover);
+    this.atmosphere.update(camera, sunDir, dayAmount, sunsetAmount, storm, sky.lightningFlash, cover, sky.moonIllum);
     if (this.clouds?.mesh.visible) {
       this.clouds.update(camera, dt, lightDir, this.lastSunColor, dayAmount, cover, storm);
     }
@@ -558,6 +572,23 @@ export class GraphicsSystem {
       if (m.uniforms.uRain) m.uniforms.uRain.value = this.rainSmooth;
     }
     this.grass.setEnv(this.lastSunColor, flicker, cloudShadowOn, cloudWind, cover);
+
+    // ── v0.50 contour ambient feed + blue-hour boost ──
+    // Voxel/grass shaders tint their AMBIENT term per-face from the live sky
+    // colors (up faces → zenith, walls → horizon) and boost it during blue
+    // hour (Photon skylight-boost family): dawn/dusk glow WITHOUT touching
+    // direct sun or torch pools. Storm gray / lightning white follow free
+    // since the same colors already drive the sky dome.
+    const blueHour = Math.exp(-190 * (sunHeight + 0.096) * (sunHeight + 0.096));
+    const ambBoost = Math.min(2.2, 1 + 0.35 * sunsetAmount + 1.1 * blueHour);
+    const zenC = sky.getSkyColor();
+    const horC = sky.getHorizonColor();
+    for (const m of this.voxelMats()) {
+      if (m.uniforms.uAmbZenith) (m.uniforms.uAmbZenith.value as THREE.Color).copy(zenC);
+      if (m.uniforms.uAmbHorizon) (m.uniforms.uAmbHorizon.value as THREE.Color).copy(horC);
+      if (m.uniforms.uAmbBoost) m.uniforms.uAmbBoost.value = ambBoost;
+    }
+    this.grass.setContour(zenC, ambBoost);
 
     // fog snapshot for grass
     if (this.scene.fog) {
@@ -647,6 +678,9 @@ export class GraphicsSystem {
       // Fades in as the sun drops below ~-0.08 (civil twilight end).
       const purkNight = CLAMP((0.02 - sunHeight) / 0.10, 0, 1);
       this.postfx.setPurkinje(0.055 * purkNight * (1 - storm * 0.5) * Math.min(haze, 1));
+      // v0.50: shadow grain — subtle film grain that only lives in the dark
+      // (masks banding on smooth night gradients, horror-genre staple)
+      this.postfx.setGrain(0.010 + 0.022 * purkNight * Math.min(haze, 1));
 
       // ── flare gate: voxel occlusion × camera facing (v0.47) ──
       // Raycast from the eye toward the light through the voxel grid — walls
@@ -840,13 +874,14 @@ export class GraphicsSystem {
     }
 
     // mirror camera about the horizontal plane y = WATER_PLANE_Y
+    // (v0.50: all temporaries pre-allocated — this ran every frame before)
     const n = this.tmpV1.set(0, 1, 0);
     const pos = this.tmpV2.copy(cam.position);
     const refl = this.tmpV3.copy(pos).addScaledVector(n, -2 * (pos.y - WATER_PLANE_Y));
     this.mirrorCam.position.copy(refl);
-    const dir = cam.getWorldDirection(new THREE.Vector3());
+    const dir = cam.getWorldDirection(this.reflDir);
     dir.y = -dir.y; // reflect view direction about the horizontal plane
-    const target = refl.clone().add(dir);
+    const target = this.reflTarget.copy(refl).add(dir);
     this.mirrorCam.up.set(0, 1, 0);
     this.mirrorCam.up.y = -1; // reflected up vector keeps texture orientation
     this.mirrorCam.lookAt(target);
@@ -858,11 +893,15 @@ export class GraphicsSystem {
     this.mirrorCam.updateMatrixWorld();
 
     // oblique near-plane clipping — everything below the water plane is cut
-    this.tmpPlane.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(0, WATER_PLANE_Y, 0));
+    this.reflPlanePoint.set(0, WATER_PLANE_Y, 0);
+    this.tmpPlane.setFromNormalAndCoplanarPoint(n, this.reflPlanePoint);
     this.tmpPlane.applyMatrix4(this.mirrorCam.matrixWorldInverse);
-    const clip = this.tmpPlane.normal.clone().multiplyScalar(-1);
-    const constant = -this.tmpPlane.constant;
-    const clipPlane = new THREE.Vector4(clip.x, clip.y, clip.z, constant);
+    const clipPlane = this.reflClip.set(
+      -this.tmpPlane.normal.x,
+      -this.tmpPlane.normal.y,
+      -this.tmpPlane.normal.z,
+      -this.tmpPlane.constant,
+    );
     const pm = this.mirrorCam.projectionMatrix;
     this.tmpQ.x = (Math.sign(clipPlane.x) + pm.elements[8]) / pm.elements[0];
     this.tmpQ.y = (Math.sign(clipPlane.y) + pm.elements[9]) / pm.elements[5];

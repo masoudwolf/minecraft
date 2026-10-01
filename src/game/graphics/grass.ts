@@ -82,6 +82,9 @@ const FRAG = /* glsl */ `
   uniform float uTorchRange0;
   uniform float uTorchRange1;
   uniform float uTorchCount;
+  // v0.50 — contour ambient companion uniforms (bounce + blue-hour + zenith tint)
+  uniform vec3 uAmbZenith;
+  uniform float uAmbBoost;
   ${GLSL_NOISE}
   ${GLSL_SHADOW}
   ${GLSL_CUBE_SHADOW}
@@ -100,7 +103,6 @@ const FRAG = /* glsl */ `
     float cloudS = gfxCloudShadow(vWorldPos, uSunDirW);
     // torch light with point-light cube shadows (same formula as terrain,
     // warm Unreal-style tint when the torch dominates)
-    float sunL = vSky * uSunLevel * sAmb * cloudS;
     float torchL = vBlock;
     if (uTorchCount > 0.5 && torchL > 0.02) {
       float ts = gfxCubeShadow(uTorchMap0, uTorchPos0, vWorldPos, vec3(0.0, 1.0, 0.0), uTorchFar0, uTorchRange0);
@@ -112,9 +114,19 @@ const FRAG = /* glsl */ `
     // tufts and terrain agree at the pool edge on the darker v0.48 night
     float bl = clamp(torchL, 0.0, 1.0);
     torchL = bl * bl * bl * bl * 0.72 + bl * bl * 0.22 + bl * 0.06;
+    // v0.50 — blue-hour ambient boost + one-bounce GI proxy, mirroring the
+    // voxel shader so grass and terrain stay matched at dawn/dusk/shadows
+    float sunL = vSky * uSunLevel * sAmb * cloudS * uAmbBoost;
+    float vSky2 = vSky * vSky;
+    sunL = max(sunL, 0.055 * (1.0 - sf) * vSky2 * vSky2 * min(uSunLevel, 1.0) * cloudS);
     float light = clamp(max(torchL, sunL), 0.06, 1.0);
     float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
     vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
+    // contour ambient (up-normal → pure zenith tint), same weighting as terrain
+    float zenLum = max(dot(uAmbZenith, vec3(0.3333)), 0.001);
+    vec3 ambTintN = uAmbZenith * (1.0 / zenLum);
+    float ambDom = clamp((sunL - torchL) * 2.2 + 0.35, 0.0, 1.0);
+    lightCol *= mix(vec3(1.0), ambTintN, ambDom * 0.55);
     // sun/moon grading — grass agrees with terrain and sky
     vec3 sunTintN = uSunColorW / max(max(uSunColorW.r, max(uSunColorW.g, uSunColorW.b)), 0.001);
     lightCol *= mix(vec3(1.0), sunTintN, 0.42);
@@ -218,6 +230,8 @@ export class GrassManager {
         uCloudShadow: { value: 0 },
         uCloudWind: { value: 0 },
         uCloudCover: { value: 0.22 },
+        uAmbZenith: { value: new THREE.Color(1, 1, 1) },
+        uAmbBoost: { value: 1 },
         uShadowMap: { value: null },
         uShadowMatrix: { value: new THREE.Matrix4() },
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
@@ -389,6 +403,13 @@ export class GrassManager {
     this.mat.uniforms.uCloudShadow.value = cloudShadow;
     this.mat.uniforms.uCloudWind.value = cloudWind;
     this.mat.uniforms.uCloudCover.value = cloudCover;
+  }
+
+  /** v0.50 contour ambient feed: zenith tint + blue-hour boost (mirrors the
+   *  terrain shader so tufts and ground agree at dawn/dusk/night) */
+  setContour(zenith: THREE.Color, boost: number): void {
+    (this.mat.uniforms.uAmbZenith.value as THREE.Color).copy(zenith);
+    this.mat.uniforms.uAmbBoost.value = boost;
   }
 
   /** torch cube-shadow uniforms for slot 0|1 (pos=null → inactive) */

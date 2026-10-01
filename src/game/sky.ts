@@ -31,9 +31,21 @@ export class SkySystem {
   private cloudNoise: (x: number, y: number) => number;
   time = DAY_LENGTH * 0.25; // start morning
   sunLevel = 1;             // 0..1, drives voxel lighting
+  // ── moon phase (v0.50, Photon light_color.glsl convention) ──
+  // 8-day cycle like Minecraft: phase 0 = full → 0.5 = new → wraps.
+  // moonIllum drives (a) the dome's phased moon disk, (b) the night direct-light
+  // scale (Photon: moon_phase_brightness 0.3–1.0) so new-moon nights are
+  // genuinely dark survival milestones and full moons read bright.
+  // totalDays counts in-session wraps; world saves only persist time-of-day,
+  // so a fresh session starts at a full moon (brightest, most playable).
+  totalDays = 0;
+  moonPhase = 0;   // 0..1 within the 8-day cycle (0 = full)
+  moonIllum = 1;   // 0 new → 1 full
+  private tmpSunDir = new THREE.Vector3();
   private fogColor = new THREE.Color();
   private skyColor = new THREE.Color();
   private horizonColor = new THREE.Color();
+  private tmpMat4 = new THREE.Matrix4();
   private cloudOffset = 0;
   private lastCloudRebuild = 0;
   private lastCamChunk = { x: 9999, z: 9999 };
@@ -202,12 +214,19 @@ export class SkySystem {
 
   /** advance time and update sky visuals; returns fog color to apply */
   update(dt: number, camera: THREE.Camera, scene: THREE.Scene, fogNear: number, fogFar: number): void {
-    this.time = (this.time + dt) % DAY_LENGTH;
+    const nextTime = this.time + dt;
+    if (nextTime >= DAY_LENGTH) this.totalDays++;
+    this.time = nextTime % DAY_LENGTH;
     const dayFrac = this.time / DAY_LENGTH; // 0=midnight, .25=sunrise, .5=noon, .75=sunset
+
+    // moon phase (8 in-session days per cycle — MC convention)
+    // phase 0 = FULL (illum 1, cos peak) → 0.5 = NEW (illum 0) → wraps to full
+    this.moonPhase = (this.totalDays % 8) / 8;
+    this.moonIllum = 0.5 + 0.5 * Math.cos(this.moonPhase * Math.PI * 2);
 
     // sun angle: sunrise at 0.25 → sun at horizon east; noon 0.5 → top
     const angle = (dayFrac - 0.25) * Math.PI * 2;
-    const sunDir = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0.18).normalize();
+    const sunDir = this.tmpSunDir.set(Math.cos(angle), Math.sin(angle), 0.18).normalize();
     const camPos = camera.position;
 
     this.sun.position.copy(camPos).addScaledVector(sunDir, 420);
@@ -226,8 +245,11 @@ export class SkySystem {
     // The old "mobs turn black" complaint came from entity shading collapsing
     // below visibility, not from the world being too dark — that fix now lives
     // in the entity light-normalization (target = local / max(sunLevel, 0.10)).
+    // v0.50: the night floor now follows the MOON PHASE (Photon
+    // moon_phase_brightness): full moon keeps the 0.09 Photon value, new moon
+    // drops to 0.0315 (~3.5% of noon — inside the horror-genre 1–6% band).
     const dayAmount = THREE.MathUtils.clamp((sunHeight + 0.12) / 0.32, 0, 1);
-    this.sunLevel = 0.09 + 0.91 * dayAmount;
+    this.sunLevel = 0.09 * (0.35 + 0.65 * this.moonIllum) + 0.91 * dayAmount;
 
     // star opacity + twinkle clock
     // v0.48: cap lifted to 1.0 — stars now reach full brilliance on the darker
@@ -286,7 +308,7 @@ export class SkySystem {
   }
 
   private rebuildClouds(camX: number, camZ: number): void {
-    const m = new THREE.Matrix4();
+    const m = this.tmpMat4;
     let i = 0;
     const R = 30; // cloud grid radius
     const gx = Math.floor(camX / 12);
@@ -310,6 +332,15 @@ export class SkySystem {
 
   getFogColor(): THREE.Color {
     return this.fogColor;
+  }
+  /** v0.50 — live sky/horizon colors for the voxel shaders' per-face ambient
+   *  (contour shading): up faces tint toward the zenith, walls toward the
+   *  horizon so sunsets paint west walls warm and night ground cool. */
+  getSkyColor(): THREE.Color {
+    return this.skyColor;
+  }
+  getHorizonColor(): THREE.Color {
+    return this.horizonColor;
   }
 }
 
