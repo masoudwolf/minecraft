@@ -52,6 +52,9 @@ export class World {
   chunks = new Map<string, Chunk>();
   terrain: TerrainGenerator;
   edits = new Map<string, Map<number, number>>();
+  /** per-cell orientation meta (v0.52): torch wall dir / bed half+facing / door facing+half.
+   *  Key "x,y,z" → packed bits (see blocks.ts meta doc). Cleared when a cell becomes AIR. */
+  meta = new Map<string, number>();
   group: THREE.Group;
   private materials: { opaque: THREE.ShaderMaterial; cutout: THREE.ShaderMaterial; water: THREE.ShaderMaterial };
   private skyAddQ = new LightQueue();
@@ -256,6 +259,10 @@ export class World {
     const old = chunk.data[idx];
     if (old === id) return;
     chunk.data[idx] = id;
+    // orientation meta dies with the cell (door/bed/torch break paths clear
+    // partners explicitly BEFORE/AFTER this; non-air swaps like door open/close
+    // and stage changes keep their meta)
+    if (id === BLOCK.AIR) this.meta.delete(wx + ',' + wy + ',' + wz);
 
     const key = chunkKey(cx, cz);
     let edits = this.edits.get(key);
@@ -314,6 +321,52 @@ export class World {
       this.seedBlock(wx, wy, wz);
     }
     this.processLightQueues(100000);
+  }
+
+  // ── Orientation meta (v0.52) ─────────────────────────────────────────────────
+  getMeta(wx: number, wy: number, wz: number): number {
+    if (wy < 0 || wy >= WORLD_HEIGHT) return 0;
+    return this.meta.get(wx + ',' + wy + ',' + wz) ?? 0;
+  }
+
+  setMeta(wx: number, wy: number, wz: number, v: number): void {
+    if (wy < 0 || wy >= WORLD_HEIGHT) return;
+    this.meta.set(wx + ',' + wy + ',' + wz, v);
+    this.version++;
+    // meta drives custom models (door panel / bed pillow / wall torch) — remesh
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cz = Math.floor(wz / CHUNK_SIZE);
+    this.markDirty(cx, cz);
+  }
+
+  loadMeta(data: Record<string, number>): void {
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (typeof v === 'number' && Number.isFinite(v)) this.meta.set(k, v);
+    }
+  }
+
+  serializeMeta(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [k, v] of this.meta) out[k] = v;
+    return out;
+  }
+
+  /** one-time migration: pre-v0.52 saves have single-cell beds (id 38, no meta).
+   *  Render them as head halves with the pillow at the -Z end — visually equal
+   *  to the old painted-pillow top texture. */
+  migrateLegacyBeds(): void {
+    for (const [ckey, cells] of this.edits) {
+      const [cxs, czs] = ckey.split(',').map(Number);
+      for (const [idx, id] of cells) {
+        if (id !== BLOCK.BED) continue;
+        const lx = idx % CHUNK_SIZE;
+        const lz = Math.floor(idx / CHUNK_SIZE) % CHUNK_SIZE;
+        const y = Math.floor(idx / (CHUNK_SIZE * CHUNK_SIZE));
+        const k = (cxs * CHUNK_SIZE + lx) + ',' + y + ',' + (czs * CHUNK_SIZE + lz);
+        if (!this.meta.has(k)) this.meta.set(k, 4 | 3); // head half, facing -Z
+      }
+    }
   }
 
   private markDirty(cx: number, cz: number): void {

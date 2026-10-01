@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage, isDoorId, isDoorOpenId, doorClosedId, doorOpenIdOf, doorUpper, bedHead, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -33,6 +33,16 @@ function itemLabel(id: number): string {
   return isItemId(id) ? (getItemDef(id)?.name ?? `#${id}`) : (getBlockDef(id)?.name ?? `#${id}`);
 }
 
+/** cardinal direction index (0=+X, 1=-X, 2=+Z, 3=-Z) from a cell's center toward a point.
+ *  Used by door/bed placement: doors hug the edge facing the player, the bed head
+ *  lands one cell away from the player. */
+function cardinalToward(px: number, pz: number, cx: number, cz: number): number {
+  const dx = px - (cx + 0.5);
+  const dz = pz - (cz + 0.5);
+  if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 0 : 1;
+  return dz > 0 ? 2 : 3;
+}
+
 const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration source)
 
 interface SaveData {
@@ -41,6 +51,8 @@ interface SaveData {
   player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number; effects?: { k: string; t: number }[] };
   edits: Record<string, Record<number, number>>;
   blockEntities?: Record<string, unknown>;
+  /** per-cell orientation meta (v0.52): torch wall dir / bed half+facing / door facing+half */
+  blockMeta?: Record<string, number>;
   spawn?: { x: number; y: number; z: number };
   achievements?: string[];
   gameMode?: GameMode;
@@ -448,6 +460,8 @@ export class Game {
     this.spawnPoint = save?.spawn ?? null;
     if (this.spawnPoint) this.mobs.spawnGuard = { x: this.spawnPoint.x, z: this.spawnPoint.z, r: 20 };
     if (save?.blockEntities) this.blockEnts.load(save.blockEntities);
+    if (save?.blockMeta) this.world.loadMeta(save.blockMeta);
+    this.world.migrateLegacyBeds();
 
     // spawn position
     let sx = 8, sz = 8;
@@ -571,6 +585,7 @@ export class Game {
       },
       edits,
       blockEntities: this.blockEnts.serialize(),
+      blockMeta: Object.keys(this.world.meta).length > 0 ? this.world.serializeMeta() : undefined,
       spawn: this.spawnPoint ?? undefined,
       achievements: this.achievements.serialize(),
       gameMode: this.player.gameMode,
@@ -1798,9 +1813,11 @@ export class Game {
       this.particles.burstBlockBreak(t.x, t.y, t.z, col);
       audio.breakBlock((cdef.sound ?? 'stone') as MaterialSound);
       if (containerOf(t.id)) this.blockEnts.destroy(t.x, t.y, t.z);
+      const brokenMeta = this.world.getMeta(t.x, t.y, t.z);
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
+      this.cleanupDependents(t.x, t.y, t.z, t.id, brokenMeta, false);
       this.creativeBreakCd = 0.25;
-      // pop unsupported blocks above (torch, flowers, bed) + plant stacks
+      // pop unsupported blocks above (torch, flowers, bed, door) + plant stacks
       let py = t.y + 1;
       let guard = 0;
       while (py < WORLD_HEIGHT && guard++ < 96) {
@@ -1809,7 +1826,9 @@ export class Game {
         const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
         if (!aboveDef?.needsGround && !isStack) break;
         if (containerOf(aboveId)) this.blockEnts.destroy(t.x, py, t.z);
+        const popMeta = this.world.getMeta(t.x, py, t.z);
         this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+        this.cleanupDependents(t.x, py, t.z, aboveId, popMeta, false);
         py++;
       }
       this.startSwing();
@@ -1889,23 +1908,39 @@ export class Game {
           this.drops.spawn(item.id, t.x + 0.5, t.y + 0.5, t.z + 0.5, item.count);
         }
       }
+      const brokenMeta = this.world.getMeta(t.x, t.y, t.z);
       this.world.setBlock(t.x, t.y, t.z, BLOCK.AIR);
-      // pop unsupported blocks above (torch, flowers, bed) + plant stacks (sugarcane/cactus)
+      this.cleanupDependents(t.x, t.y, t.z, t.id, brokenMeta, true);
+      // pop unsupported blocks above (torch, flowers, bed, door) + plant stacks (sugarcane/cactus)
       let py = t.y + 1;
       let guard = 0;
+      let bedFeetPopped = false;
       while (py < WORLD_HEIGHT && guard++ < 96) {
         const aboveId = this.world.getBlock(t.x, py, t.z);
         const aboveDef = getBlockDef(aboveId);
         const isStack = aboveId === BLOCK.SUGARCANE || aboveId === BLOCK.CACTUS;
         if (!aboveDef?.needsGround && !isStack) break;
         const aDrop = aboveDef && aboveDef.drop !== undefined ? aboveDef.drop : aboveId;
-        if (aDrop) this.drops.spawn(aDrop, t.x + 0.5, py + 0.3, t.z + 0.5, 1);
         if (containerOf(aboveId)) {
           for (const item of this.blockEnts.destroy(t.x, py, t.z)) {
             this.drops.spawn(item.id, t.x + 0.5, py + 0.5, t.z + 0.5, item.count);
           }
         }
+        const popMeta = this.world.getMeta(t.x, py, t.z);
         this.world.setBlock(t.x, py, t.z, BLOCK.AIR);
+        this.cleanupDependents(t.x, py, t.z, aboveId, popMeta, true);
+        // halves dropped by their own break path above: door uppers + bed heads
+        // whose partner is gone must NOT drop twice (single-item placeables)
+        let drop = aDrop;
+        if (isDoorId(aboveId) && doorUpper(popMeta)) drop = 0;
+        if (aboveId === BLOCK.BED) {
+          if (bedHead(popMeta)) {
+            // the pop loop runs bottom-up, so a feet half below was already
+            // popped this pass — only a LONE head (legacy save) drops here
+            if (bedFeetPopped) drop = 0;
+          } else bedFeetPopped = true;
+        }
+        if (drop) this.drops.spawn(drop, t.x + 0.5, py + 0.3, t.z + 0.5, 1);
         py++;
       }
       this.mineProgress = 0;
@@ -1931,6 +1966,8 @@ export class Game {
       if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
       if (isCake(targetId)) { this.eatCakeSlice(this.target.x, this.target.y, this.target.z, targetId); return; }
       if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
+      // doors swing open/closed on right-click (sneak+use places against them)
+      if (isDoorId(targetId)) { this.toggleDoor(this.target.x, this.target.y, this.target.z, targetId); return; }
       // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
       if (targetId === BLOCK.TNT) {
         const held = this.player.hotbar[this.player.selected];
@@ -2000,14 +2037,72 @@ export class Game {
         return;
       }
     }
-    // ground-support requirement (torch, flowers, bed)
+    // ground-support requirement (torch, flowers, bed, door)
     if (def?.needsGround) {
-      const below = this.world.getBlock(bx, by - 1, bz);
-      const belowDef = getBlockDef(below);
-      if (!belowDef?.solid) {
+      // wall torches (side-face click) mount on the wall instead — no ground needed
+      const wallTorch = slot.blockId === BLOCK.TORCH && this.target.ny === 0;
+      if (!wallTorch) {
+        const below = this.world.getBlock(bx, by - 1, bz);
+        const belowDef = getBlockDef(below);
+        if (!belowDef?.solid) {
+          this.showToast('Needs solid ground below');
+          return;
+        }
+      }
+    }
+    // ── v0.52: wall torch — clicked a block's SIDE face: mount + lean out ──
+    if (slot.blockId === BLOCK.TORCH && this.target.ny === 0) {
+      const wallDef = getBlockDef(targetId);
+      if (!wallDef?.solid) return; // can't mount on decorations
+      // ray normal points from the wall TOWARD the player, so the wall sits on
+      // the torch cell's side OPPOSITE the normal (click west face → wall on
+      // the torch's +X side → TORCH_WALL_PX)
+      const wallMeta = this.target.nx < 0 ? TORCH_WALL_PX : this.target.nx > 0 ? TORCH_WALL_NX : this.target.nz < 0 ? TORCH_WALL_PZ : TORCH_WALL_NZ;
+      this.world.setBlock(bx, by, bz, BLOCK.TORCH);
+      this.world.setMeta(bx, by, bz, wallMeta);
+      this.achievements.unlock('lightItUp');
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
+    }
+    // ── v0.52: doors — two cells (lower + upper), panel hugs the player's edge ──
+    if (isDoorId(slot.blockId)) {
+      const belowDef = getBlockDef(this.world.getBlock(bx, by - 1, bz));
+      if (!belowDef?.solid || this.world.getBlock(bx, by + 1, bz) !== BLOCK.AIR) {
+        this.showToast('Doors need 2 blocks of space on solid ground');
+        return;
+      }
+      const facing = cardinalToward(this.player.entity.x, this.player.entity.z, bx, bz);
+      this.world.setBlock(bx, by, bz, slot.blockId);
+      this.world.setMeta(bx, by, bz, facing);
+      this.world.setBlock(bx, by + 1, bz, slot.blockId);
+      this.world.setMeta(bx, by + 1, bz, facing | 8);
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
+    }
+    // ── v0.52: bed — two cells (feet here + head one cell away from the player) ──
+    if (slot.blockId === BLOCK.BED) {
+      const facing = cardinalToward(this.player.entity.x, this.player.entity.z, bx, bz) ^ 1;
+      const [bdx, bdz] = facingDir(facing);
+      const hx = bx + bdx, hz = bz + bdz;
+      const headCur = this.world.getBlock(hx, by, hz);
+      if (headCur !== BLOCK.AIR && !isLiquid(headCur)) {
+        this.showToast('Needs 2 blocks of space');
+        return;
+      }
+      if (!getBlockDef(this.world.getBlock(hx, by - 1, hz))?.solid) {
         this.showToast('Needs solid ground below');
         return;
       }
+      if (aabbIntersectsBlock(this.player.entity, hx, by, hz)) return;
+      this.world.setBlock(bx, by, bz, BLOCK.BED);
+      this.world.setMeta(bx, by, bz, facing);
+      this.world.setBlock(hx, by, hz, BLOCK.BED);
+      this.world.setMeta(hx, by, hz, facing | 4);
+      audio.place('wood');
+      this.finishPlace(slot, def);
+      return;
     }
     this.world.setBlock(bx, by, bz, slot.blockId);
     // attach block entity for containers
@@ -2016,6 +2111,11 @@ export class Game {
     if (slot.blockId === BLOCK.FURNACE) this.achievements.unlock('hotTopic');
     if (slot.blockId === BLOCK.TORCH) this.achievements.unlock('lightItUp');
     audio.place((def?.sound ?? 'stone') as MaterialSound);
+    this.finishPlace(slot, def);
+  }
+
+  /** shared tail of every successful placement: cooldown, swing, item consume, HUD */
+  private finishPlace(slot: HotbarSlot, def: ReturnType<typeof getBlockDef>): void {
     this.placeCooldown = 0.22;
     this.startSwing();
     if (!this.player.isCreative) {
@@ -2024,6 +2124,7 @@ export class Game {
     }
     this.syncHUD();
     this.updateHandMesh();
+    void def;
   }
 
   /** any water block orthogonally adjacent to this cell (at same or one-below level)? */
@@ -2165,6 +2266,63 @@ export class Game {
     st.setInv({ open: true, table: false, container: kind, cursor: null, craftOut: null, craft: [] });
     this.syncInventory(true);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
+  /** right-click a door: swing both halves open/closed (MC). Closing is denied
+   *  while the player stands in the doorway (MC leaves the door open too). */
+  private toggleDoor(x: number, y: number, z: number, _id: number): void {
+    const meta = this.world.getMeta(x, y, z);
+    const upper = doorUpper(meta);
+    const ly = upper ? y - 1 : y;
+    const uy = upper ? y : y + 1;
+    const lowerId = this.world.getBlock(x, ly, z);
+    const upperId = this.world.getBlock(x, uy, z);
+    if (!isDoorId(lowerId) || !isDoorId(upperId)) return;
+    const opening = !isDoorOpenId(lowerId);
+    if (!opening && (aabbIntersectsBlock(this.player.entity, x, ly, z) || aabbIntersectsBlock(this.player.entity, x, uy, z))) return;
+    const closed = doorClosedId(lowerId);
+    const open = doorOpenIdOf(closed);
+    this.world.setBlock(x, ly, z, opening ? open : closed);
+    this.world.setBlock(x, uy, z, opening ? open : closed);
+    audio.click();
+    this.placeCooldown = 0.25;
+    this.startSwing();
+  }
+
+  /** after removing a block: break its paired half (bed/door), pop wall torches
+   *  that were mounted on its side faces. Survival mode also drops one torch
+   *  per popped mount. The pair item itself drops exactly once — from the cell
+   *  the player actually broke (generic def.drop path). */
+  private cleanupDependents(x: number, y: number, z: number, brokenId: number, brokenMeta: number, survival: boolean): void {
+    if (brokenId === BLOCK.BED) {
+      const head = bedHead(brokenMeta);
+      const [dx, dz] = facingDir(brokenMeta);
+      const px = head ? x - dx : x + dx;
+      const pz = head ? z - dz : z + dz;
+      if (this.world.getBlock(px, y, pz) === BLOCK.BED) {
+        this.world.setBlock(px, y, pz, BLOCK.AIR); // partner vanishes silently
+      }
+    }
+    if (isDoorId(brokenId)) {
+      const upper = doorUpper(brokenMeta);
+      const py = upper ? y - 1 : y + 1;
+      if (isDoorId(this.world.getBlock(x, py, z))) {
+        this.world.setBlock(x, py, z, BLOCK.AIR);
+      }
+    }
+    // wall torches mounted on the removed block's four side faces
+    const sides: [number, number, number, number][] = [
+      [x + 1, y, z, TORCH_WALL_NX], // torch east of us, wall on its -X side
+      [x - 1, y, z, TORCH_WALL_PX],
+      [x, y, z + 1, TORCH_WALL_NZ],
+      [x, y, z - 1, TORCH_WALL_PZ],
+    ];
+    for (const [tx, ty, tz, want] of sides) {
+      if (this.world.getBlock(tx, ty, tz) === BLOCK.TORCH && this.world.getMeta(tx, ty, tz) === want) {
+        this.world.setBlock(tx, ty, tz, BLOCK.AIR);
+        if (survival) this.drops.spawn(BLOCK.TORCH, tx + 0.5, ty + 0.3, tz + 0.5, 1);
+      }
+    }
   }
 
   /** right-click on bed: set spawn + skip night */

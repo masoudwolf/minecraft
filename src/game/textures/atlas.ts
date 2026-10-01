@@ -119,14 +119,18 @@ function drawCobble(ctx: Ctx, tx: number, ty: number, rnd: () => number, mossy: 
 }
 
 function drawPlanks(ctx: Ctx, tx: number, ty: number, rnd: () => number, dark: boolean): void {
-  const base = dark ? ['#6b5230', '#63492b', '#735a37', '#5d4527'] : ['#a2824e', '#967847', '#ab8b55', '#8f7040'];
+  drawPlanksPal(ctx, tx, ty, rnd, ['#a2824e', '#967847', '#ab8b55', '#8f7040'], '#6b5230', '#7a5f3a');
+}
+
+/** palette-parameterized plank drawer (oak uses the classic colors; spruce/jungle recolor) */
+function drawPlanksPal(ctx: Ctx, tx: number, ty: number, rnd: () => number, base: string[], groove: string, joint: string): void {
   for (let b = 0; b < 4; b++) {
     noiseFill(ctx, tx, ty + b * 4, 16, 3, base, rnd);
-    ctx.fillStyle = dark ? '#4a3820' : '#6b5230';
+    ctx.fillStyle = groove;
     ctx.fillRect(tx, ty + b * 4 + 3, 16, 1);
-    const joint = [12, 4, 9, 2][b];
-    ctx.fillStyle = dark ? '#54401f' : '#7a5f3a';
-    ctx.fillRect(tx + joint, ty + b * 4, 1, 3);
+    const joint2 = [12, 4, 9, 2][b];
+    ctx.fillStyle = joint;
+    ctx.fillRect(tx + joint2, ty + b * 4, 1, 3);
   }
 }
 
@@ -877,26 +881,92 @@ export function getAtlas(): AtlasData {
     ctx.fillStyle = '#a89058';
     ctx.fillRect(p[0], p[1] + 15, 16, 1);
   }
-  // cake bite sides 1-5: inner cross-section with a growing bite notch
-  for (let bite = 1; bite <= 5; bite++) {
-    p = T(83 + bite);
-    ctx.fillStyle = '#f4f0e6';
-    ctx.fillRect(p[0], p[1], 16, 16);
-    noiseFill(ctx, p[0], p[1] + 3, 16, 10, ['#d8a854', '#cf9e4a', '#e0b25e'], rnd);
-    ctx.fillStyle = '#c8382c';
-    ctx.fillRect(p[0], p[1] + 7, 16, 2);
-    ctx.fillStyle = '#f4f0e6';
-    ctx.fillRect(p[0], p[1], 16, 3);
-    ctx.fillRect(p[0], p[1] + 13, 16, 3);
-    // bite notches cut from the top-right corner (deeper each stage)
-    const notchW = 3 + bite * 2;
-    ctx.fillStyle = 'rgba(0,0,0,0.88)';
-    ctx.fillRect(p[0] + 16 - notchW, p[1], notchW, 4 + bite);
-    ctx.fillStyle = '#000';
-    for (let i = 0; i < bite + 1; i++) {
-      px(ctx, p[0] + 15 - notchW + i, p[1] + 4 + ((i * 2) % (2 + bite)), '#1a1208');
-    }
+  // cake bite sides 1-5: REMOVED (v0.52). The old tiles painted the bite as
+  // a solid BLACK rectangle — users saw it as "part of the cake turned black".
+  // Bites are now real geometry: the mesher shrinks the cake 2/16 per slice
+  // (MC behavior) and the cut faces show the inner cross-section texture.
+
+  // ── phase 14: carpentry tiles 89-98 ──
+  // bed blanket (feet-half top: red blanket + fold line, no pillow)
+  p = T(89);
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#b03a2e', '#a03328', '#bd4536', '#963026', '#c74e3c'], rnd);
+    ctx.fillStyle = '#7a1f16';
+    ctx.fillRect(p[0], p[1] + 7, 16, 1);
+    ctx.fillStyle = '#d8564a';
+    ctx.fillRect(p[0], p[1] + 8, 16, 1);
+    // turned-down sheet edge at the foot end (bottom rows of the tile)
+    ctx.fillStyle = '#e8e4d8';
+    ctx.fillRect(p[0], p[1] + 14, 16, 2);
+    ctx.fillStyle = '#cfcabc';
+    ctx.fillRect(p[0], p[1] + 13, 16, 1);
   }
+  // bed pillow (soft white with a seam)
+  p = T(90);
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#f2f2f2', '#e8e8e8', '#fafafa', '#dedede'], rnd);
+    ctx.fillStyle = '#c4c4c4';
+    ctx.fillRect(p[0] + 1, p[1] + 7, 14, 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(p[0] + 2, p[1] + 2, 4, 2);
+    ctx.fillRect(p[0] + 9, p[1] + 3, 3, 1);
+    ctx.fillStyle = '#b0b0b0';
+    ctx.fillRect(p[0], p[1] + 15, 16, 1);
+  }
+  // doors: top panel (with window) + bottom panel (plank carving), 3 woods
+  const DOOR_WOODS: [string, string, string, string][] = [
+    // [panel light, panel mid, panel dark, frame] — oak / spruce / jungle
+    ['#b08d55', '#9a7843', '#7c5f33', '#6b5230'],
+    ['#7a5b34', '#684c2a', '#523a1f', '#42301a'],
+    ['#c08a5c', '#a8744a', '#8a5c38', '#6f4728'],
+  ];
+  const drawDoorBottom = (ti: number, w: typeof DOOR_WOODS[number]): void => {
+    const q = T(ti);
+    const [pl, pm, pd, fr] = w;
+    noiseFill(ctx, q[0], q[1], 16, 16, [pm, pl, pm, pd], rnd);
+    // frame border
+    ctx.fillStyle = fr;
+    ctx.fillRect(q[0], q[1], 16, 1); ctx.fillRect(q[0], q[1] + 15, 16, 1);
+    ctx.fillRect(q[0], q[1], 1, 16); ctx.fillRect(q[0] + 15, q[1], 1, 16);
+    // two recessed panels
+    for (const ry of [2, 9]) {
+      ctx.fillStyle = pd;
+      ctx.fillRect(q[0] + 3, q[1] + ry, 10, 6);
+      ctx.fillStyle = pl;
+      ctx.fillRect(q[0] + 4, q[1] + ry, 8, 4);
+      ctx.fillStyle = pm;
+      ctx.fillRect(q[0] + 4, q[1] + ry + 4, 8, 1);
+    }
+  };
+  const drawDoorTop = (ti: number, w: typeof DOOR_WOODS[number]): void => {
+    const q = T(ti);
+    const [pl, pm, pd, fr] = w;
+    noiseFill(ctx, q[0], q[1], 16, 16, [pm, pl, pm, pd], rnd);
+    ctx.fillStyle = fr;
+    ctx.fillRect(q[0], q[1], 16, 1); ctx.fillRect(q[0], q[1] + 15, 16, 1);
+    ctx.fillRect(q[0], q[1], 1, 16); ctx.fillRect(q[0] + 15, q[1], 1, 16);
+    // window (transparent hole with glass tint pixels) — cutout pass
+    ctx.clearRect(q[0] + 4, q[1] + 2, 3, 4);
+    ctx.clearRect(q[0] + 9, q[1] + 2, 3, 4);
+    ctx.fillStyle = 'rgba(200,228,235,0.85)';
+    ctx.fillRect(q[0] + 4, q[1] + 5, 3, 1); ctx.fillRect(q[0] + 9, q[1] + 5, 3, 1);
+    // lower recessed panel
+    ctx.fillStyle = pd;
+    ctx.fillRect(q[0] + 3, q[1] + 9, 10, 5);
+    ctx.fillStyle = pl;
+    ctx.fillRect(q[0] + 4, q[1] + 10, 8, 3);
+    // diagonal brace
+    ctx.fillStyle = fr;
+    for (let i = 0; i < 6; i++) px(ctx, q[0] + 3 + i, q[1] + 14 - i, fr);
+  };
+  drawDoorTop(91, DOOR_WOODS[0]); drawDoorBottom(92, DOOR_WOODS[0]);   // oak
+  drawDoorTop(93, DOOR_WOODS[1]); drawDoorBottom(94, DOOR_WOODS[1]);   // spruce
+  drawDoorTop(95, DOOR_WOODS[2]); drawDoorBottom(96, DOOR_WOODS[2]);   // jungle
+  // spruce / jungle planks
+  p = T(97);
+  drawPlanksPal(ctx, p[0], p[1], rnd, ['#7a5b34', '#684c2a', '#71522f', '#5d4527'], '#3e2d17', '#4a3820');
+  p = T(98);
+  drawPlanksPal(ctx, p[0], p[1], rnd, ['#c08a5c', '#b07d50', '#c69464', '#a8744a'], '#7c5432', '#8a5f3a');
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;

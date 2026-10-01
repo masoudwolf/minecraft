@@ -80,7 +80,8 @@ function boots(M: number, id: number): ShapedRecipe {
 export const RECIPES: Recipe[] = [
   // ── basics ──
   shapeless([BLOCK.LOG], P, 4),
-  shapeless([BLOCK.SPRUCE_LOG], P, 4),
+  shapeless([BLOCK.SPRUCE_LOG], BLOCK.SPRUCE_PLANKS, 4),
+  shapeless([BLOCK.JUNGLE_LOG], BLOCK.JUNGLE_PLANKS, 4),
   shaped(1, 2, [P, P], S, 4),
   shaped(2, 2, [P, P, P, P], BLOCK.CRAFTING_TABLE),
   shaped(3, 3, [C, C, C, C, 0, C, C, C, C], BLOCK.FURNACE),
@@ -88,6 +89,10 @@ export const RECIPES: Recipe[] = [
   shaped(1, 2, [ITEM.COAL, S], BLOCK.TORCH, 4),
   shaped(3, 2, [W, W, W, P, P, P], BLOCK.BED),
   shaped(2, 2, [ITEM.STRING, ITEM.STRING, ITEM.STRING, ITEM.STRING], BLOCK.WOOL),
+  // ── doors (phase 14 carpentry) — MC pattern: 2×3 planks of the wood → 3 ──
+  shaped(2, 3, [P, P, P, P, P, P], BLOCK.DOOR_OAK, 3),
+  shaped(2, 3, [BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS, BLOCK.SPRUCE_PLANKS], BLOCK.DOOR_SPRUCE, 3),
+  shaped(2, 3, [BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS, BLOCK.JUNGLE_PLANKS], BLOCK.DOOR_JUNGLE, 3),
   // ── ranged combat ──
   // bow: MC pattern (sticks diagonal, strings right column)
   shaped(3, 3, [0, S, ST, S, 0, ST, 0, S, ST], ITEM.BOW),

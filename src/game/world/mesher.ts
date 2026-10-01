@@ -1,6 +1,6 @@
 // ─── Chunk mesher: face culling + ambient occlusion + smooth lighting ────────
 import * as THREE from 'three';
-import { BLOCK, getBlockDef, isOpaque, isWaterId, waterLevel } from '../blocks';
+import { BLOCK, TILE, getBlockDef, isOpaque, isWaterId, waterLevel, bedHead, doorUpper, doorOpenFacing, isDoorOpenId, facingDir, TORCH_WALL_PX, TORCH_WALL_NX, TORCH_WALL_PZ, TORCH_WALL_NZ } from '../blocks';
 import { CHUNK_SIZE, WORLD_HEIGHT, blockIndex } from '../constants';
 import { tileUV } from '../textures/atlas';
 import type { World, Chunk } from './world';
@@ -46,6 +46,52 @@ function tileSub(tileIndex: number, x0: number, y0: number, x1: number, y1: numb
 
 // tangent axes per face axis
 const TANGENT_AXES: [number, number][] = [[1, 2], [1, 2], [0, 2], [0, 2], [0, 1], [0, 1]];
+
+/** standard cube-face shades (FACES order) for custom boxes */
+const BOX_SHADES = [0.62, 0.62, 1.0, 0.55, 0.82, 0.82];
+
+/** axis-aligned box pusher with per-face UV rects + cell light (bed pillow, door
+ *  panel). Corner winding mirrors FACES exactly. Every vertex carries the full
+ *  attribute set (normal/uv/shade/sky/block/tint/sway/depth) — the v0.45.1
+ *  invariant guard in buildGeometry stays satisfied. */
+function pushBox(
+  target: MeshBuffers,
+  x0: number, y0: number, z0: number,
+  x1: number, y1: number, z1: number,
+  uv: [number, number, number, number][], // per face [+X,-X,+Y,-Y,+Z,-Z]
+  shades: number[],                       // per face
+  sky: number, blk: number,
+  skip: number[] = [],
+): void {
+  const faces: { c: [number, number, number][]; n: [number, number, number] }[] = [
+    { c: [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], n: [1, 0, 0] },   // +X
+    { c: [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], n: [-1, 0, 0] },  // -X
+    { c: [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], n: [0, 1, 0] },   // +Y
+    { c: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], n: [0, -1, 0] },  // -Y
+    { c: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], n: [0, 0, 1] },   // +Z
+    { c: [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], n: [0, 0, -1] },  // -Z
+  ];
+  for (let f = 0; f < 6; f++) {
+    if (skip.includes(f)) continue;
+    const face = faces[f];
+    const [u0, v0, u1, v1] = uv[f];
+    const basePos = target.positions.length / 3;
+    for (let c = 0; c < 4; c++) {
+      const cr = face.c[c];
+      target.positions.push(cr[0], cr[1], cr[2]);
+      target.normals.push(face.n[0], face.n[1], face.n[2]);
+      const uvc = UV_CORNERS[c];
+      target.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
+      target.shades.push(shades[f]);
+      target.skies.push(sky);
+      target.blocks.push(blk);
+      target.tints.push(1, 1, 1);
+      target.sways.push(0);
+      target.depths.push(0);
+    }
+    target.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+  }
+}
 
 interface MeshBuffers {
   positions: number[];
@@ -225,23 +271,55 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
         }
 
         // ── special model: torch (mini box, cropped UVs, always bright) ──
+        // v0.52: meta 1..4 = wall-mounted — the stick mounts at the wall face
+        // and leans out toward the room (MC wall torch), floor torch unchanged.
         if (def.model === 'torch') {
-          chunk.torches.push([wx + 0.5, y + 0.62, wz + 0.5]);
+          const tMeta = world.getMeta(wx, y, wz);
           const tile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
-          const a = 0.4375, b = 0.5625, h = 0.625; // 7/16..9/16 wide, 10/16 tall
           const sideUV = tileSub(tile, 7, 6, 9, 16);
           const topUV = tileSub(tile, 7, 2, 9, 4);
           const l = world.getLightForMesh(wx, y, wz);
           const sky = (l >> 4) / 15;
           const blk = Math.max((l & 15) / 15, 0.92);
-          const boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number; n: [number, number, number] }[] = [
-            { c: [[b, 0, b], [b, 0, a], [b, h, a], [b, h, b]], uv: sideUV, sh: 0.95, n: [1, 0, 0] },  // +X
-            { c: [[a, 0, a], [a, 0, b], [a, h, b], [a, h, a]], uv: sideUV, sh: 0.95, n: [-1, 0, 0] }, // -X
-            { c: [[a, h, b], [b, h, b], [b, h, a], [a, h, a]], uv: topUV, sh: 1.0, n: [0, 1, 0] },    // +Y
-            { c: [[a, 0, a], [b, 0, a], [b, 0, b], [a, 0, b]], uv: sideUV, sh: 0.7, n: [0, -1, 0] },  // -Y
-            { c: [[a, 0, b], [b, 0, b], [b, h, b], [a, h, b]], uv: sideUV, sh: 0.95, n: [0, 0, 1] },  // +Z
-            { c: [[b, 0, a], [a, 0, a], [a, h, a], [b, h, a]], uv: sideUV, sh: 0.95, n: [0, 0, -1] }, // -Z
-          ];
+          let boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number; n: [number, number, number] }[];
+          if (tMeta >= TORCH_WALL_PX && tMeta <= TORCH_WALL_NZ) {
+            // sheared stick: cross-section 2/16, bottom 1..3/16 from the wall,
+            // top leaning out to 5..7/16. axis = sheared world axis, sign =
+            // which side the wall is on (+1 = wall at the cell's high edge).
+            const axis = (tMeta === TORCH_WALL_PX || tMeta === TORCH_WALL_NX) ? 0 : 2;
+            const sign = (tMeta === TORCH_WALL_PX || tMeta === TORCH_WALL_PZ) ? 1 : -1;
+            const h = 0.625;
+            const lo = (d: number): number => (sign > 0 ? 1 - d : d);
+            const dbA = lo(3 / 16), dbB = lo(1 / 16); // bottom rect (A < B)
+            const dtA = lo(7 / 16), dtB = lo(5 / 16); // top rect
+            const cA = 7 / 16, cB = 9 / 16;           // cross-axis extent
+            const pt = (s: number, c: number, yy: number): [number, number, number] =>
+              axis === 0 ? [s, yy, c] : [c, yy, s];
+            const nShearPos: [number, number, number] = axis === 0 ? [1, 0, 0] : [0, 0, 1];
+            const nShearNeg: [number, number, number] = axis === 0 ? [-1, 0, 0] : [0, 0, -1];
+            const nCrossPos: [number, number, number] = axis === 0 ? [0, 0, 1] : [1, 0, 0];
+            boxFaces = [
+              { c: [pt(dbB, cB, 0), pt(dbB, cA, 0), pt(dtB, cA, h), pt(dtB, cB, h)], uv: sideUV, sh: 0.95, n: nShearPos }, // wall-side end
+              { c: [pt(dbA, cA, 0), pt(dbA, cB, 0), pt(dtA, cB, h), pt(dtA, cA, h)], uv: sideUV, sh: 0.95, n: nShearNeg }, // outer end
+              { c: [pt(dtA, cB, h), pt(dtB, cB, h), pt(dtB, cA, h), pt(dtA, cA, h)], uv: topUV, sh: 1.0, n: [0, 1, 0] },   // top
+              { c: [pt(dbA, cA, 0), pt(dbB, cA, 0), pt(dbB, cB, 0), pt(dbA, cB, 0)], uv: sideUV, sh: 0.7, n: [0, -1, 0] }, // bottom
+              { c: [pt(dbA, cB, 0), pt(dbB, cB, 0), pt(dtB, cB, h), pt(dtA, cB, h)], uv: sideUV, sh: 0.95, n: nCrossPos },
+              { c: [pt(dbB, cA, 0), pt(dbA, cA, 0), pt(dtA, cA, h), pt(dtB, cA, h)], uv: sideUV, sh: 0.95, n: [-nCrossPos[0], 0, -nCrossPos[2]] },
+            ];
+            const fxA = lo(6 / 16);
+            chunk.torches.push(axis === 0 ? [wx + fxA, y + 0.62, wz + 0.5] : [wx + 0.5, y + 0.62, wz + fxA]);
+          } else {
+            chunk.torches.push([wx + 0.5, y + 0.62, wz + 0.5]);
+            const a = 0.4375, b = 0.5625, h = 0.625; // 7/16..9/16 wide, 10/16 tall
+            boxFaces = [
+              { c: [[b, 0, b], [b, 0, a], [b, h, a], [b, h, b]], uv: sideUV, sh: 0.95, n: [1, 0, 0] },  // +X
+              { c: [[a, 0, a], [a, 0, b], [a, h, b], [a, h, a]], uv: sideUV, sh: 0.95, n: [-1, 0, 0] }, // -X
+              { c: [[a, h, b], [b, h, b], [b, h, a], [a, h, a]], uv: topUV, sh: 1.0, n: [0, 1, 0] },    // +Y
+              { c: [[a, 0, a], [b, 0, a], [b, 0, b], [a, 0, b]], uv: sideUV, sh: 0.7, n: [0, -1, 0] },  // -Y
+              { c: [[a, 0, b], [b, 0, b], [b, h, b], [a, h, b]], uv: sideUV, sh: 0.95, n: [0, 0, 1] },  // +Z
+              { c: [[b, 0, a], [a, 0, a], [a, h, a], [b, h, a]], uv: sideUV, sh: 0.95, n: [0, 0, -1] }, // -Z
+            ];
+          }
           for (const f of boxFaces) {
             const basePos = cutout.positions.length / 3;
             for (let c = 0; c < 4; c++) {
@@ -351,6 +429,34 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           continue;
         }
 
+        // ── special model: door (thin 3/16 panel, 2 cells tall) — v0.52 ──
+        // Open state lives in the block id; facing + upper-half in meta. The
+        // closed panel hugs the meta facing edge; open rotates 90° around the
+        // hinge to the adjacent edge. Windows are alpha cutouts.
+        if (def.model === 'door') {
+          const meta = world.getMeta(wx, y, wz);
+          const facing = meta & 3;
+          const upper = doorUpper(meta);
+          const open = isDoorOpenId(id);
+          const edge = open ? doorOpenFacing(facing) : facing;
+          const tile = Array.isArray(def.tiles) ? (upper ? def.tiles[0] : def.tiles[3]) : def.tiles;
+          const uvRect = tileUV(tile);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          const T3 = 3 / 16;
+          let x0 = 0, x1 = 1, z0 = 0, z1 = 1;
+          if (edge === 0) { x0 = 1 - T3; x1 = 1; }       // panel hugs +X edge
+          else if (edge === 1) { x1 = T3; }              // -X edge
+          else if (edge === 2) { z0 = 1 - T3; z1 = 1; }  // +Z edge
+          else { z1 = T3; }                              // -Z edge
+          // positions are chunk-local: add the block's (lx, y, lz) offset
+          pushBox(cutout, lx + x0, y, lz + z0, lx + x1, y + 1, lz + z1,
+            [uvRect, uvRect, uvRect, uvRect, uvRect, uvRect],
+            BOX_SHADES, sky, blk);
+          continue;
+        }
+
         // water surface height: source 0.875, flowing levels get thinner
         const aboveId = getB(wx, y + 1, wz);
         let waterTopH = 1;
@@ -381,8 +487,10 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             wDepth = Math.min(1, Math.max(0, y - 1 - fy) / 9);
           }
         }
-        // partial-height blocks (bed)
+        // partial-height blocks (bed) + horizontal shrink (cake bites)
         const hTop = def.height ?? 1;
+        const wScale = def.width ?? 1;
+        const wOff = (1 - wScale) / 2;
 
         for (let f = 0; f < 6; f++) {
           const face = FACES[f];
@@ -399,7 +507,10 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             if (nId === id) continue; // same cutout type culls
             if (isOpaque(nId)) continue;
           } else {
-            if (isOpaque(nId)) continue;
+            // shrunk blocks (cake bites) pull their ±X cut faces INSIDE the
+            // cell — never cull them against the neighbor or a cake against a
+            // wall would show a see-through gap
+            if (isOpaque(nId) && !(wScale < 1 && (f === 0 || f === 1))) continue;
             if (nId === id) continue;
           }
 
@@ -431,10 +542,15 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
             if (isWater && waterTopH !== 1 && corner[1] === 1) cy = y + waterTopH;
             else if (corner[1] === 1 && hTop !== 1) cy = y + hTop;
 
-            target.positions.push(lx + corner[0], cy, lz + corner[2]);
+            // horizontal shrink (cake bites): X axis compresses toward center
+            target.positions.push(lx + wOff + corner[0] * wScale, cy, lz + corner[2]);
 
             const uvc = UV_CORNERS[c];
-            target.uvs.push(u0 + (u1 - u0) * uvc[0], v0 + (v1 - v0) * uvc[1]);
+            // crop the U span on faces whose U runs along the shrunk X axis
+            // (±Y top/bottom + ±Z sides) so the texture doesn't squash
+            let uc = uvc[0];
+            if (wScale < 1 && f !== 0 && f !== 1) uc = wOff + uvc[0] * wScale;
+            target.uvs.push(u0 + (u1 - u0) * uc, v0 + (v1 - v0) * uvc[1]);
 
             // AO + smooth light: sample base cell + 2 sides + diagonal
             const t1 = [0, 0, 0];
@@ -494,6 +610,28 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           } else {
             target.indices.push(basePos + 1, basePos + 2, basePos + 3, basePos + 1, basePos + 3, basePos);
           }
+        }
+
+        // ── bed head pillow (v0.52 2-block bed) ──
+        // Real geometry instead of a painted texture: a 14/16 × 2/16 × 6/16
+        // pillow raised 2/16 above the mattress, parked at the far end of the
+        // head half (facing comes from the meta bits).
+        if (def.model === 'bed' && bedHead(world.getMeta(wx, y, wz))) {
+          const meta = world.getMeta(wx, y, wz);
+          const [pdx, pdz] = facingDir(meta);
+          const pv = tileUV(TILE.bed_pillow);
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          // pillow spans 1/16..15/16 across the bed, 6/16 deep from the far edge
+          const lo = 1 / 16, hi = 15 / 16, depth = 6 / 16;
+          let px0 = lo, px1 = hi, pz0 = lo, pz1 = hi;
+          if (pdx > 0) { px0 = 1 - 1 / 16 - depth; px1 = 1 - 1 / 16; }
+          else if (pdx < 0) { px0 = 1 / 16; px1 = 1 / 16 + depth; }
+          else if (pdz > 0) { pz0 = 1 - 1 / 16 - depth; pz1 = 1 - 1 / 16; }
+          else { pz0 = 1 / 16; pz1 = 1 / 16 + depth; }
+          pushBox(target, lx + px0, y + 9 / 16, lz + pz0, lx + px1, y + 11 / 16, lz + pz1,
+            [pv, pv, pv, pv, pv, pv], BOX_SHADES, sky, blk, [3]); // skip bottom
         }
       }
     }

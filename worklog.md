@@ -1403,3 +1403,28 @@ Work Log:
 Stage Summary:
 - v0.51.0 = 首个"玩法大阶段"版本：完整 MC 式酿造系统（9 药水+状态效果+HUD 芯片+燃料/材料经济）+ 蛋糕七阶段吃法 + 糖/玻璃瓶材料链 + 蛋糕返桶 byproduct 机制（合成系统新能力）+ 夜视真实改变渲染（体素+草叶双 shader）
 - NEXT QUEUE：item frames/armor stands、villager restock UI（profession 系统）、药水抛掷(splash, 手持消耗品→投掷物)、药水延长/二级(redstone/glowstone 细化)、火把反弹光照、llvmpipe 之外的真机性能观察（用户 3060 上 180fps 已很宽裕）
+
+---
+Task ID: 54
+Agent: Z.ai Code (main)
+Task: 用户实测 v0.51 后报告 4 个问题（波斯语原话）：① "تخت خیلی کوچیکه شبیه ماینکرفت نیستش پهناش کمه"（床太小/太窄不像 MC）；② "مشعل فقط روی زمین میشه گذاشت نمیشه رو دیوار گذاشت باید بشه گذاشت"（火把只能放地上，必须能放墙上）；③ "انواع در به بازی اضافه بکن نداره"（加各种门）；④ "کیک ها بعضیاشون بخشی ازشون سیاه شده"（有些蛋糕部分发黑）→ v0.52.0 "Carpentry"
+
+Work Log:
+- restore 脚本：local AHEAD 1（v0.51.0 commit e60c049 曾挂起）→ 补推成功（59f0573..e60c049），origin/main = v0.51.0 无回退
+- 【根因④蛋糕黑斑】atlas.ts 咬痕贴图直接用 rgba(0,0,0,0.88)/#000 画"咬痕"——黑块就是它。按 MC 真实行为重做：蛋糕物理收缩（每吃一片宽 -2/16，BlockDef 新增 width 字段，14/16→2/16），侧面一律用内芯横截面贴图，cake_b1..b5 黑咬痕贴图全部删除；mesher cube 路径加 X 轴收缩 + UV U 向裁剪（不挤压糖霜纹理）+ 收缩块的 ±X 切面对不透明邻居不再剔除（贴墙蛋糕不再透视）
+- 【修复①床】全新 2 格 MC 床：放置时 feet+head 两格（头在玩家朝向远端），枕头改为真实几何体（14/16×2/16×6/16，高于床垫 2/16，按朝向定位，bed_pillow 新贴图），feet 顶面用新 bed_blanket 贴图（红毯+被角白单），断一半毁两半只掉 1 个床；旧存档兼容：migrateLegacyBeds() 把无 meta 的旧床(38)映射为 head+facing- Z（meta 7，视觉等价旧的画枕头顶）
+- 【基础设施】World 新增 per-cell 方向 meta 层（Map<"x,y,z",n>，存档 v4 字段 blockMeta，setBlock→AIR 自动清除）：TORCH 0=地面/1..4=墙面（墙在火把格的 ±X/±Z 侧）；BED bits0-1 朝向+bit2 头半；DOOR bits0-1 朝向+bit3 上半
+- 【修复②墙火把】点方块侧面放火把→墙火把（meta 记录墙面方位），mesher 渲染斜靠火把杆（底 1..3/16 贴墙、顶外倾至 5..7/16），火把粒子锚点随之偏移；支撑方块被挖→挂载的墙火把掉落（cleanupDependents 四侧检查）；点顶面仍是地面火把（原路径不变）。QA 抓到 meta 反转 bug：raycast 法线指向玩家侧，墙面在火把格的相反方向——已修正并双方向实测（西点→meta1，东点→meta2）
+- 【修复③门】3 种木门（橡木/云杉/丛林，id 78-83 closed/open 成对）+ 云杉/丛林木板（84/85，log→4 板 shapeless）：MC 门配方 2×3 板→3 扇；放置占上下两格（朝向=面板贴玩家一侧），右键开/关（closed↔open id 互换保 meta，关门时玩家站门内则拒绝=MC），开门可穿行（solid:false）关门阻挡，上半/下半共毁，门板厚 3/16 贴墙缘，上半带 MC 式双窗（cutout 透明）+斜撑纹理；creative 调色板排除 open 态
+- 【门模型】mesher 新增 'door' 自定义模型 + pushBox 通用盒推送器（6 面法线/UV/shade/sky/block/tint/sway/depth 全属性 1:1 不变量——v0.45.1 教训防线延续）；QA 抓到门板漏加 (lx,y,lz) 偏移渲染到 chunk 原点地下的 bug，已修
+- 【QA】agent-browser 全链路（SwiftShader ~4fps，2 次环境卡死按 runbook 杀 chrome 重启；DB readonly 窗口吞掉 2 个 QA 世界创建——localStorage 回退兜底，非游戏 bug）：
+  * 截图实证：蛋糕 7 阶段左→右收缩、零黑斑、内芯截面；2 张床枕头位置按朝向正确（+X 床枕头在东端、-Z 床枕头在远端）；3 种门色调区分明显、窗/凹板/斜撑清晰；墙火把斜靠石柱面
+  * 功能实测：门 toggle 78→79→78 双半同步 ✓；真实 placeBlock 放门（meta=玩家侧 1，上半 |8）✓；墙火把真实放置（西/东面点击 meta 1/2）✓；地面火把（顶面点击 meta 0）✓；床真实放置（feet meta2 + head meta6，头在玩家远端）✓；cleanupDependents：墙火把随墙掉(30→0)、床头毁→feet 消(38→0)、门上毁→下消(78→0) ✓；旧床迁移 meta=7 ✓；生存 pop 循环防双掉（doorUpper 静默、bedFeetPopped 标记）✓
+  * hotbar 平面图标：门/床/火把 sprite 正确；无 console 错误；树叶绿色正常（v0.45.1 防线未回退）
+- lint 通过；VERSION + version.ts → 0.52.0 "Carpentry (2-Block Bed · Wall Torches · 3 Wood Doors · Cake Bite Fix)"
+
+Stage Summary:
+- v0.52.0 = 用户 4 项反馈全修复 + 世界 meta 基础设施落地（方向状态不再依赖 id 爆炸，后续 trapdoor/楼梯/活板门可复用）
+- 诚实台账：QA 世界 "QA Carpentry v52/v52b/Final" 因 DB readonly 窗口未持久化（throwaway 世界，不影响用户存档）；用户全部既有世界未触碰；llvmpipe/SwiftShader 卡死 2 次均为环境问题
+- 已知边界：爆炸不会联动清理门/床另一半与墙火把（与既有 torch/花行为一致，低危）；关门无平滑动画（体素瞬切，MC 基础版观感）
+- NEXT QUEUE：villager restock UI（profession 系统）、item frames/armor stands、药水抛掷(splash)/延长二级、trapdoor（meta 层已就绪）、cake 放置朝向对齐咬痕侧

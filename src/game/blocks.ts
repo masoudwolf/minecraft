@@ -17,9 +17,11 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand' | 'bed' | 'door';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
+  /** horizontal shrink 0..1 (cake bites shrink like MC; 1 = full cell) */
+  width?: number;
   /** inventory icon = flat texture tile instead of isometric cube */
   flatIcon?: boolean;
   /** block entity attached on placement (furnace/chest/brewing) */
@@ -114,7 +116,66 @@ export const BLOCK = {
   CAKE_S4: 75,
   CAKE_S5: 76,
   CAKE_S6: 77,
+  // ── phase 14: carpentry (doors + wood variants) ──
+  DOOR_OAK: 78,
+  DOOR_OAK_OPEN: 79,
+  DOOR_SPRUCE: 80,
+  DOOR_SPRUCE_OPEN: 81,
+  DOOR_JUNGLE: 82,
+  DOOR_JUNGLE_OPEN: 83,
+  SPRUCE_PLANKS: 84,
+  JUNGLE_PLANKS: 85,
 } as const;
+
+// ── orientation meta (v0.52 Carpentry) ────────────────────────────────────────
+// The world keeps ONE extra number per edited cell that needs facing/state
+// (world.meta map, persisted in save v4 as blockMeta). Encoding:
+//   TORCH: 0 = floor torch, 1..4 = wall-mounted (the wall is on the
+//          torch cell's +X / -X / +Z / -Z side)
+//   BED:   bits 0-1 = facing (direction feet→head), bit 2 (value 4) = head half
+//   DOOR:  bits 0-1 = facing (the edge the CLOSED panel hugs),
+//          bit 3 (value 8) = upper half (open state lives in the block id)
+export const TORCH_FLOOR = 0;
+export const TORCH_WALL_PX = 1;
+export const TORCH_WALL_NX = 2;
+export const TORCH_WALL_PZ = 3;
+export const TORCH_WALL_NZ = 4;
+/** facing index → unit direction (0=+X, 1=-X, 2=+Z, 3=-Z) */
+const FACING_DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+export function facingDir(f: number): [number, number] {
+  return FACING_DIRS[f & 3] ?? FACING_DIRS[0];
+}
+/** bed meta: is this cell the head (pillow) half? */
+export function bedHead(meta: number): boolean {
+  return (meta & 4) !== 0;
+}
+/** door meta: is this cell the upper half? */
+export function doorUpper(meta: number): boolean {
+  return (meta & 8) !== 0;
+}
+export function isDoorId(id: number): boolean {
+  return id === BLOCK.DOOR_OAK || id === BLOCK.DOOR_OAK_OPEN || id === BLOCK.DOOR_SPRUCE || id === BLOCK.DOOR_SPRUCE_OPEN || id === BLOCK.DOOR_JUNGLE || id === BLOCK.DOOR_JUNGLE_OPEN;
+}
+export function isDoorOpenId(id: number): boolean {
+  return id === BLOCK.DOOR_OAK_OPEN || id === BLOCK.DOOR_SPRUCE_OPEN || id === BLOCK.DOOR_JUNGLE_OPEN;
+}
+/** the placeable (closed) item id for any door block id */
+export function doorClosedId(id: number): number {
+  if (id === BLOCK.DOOR_OAK || id === BLOCK.DOOR_OAK_OPEN) return BLOCK.DOOR_OAK;
+  if (id === BLOCK.DOOR_SPRUCE || id === BLOCK.DOOR_SPRUCE_OPEN) return BLOCK.DOOR_SPRUCE;
+  return BLOCK.DOOR_JUNGLE;
+}
+/** open-state block id for a closed door id */
+export function doorOpenIdOf(closedId: number): number {
+  if (closedId === BLOCK.DOOR_OAK) return BLOCK.DOOR_OAK_OPEN;
+  if (closedId === BLOCK.DOOR_SPRUCE) return BLOCK.DOOR_SPRUCE_OPEN;
+  return BLOCK.DOOR_JUNGLE_OPEN;
+}
+/** which cell edge an OPEN door panel hugs (90° hinge rotation of the closed edge) */
+export function doorOpenFacing(closedFacing: number): number {
+  // 0(+X)→2(+Z), 2(+Z)→1(-X), 1(-X)→3(-Z), 3(-Z)→0(+X)
+  return [2, 3, 1, 0][closedFacing & 3] ?? 2;
+}
 
 /** is this id any cake stage (0..6 bites eaten)? */
 export function isCake(id: number): boolean {
@@ -183,7 +244,12 @@ export const TILE = {
   lapis_ore: 75, enchanting_top: 76, enchanting_side: 77,
   brew_rod: 78, brew_base: 79,
   cake_top: 80, cake_side: 81, cake_inner: 82, cake_bottom: 83,
-  cake_b1: 84, cake_b2: 85, cake_b3: 86, cake_b4: 87, cake_b5: 88,
+  // ── phase 14: carpentry (bed halves + doors + wood planks) ──
+  bed_blanket: 89, bed_pillow: 90,
+  door_oak_top: 91, door_oak_bottom: 92,
+  door_spruce_top: 93, door_spruce_bottom: 94,
+  door_jungle_top: 95, door_jungle_bottom: 96,
+  spruce_planks: 97, jungle_planks: 98,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -236,7 +302,22 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.TALL_GRASS]: { id: BLOCK.TALL_GRASS, name: 'Grass', tiles: TILE.tall_grass, solid: false, opaque: false, cutout: true, model: 'cross', flatIcon: true, needsGround: true, hardness: 0.05, drop: null, sound: 'grass' },
   [BLOCK.CACTUS]: { id: BLOCK.CACTUS, name: 'Cactus', tiles: t(TILE.cactus_side, TILE.cactus_side, TILE.cactus_top, TILE.cactus_top, TILE.cactus_side, TILE.cactus_side), solid: true, opaque: true, hardness: 0.6, sound: 'wool' },
   [BLOCK.WOOL]: { id: BLOCK.WOOL, name: 'Wool', tiles: TILE.wool, solid: true, opaque: true, hardness: 0.8, sound: 'wool' },
-  [BLOCK.BED]: { id: BLOCK.BED, name: 'Bed', tiles: t(TILE.bed_side, TILE.bed_side, TILE.bed_top, TILE.planks, TILE.bed_side, TILE.bed_side), solid: true, opaque: false, height: 0.5625, flatIcon: true, needsGround: true, hardness: 0.4, sound: 'wood' },
+  // v0.52: 2-block MC bed — feet half (head half = same id + head meta bit).
+  // Top face uses the blanket tile; the pillow is real geometry pushed by the
+  // mesher on head cells (raised 2/16 above the mattress, positioned by facing).
+  [BLOCK.BED]: { id: BLOCK.BED, name: 'Bed', tiles: t(TILE.bed_side, TILE.bed_side, TILE.bed_blanket, TILE.planks, TILE.bed_side, TILE.bed_side), solid: true, opaque: false, height: 0.5625, model: 'bed', flatIcon: true, needsGround: true, hardness: 0.4, sound: 'wood' },
+
+  // ── phase 14: carpentry — doors (thin 3/16 panel, 2 cells tall) + planks ──
+  // Closed doors are solid; open doors are walk-through (open state = block id,
+  // facing/upper-half live in the world meta map). Windows are cutout alpha.
+  [BLOCK.DOOR_OAK]: { id: BLOCK.DOOR_OAK, name: 'Oak Door', tiles: t(TILE.door_oak_top, TILE.door_oak_top, TILE.door_oak_top, TILE.door_oak_bottom, TILE.door_oak_top, TILE.door_oak_top), solid: true, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.DOOR_OAK_OPEN]: { id: BLOCK.DOOR_OAK_OPEN, name: 'Oak Door', tiles: t(TILE.door_oak_top, TILE.door_oak_top, TILE.door_oak_top, TILE.door_oak_bottom, TILE.door_oak_top, TILE.door_oak_top), solid: false, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', drop: BLOCK.DOOR_OAK, sound: 'wood' },
+  [BLOCK.DOOR_SPRUCE]: { id: BLOCK.DOOR_SPRUCE, name: 'Spruce Door', tiles: t(TILE.door_spruce_top, TILE.door_spruce_top, TILE.door_spruce_top, TILE.door_spruce_bottom, TILE.door_spruce_top, TILE.door_spruce_top), solid: true, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.DOOR_SPRUCE_OPEN]: { id: BLOCK.DOOR_SPRUCE_OPEN, name: 'Spruce Door', tiles: t(TILE.door_spruce_top, TILE.door_spruce_top, TILE.door_spruce_top, TILE.door_spruce_bottom, TILE.door_spruce_top, TILE.door_spruce_top), solid: false, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', drop: BLOCK.DOOR_SPRUCE, sound: 'wood' },
+  [BLOCK.DOOR_JUNGLE]: { id: BLOCK.DOOR_JUNGLE, name: 'Jungle Door', tiles: t(TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_bottom, TILE.door_jungle_top, TILE.door_jungle_top), solid: true, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.DOOR_JUNGLE_OPEN]: { id: BLOCK.DOOR_JUNGLE_OPEN, name: 'Jungle Door', tiles: t(TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_top, TILE.door_jungle_bottom, TILE.door_jungle_top, TILE.door_jungle_top), solid: false, opaque: false, cutout: true, model: 'door', flatIcon: true, needsGround: true, hardness: 3, tool: 'axe', drop: BLOCK.DOOR_JUNGLE, sound: 'wood' },
+  [BLOCK.SPRUCE_PLANKS]: { id: BLOCK.SPRUCE_PLANKS, name: 'Spruce Planks', tiles: TILE.spruce_planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
+  [BLOCK.JUNGLE_PLANKS]: { id: BLOCK.JUNGLE_PLANKS, name: 'Jungle Planks', tiles: TILE.jungle_planks, solid: true, opaque: true, hardness: 1.2, tool: 'axe', sound: 'wood' },
 
   // ── phase 3b ──
   ...flowDefs(),
@@ -275,13 +356,18 @@ export const BLOCKS: Record<number, BlockDef> = {
 
   // ── phase 13: brewing + cake ──
   [BLOCK.BREWING_STAND]: { id: BLOCK.BREWING_STAND, name: 'Brewing Stand', tiles: t(TILE.brew_rod, TILE.brew_rod, TILE.brew_base, TILE.brew_base, TILE.brew_rod, TILE.brew_rod), solid: true, opaque: false, cutout: true, model: 'stand', height: 0.875, container: 'brewing', flatIcon: true, needsGround: true, hardness: 0.6, tool: 'pickaxe', sound: 'stone' },
-  [BLOCK.CAKE]: { id: BLOCK.CAKE, name: 'Cake', tiles: t(TILE.cake_side, TILE.cake_side, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, flatIcon: true, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S1]: { id: BLOCK.CAKE_S1, name: 'Cake', tiles: t(TILE.cake_b1, TILE.cake_b1, TILE.cake_top, TILE.cake_bottom, TILE.cake_b1, TILE.cake_b1), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S2]: { id: BLOCK.CAKE_S2, name: 'Cake', tiles: t(TILE.cake_b2, TILE.cake_b2, TILE.cake_top, TILE.cake_bottom, TILE.cake_b2, TILE.cake_b2), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S3]: { id: BLOCK.CAKE_S3, name: 'Cake', tiles: t(TILE.cake_b3, TILE.cake_b3, TILE.cake_top, TILE.cake_bottom, TILE.cake_b3, TILE.cake_b3), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S4]: { id: BLOCK.CAKE_S4, name: 'Cake', tiles: t(TILE.cake_b4, TILE.cake_b4, TILE.cake_top, TILE.cake_bottom, TILE.cake_b4, TILE.cake_b4), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S5]: { id: BLOCK.CAKE_S5, name: 'Cake', tiles: t(TILE.cake_b5, TILE.cake_b5, TILE.cake_top, TILE.cake_bottom, TILE.cake_b5, TILE.cake_b5), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
-  [BLOCK.CAKE_S6]: { id: BLOCK.CAKE_S6, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_inner, TILE.cake_inner), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  // v0.52 cake fix: bite stages no longer paint BLACK notches into the
+  // texture (that read as "part of the cake turned black"). MC-faithful
+  // instead: every stage shares [inner | inner | top | bottom | side | side]
+  // and the cake physically SHRINKS in width by 2/16 per slice (def.width),
+  // exactly like Minecraft's cake model. 14/16 whole → 2/16 last slice.
+  [BLOCK.CAKE]: { id: BLOCK.CAKE, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.875, flatIcon: true, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S1]: { id: BLOCK.CAKE_S1, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.75, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S2]: { id: BLOCK.CAKE_S2, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.625, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S3]: { id: BLOCK.CAKE_S3, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.5, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S4]: { id: BLOCK.CAKE_S4, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S5]: { id: BLOCK.CAKE_S5, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.25, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S6]: { id: BLOCK.CAKE_S6, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, width: 0.125, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
 };
 
 /** flowing water defs share appearance with source water */

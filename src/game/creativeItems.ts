@@ -1,5 +1,5 @@
 // ─── Creative inventory palette: every obtainable block + item ───────────────
-import { BLOCK, getBlockDef } from './blocks';
+import { BLOCK, getBlockDef, isDoorOpenId } from './blocks';
 import { ITEMS, ITEM, isItemId, getItemDef } from './items';
 
 /** block ids offered in the creative palette (world-placeable, in registry order) */
@@ -10,6 +10,9 @@ function blockPalette(): number[] {
     if (id === BLOCK.AIR) continue;
     // skip internal flowing-water ids (creative gets the source block)
     if (id >= BLOCK.WATER_FLOW1 && id <= BLOCK.WATER_FLOW7) continue;
+    // skip open door states (the closed door is the placeable item; the open
+    // state is reached by right-clicking, like MC)
+    if (isDoorOpenId(id)) continue;
     if (!getBlockDef(id)) continue;
     ids.push(id);
   }
