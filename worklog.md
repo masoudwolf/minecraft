@@ -1345,3 +1345,28 @@ Stage Summary:
 - 新 QA 钩子：window.__gfxDebug.shadowPasses / reflectionRenders（性能验证可复测）
 - 遗留：用户装 token 时若再失效，脚本现在会自动刷新 remote URL；cmuosoweq 测试世界存档被 QA 污染（position/time）——低危，等用户反馈决定是否处理
 - NEXT QUEUE：用户对 haze 默认 0.75 的反馈（可调默认值）；graphics-research.md 行动清单继续（水下雾 ray-march、月光相位、火把反弹、接触硬化 PCF、天空 SH）；旧遗留（创造连挖、mob 阳光阴影复查、云速、brewing 等）
+
+---
+Task ID: 52
+Agent: Z.ai Code (main)
+Task: 用户要求"全面审查游戏图形，找出可改进的弱点并修复"（v0.50.0 Contour — Graphics Audit）
+
+Work Log:
+- restore 脚本确认 origin/main = e8dba2d (v0.49.0)，无回退
+- 【全面审计】逐行读完全部 9 个图形模块（atmosphere/cloudsVolumetric/glsl/grass/index/postfx/settings/shadowState/waterGfx，~2700 行）+ sky.ts + engine.ts 灯光同步 + world.ts 体素 shader 光照段，对照 agent-ctx/graphics-research.md 的 Photon/BSL/SEUS 源码结论逐项打分
+- 【弱点矩阵】已达标（不再动）：散射天空/体积云/VLS/bloom/ACES/Purkinje/云影/焦散/Beer-Lambert 水体/PCF+立方体阴影/摇曳植被/自动曝光纪律/haze 主控。发现 8 个真实弱点（W1 实体灯不随时段变色/转向，W2 无逐面天空环境光（contour），W3 无单弹跳 GI，W4 每帧堆分配，W5 无月相，W6 无蓝调时刻增益，W7 无夜 grain，W15 水下雾昼夜恒定亮蓝）。故意跳过（记录于 worklog）：水下雾 ray-march、接触硬化 PCF、SSAO、SSR——成本/风险对 llvmpipe 不划算
+- 【W2+W3+W6】voxel+grass shader：ambient 项乘以逐面天空色（up→天顶/墙→地平线，亮度归一化只变色相），新增 one-bounce 项 0.055·(1−sf)·sky⁴·sunLevel（影内地面不死黑、室内 sky⁴ 自然消亡），蓝调时刻 uAmbBoost = 1+0.35·sunset+1.1·blueHour（Photon exp(-190(sh+0.096)²) 曲线，clamp 2.2）——sky.getSkyColor()/getHorizonColor() 新 getter 每帧喂入，风暴灰/闪电白自动跟随
+- 【W5 月相】sky.ts：totalDays（会话内累加，存档只存 time-of-day 故新会话从满月开始）+ moonPhase/moonIllum（8 天周期，phase 0=满月）；atmosphere.ts 月盘加 terminator 扫掠（切平面 smoothstep，满月保持 1.6 HDR，新月=暗盘+弱辉光）；夜 sunLevel 地板 0.09→0.09·(0.35+0.65·illum)（新月 0.0315=正午 3.5%，落入恐怖游戏 1-6% 区间；月光束/水面反光随 lastSunColor 自动变暗——新月夜无月光轴=正确物理）。QA 中抓到初版公式反相 bug（phase 0 算出 illum 0）已修
+- 【W1 实体灯同步】engine.applySkyFog：sunLight.color=gfx.lastSunColor（日落暖/夜 #BFD4FF 蓝），HemisphereLight sky/groundColor 按 sun 色亮度 lerp 到夜蓝 tint，方向改用 gfx.lastLightDir（=夜晚真月光方向；旧代码 Math.max(0.2,sin) 强制"从上照"）——mobs/掉落物/手持物终于与地形同时段同色调
+- 【W15 水下雾】applySkyFog underwater 分支乘 wl=0.25+0.75·sunLevel——午夜水下 (0.029,0.076,0.175) 暗蓝，正午不变
+- 【W7 grain】Grade shader 加 hash grain（uGrain=0.010+0.022·purkNight·haze），只加权暗部——平滑夜渐变的 banding 遮罩+恐怖感，白天权重→0 不可见
+- 【W4 分配清零】sky.ts update 每帧 new Vector3 → 预分配字段；rebuildClouds Matrix4 → 字段；index.ts renderReflection 每帧 4-5 个分配（getWorldDirection/clone/Vector4/plane point）全部预分配；runShadowPass Vector2 → tmpTexel
+- 【QA】agent-browser（cmuonnnhs 世界）：25→27 shader program 0 diagnostics；正午截图=与 v0.49 一致（无回归，树冠绿/水/草正常）；日落 t=360 截图=粉紫地平线辉光（blue-hour 增益生效）+ 星现 + ambBoost 1.63 实测 + ambZenith 活体天空色流入 shader；月相三连拍：满月（盘亮+辉光+sunLevel 0.09）/半月（terminator 清晰可见+0.0607）/新月（暗盘幽灵+星空扛起夜景+0.0315）；午夜水下实测 fog=(0.027,0.072,0.164)=旧常量×0.3175 ✓；grain 夜 0.0265/昼 0.010/Purkinje 昼 0 ✓；实体灯夜值：sunLight 色 (0.22,0.25,0.30) 蓝月+方向从天顶（旧代码 y=10 从"上"照）✓；世界状态还原 (239.3,42.0,-108.5, yaw -0.75, pitch -0.10, t=248.9, totalDays=0) + autosave PUT 200
+- 【诚实台账：低 fps 事件与 A/B 排查】QA 中段 fps 掉到 2-4，按隔离法排查：禁 grade/godrays/bloom/clouds→2fps，藏地形+草+关阴影→2fps，绕过 composer 直渲→2fps，setTimeout 也饿死（主线程被饿）→ top 发现 chrome GPU 进程 150% CPU；用 git stash（临时，已 pop 验证恢复）A/B 实测 v0.49 基线**同样 2fps**→ 结论：今天沙箱 Chrome 落在 SwiftShader 后端（--use-angle=swiftshader-webgl，非往日 llvmpipe）+ 宿主机 14.3% CPU steal，属环境退化非代码回归。v0.50 的 W4 分配优化在此时段无法量化 fps，但为客观代码级改进（正午场景每帧 -5 个堆分配+反射路径 -6 个）；所有视觉验证在 2fps 下仍全部通过（渲染正确性与环境速度无关）
+- lint 通过；VERSION + version.ts → 0.50.0 "Contour (Graphics Audit: Per-Face Ambient · Moon Phases · Entity Light Sync)"；commit 8257d6c 已推 origin/main（e8dba2d..8257d6c）
+
+Stage Summary:
+- v0.50.0 = 首轮"全面图形审计"交付：8 个弱点修 7 个（W15 水下雾+其余全落地），1 个量化受阻但代码级完成（W4）；对照 research 行动清单，A 组 10 项全部完成，B 组完成 VLS/云影/月相，剩余（水下雾 ray-march/火把反弹强化/接触硬化 PCF/SSAO/SSR）均有记录的跳过理由
+- 月相为首个"游戏玩法级"图形特性：满月夜=熟悉亮度，新月夜=3.5% 恐怖里程碑，8 天周期自然推进
+- 环境 warns：今日沙箱 SwiftShader 极慢（两版本均 2fps），下轮 QA 前建议先测基线 fps 再判断回归；llvmpipe runbook（杀 chrome 重启）对 SwiftShader 同样适用但恢复后仍慢
+- NEXT QUEUE：用户实机（真 GPU）反馈 v0.50 观感（尤其 contour 日落西墙暖色/新月夜难度/grain 是否可感）；research B 组剩余项（水下雾 ray-march、接触硬化 PCF）；旧遗留（创造连挖、云速、brewing/potions、item frames、cake）
