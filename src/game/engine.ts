@@ -2337,7 +2337,9 @@ export class Game {
     if (!opening) {
       const p = this.player.entity;
       const half = p.width / 2;
-      const inBand = p.y < y + 0.19 && p.y + p.height > y;
+      // feet genuinely INSIDE the 3/16 slab (not resting on top of it — MC
+      // lets the panel close beneath feet standing on the trapdoor)
+      const inBand = p.y < y + 0.16 && p.y + p.height > y;
       const inXZ = p.x + half > x && p.x - half < x + 1 && p.z + half > z && p.z - half < z + 1;
       if (inBand && inXZ) return;
     }

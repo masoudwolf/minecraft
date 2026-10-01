@@ -28,9 +28,10 @@ export interface BlockDef {
   container?: 'furnace' | 'chest' | 'brewing';
   /** needs solid ground below to be placed (torch, flowers) */
   needsGround?: boolean;
-  /** extra collision height ABOVE the cell (fences/gates = 0.5 → MC 1.5-tall:
-   *  entities standing in the cell above are blocked up to y+0.5, so fences
-   *  can't be jumped or walked over — v0.53) */
+  /** extra collision height ABOVE the cell (fences/gates = 0.6 → effectively
+   *  1.6-tall: entities in the cell above are blocked up to y+0.6, so fences
+   *  can't be walked over — and with our 1.32 jump apex even hopping from a
+   *  trapdoor (+0.19) stays blocked, matching MC's 1.5 fence vs 1.25 jump — v0.53) */
   tall?: number;
 }
 
@@ -413,8 +414,9 @@ export const BLOCKS: Record<number, BlockDef> = {
   // Trapdoors: closed = solid 3/16 bottom slab (walkable), open = walk-through
   // panel hugging the attach edge (open state = block id, attach edge = meta).
   // Ladders: non-solid wall decoration with climb physics (player.ts).
-  // Fences: 1.5-tall via `tall: 0.5` — the cell above is blocked for the lower
-  // half, so mobs and players can't jump or walk over (MC pen behavior).
+  // Fences: effectively 1.6-tall via `tall: 0.6` — the cell above is blocked
+  // for its lower part, so mobs and players can't jump or walk over (MC pen
+  // behavior; 0.6 keeps trapdoor-top bunny-hops out too).
   [BLOCK.TRAPDOOR_OAK]: { id: BLOCK.TRAPDOOR_OAK, name: 'Oak Trapdoor', tiles: TILE.trapdoor_oak, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.TRAPDOOR_OAK_OPEN]: { id: BLOCK.TRAPDOOR_OAK_OPEN, name: 'Oak Trapdoor', tiles: TILE.trapdoor_oak, solid: false, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.TRAPDOOR_OAK, sound: 'wood' },
   [BLOCK.TRAPDOOR_SPRUCE]: { id: BLOCK.TRAPDOOR_SPRUCE, name: 'Spruce Trapdoor', tiles: TILE.trapdoor_spruce, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
@@ -422,14 +424,14 @@ export const BLOCKS: Record<number, BlockDef> = {
   [BLOCK.TRAPDOOR_JUNGLE]: { id: BLOCK.TRAPDOOR_JUNGLE, name: 'Jungle Trapdoor', tiles: TILE.trapdoor_jungle, solid: true, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, height: 0.1875, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.TRAPDOOR_JUNGLE_OPEN]: { id: BLOCK.TRAPDOOR_JUNGLE_OPEN, name: 'Jungle Trapdoor', tiles: TILE.trapdoor_jungle, solid: false, opaque: false, cutout: true, model: 'trapdoor', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.TRAPDOOR_JUNGLE, sound: 'wood' },
   [BLOCK.LADDER]: { id: BLOCK.LADDER, name: 'Ladder', tiles: TILE.ladder, solid: false, opaque: false, cutout: true, model: 'ladder', flatIcon: true, hardness: 0.4, tool: 'axe', sound: 'wood' },
-  [BLOCK.FENCE_OAK]: { id: BLOCK.FENCE_OAK, name: 'Oak Fence', tiles: TILE.fence_icon_oak, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
-  [BLOCK.FENCE_SPRUCE]: { id: BLOCK.FENCE_SPRUCE, name: 'Spruce Fence', tiles: TILE.fence_icon_spruce, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
-  [BLOCK.FENCE_JUNGLE]: { id: BLOCK.FENCE_JUNGLE, name: 'Jungle Fence', tiles: TILE.fence_icon_jungle, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.5, hardness: 2, tool: 'axe', sound: 'wood' },
-  [BLOCK.FENCE_GATE_OAK]: { id: BLOCK.FENCE_GATE_OAK, name: 'Oak Fence Gate', tiles: TILE.gate_oak, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_OAK]: { id: BLOCK.FENCE_OAK, name: 'Oak Fence', tiles: TILE.fence_icon_oak, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.6, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_SPRUCE]: { id: BLOCK.FENCE_SPRUCE, name: 'Spruce Fence', tiles: TILE.fence_icon_spruce, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.6, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_JUNGLE]: { id: BLOCK.FENCE_JUNGLE, name: 'Jungle Fence', tiles: TILE.fence_icon_jungle, solid: true, opaque: false, cutout: true, model: 'fence', flatIcon: true, tall: 0.6, hardness: 2, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_OAK]: { id: BLOCK.FENCE_GATE_OAK, name: 'Oak Fence Gate', tiles: TILE.gate_oak, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.6, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.FENCE_GATE_OAK_OPEN]: { id: BLOCK.FENCE_GATE_OAK_OPEN, name: 'Oak Fence Gate', tiles: TILE.gate_oak, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_OAK, sound: 'wood' },
-  [BLOCK.FENCE_GATE_SPRUCE]: { id: BLOCK.FENCE_GATE_SPRUCE, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_SPRUCE]: { id: BLOCK.FENCE_GATE_SPRUCE, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.6, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.FENCE_GATE_SPRUCE_OPEN]: { id: BLOCK.FENCE_GATE_SPRUCE_OPEN, name: 'Spruce Fence Gate', tiles: TILE.gate_spruce, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_SPRUCE, sound: 'wood' },
-  [BLOCK.FENCE_GATE_JUNGLE]: { id: BLOCK.FENCE_GATE_JUNGLE, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.5, hardness: 3, tool: 'axe', sound: 'wood' },
+  [BLOCK.FENCE_GATE_JUNGLE]: { id: BLOCK.FENCE_GATE_JUNGLE, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: true, opaque: false, cutout: true, model: 'gate', flatIcon: true, tall: 0.6, hardness: 3, tool: 'axe', sound: 'wood' },
   [BLOCK.FENCE_GATE_JUNGLE_OPEN]: { id: BLOCK.FENCE_GATE_JUNGLE_OPEN, name: 'Jungle Fence Gate', tiles: TILE.gate_jungle, solid: false, opaque: false, cutout: true, model: 'gate', flatIcon: true, hardness: 3, tool: 'axe', drop: BLOCK.FENCE_GATE_JUNGLE, sound: 'wood' },
 
   // ── phase 3b ──
