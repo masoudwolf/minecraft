@@ -613,6 +613,8 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
     uniform vec2 uShadowTexel;
     uniform float uShadowStrength;
     uniform float uShadowAmbient;
+    // phase 13 — Night Vision potion: lifts the light floor (caves/night get readable)
+    uniform float uNV;
     // v0.50 — contour ambient (cheap sky-SH): per-face sky tint + blue-hour boost
     uniform vec3 uAmbZenith;
     uniform vec3 uAmbHorizon;
@@ -697,6 +699,9 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
       torchL = bl * bl * bl * bl * 0.72 + bl * bl * 0.22 + bl * 0.06;
       float light = max(torchL, sunL);
       light = clamp(light, 0.045, 1.0);
+      // Night Vision potion (phase 13): raise the light floor toward full-bright.
+      // Blocks stay dark-textured but readable — MC's night vision feel.
+      if (uNV > 0.001) light = max(light, mix(0.045, 0.62, uNV));
       float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
       vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
       // ── v0.50 contour ambient (Complementary "contour shading" / sky-SH
@@ -766,6 +771,7 @@ export function createVoxelMaterials(): { opaque: THREE.ShaderMaterial; cutout: 
         uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
         uShadowStrength: { value: 0 },
         uShadowAmbient: { value: opts.shadowAmbient }, // sky-dome ambient strength (NOT shadow-gated — see v0.47 ambient split)
+        uNV: { value: 0 },
         uAmbZenith: { value: new THREE.Color(1, 1, 1) },
         uAmbHorizon: { value: new THREE.Color(1, 1, 1) },
         uAmbBoost: { value: 1 },

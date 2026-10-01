@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { World } from './world/world';
 import { Player, type HotbarSlot, PLAYER_AIR_MAX } from './player';
-import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling } from './blocks';
+import { BLOCK, getBlockDef, isLiquid, containerOf, isWaterId, waterLevel, isWheatCrop, nextWheatStage, isSapling, isCake, nextCakeStage } from './blocks';
 import { chunkKey, CHUNK_SIZE, WORLD_HEIGHT, DAY_LENGTH } from './constants';
 import { raycast, aabbIntersectsBlock, moveEntity, type RayHit } from './physics';
 import { DropManager, type ItemStack, createBlockGeometry } from './entities/drops';
@@ -12,12 +12,13 @@ import { BoatManager, type Boat } from './entities/boats';
 import { createPlayerModel, animatePlayerModel, setPlayerModelArmor, type PlayerModelParts } from './entities/playerModel';
 import { XPOrbManager } from './entities/xp';
 import { AchievementManager, type AchievementDef } from './achievements';
-import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, ITEM } from './items';
+import { getItemDef, isItemId, getToolDef, maxStack, breakInfo, isToolItem, isArmorItem, armorSlotIndex, getBowDef, isBowItem, isRodItem, getRodDef, isShearsItem, getShearsDef, isPotionItem, getPotionDef, ITEM } from './items';
+import { EFFECTS } from './effects';
 import { matchRecipe, freshDur, RECIPES, needsTable } from './crafting';
 import { villagerTrades, tradeEpoch, villagerTradeSeed, type TradeOffer } from './trades';
 import { addToSlots, isEmptySlot, emptySlot, cloneSlots } from './inventory';
 import { enchantOptions, isEnchantable, unbreakingKeep, efficiencyFactor, sharpnessBonus, powerBonus, hasInfinity, lureFactor, luckBonus, fortuneChance, type EnchantOption } from './enchanting';
-import { BlockEntityManager } from './blockEntities';
+import { BlockEntityManager, BREW_TIME } from './blockEntities';
 import { ParticleSystem } from './particles';
 import { SkySystem, getTimeLabel } from './sky';
 import { WeatherSystem } from './weather';
@@ -37,7 +38,7 @@ const SAVE_KEY = 'voxelcraft.save'; // legacy localStorage slot (migration sourc
 interface SaveData {
   seed: number;
   time: number;
-  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number };
+  player: { x: number; y: number; z: number; yaw: number; pitch: number; health: number; hotbar: HotbarSlot[]; main?: HotbarSlot[]; armor?: (HotbarSlot | null)[]; selected: number; level?: number; xp?: number; effects?: { k: string; t: number }[] };
   edits: Record<string, Record<number, number>>;
   blockEntities?: Record<string, unknown>;
   spawn?: { x: number; y: number; z: number };
@@ -437,6 +438,10 @@ export class Game {
     if (save?.mobs && Array.isArray(save.mobs)) this.mobs.restore(save.mobs);
     this.xpOrbs = new XPOrbManager(this.scene, this.world);
     this.blockEnts = new BlockEntityManager(this.world);
+    this.blockEnts.onBrewed = () => {
+      this.achievements.unlock('localBrewery');
+      this.showToast('Brew complete!');
+    };
     this.player = new Player(this.camera);
     this.player.gameMode = save?.gameMode ?? gameMode;
     this.player.flying = save?.flying ?? false;
@@ -472,6 +477,7 @@ export class Game {
       this.player.fallStartY = save.player.y;
       this.player.level = save.player.level ?? 0;
       this.player.xp = save.player.xp ?? 0;
+      if (save.player.effects) this.player.effects = save.player.effects.filter((e) => e && typeof e.k === 'string' && e.t > 0);
       if (save.achievements) this.achievements.restore(save.achievements);
     } else {
       this.player.entity.x = sx + 0.5;
@@ -561,6 +567,7 @@ export class Game {
         selected: this.player.selected,
         level: this.player.level,
         xp: this.player.xp,
+        effects: this.player.effects.length > 0 ? this.player.effects.map((e) => ({ k: e.k, t: e.t })) : undefined,
       },
       edits,
       blockEntities: this.blockEnts.serialize(),
@@ -820,6 +827,11 @@ export class Game {
     // fishing rod: cast / reel / catch
     if (held && held.count > 0 && isRodItem(held.blockId)) {
       this.rodInteract();
+      return;
+    }
+    // potions: drink (MC — the empty bottle comes back)
+    if (held && held.count > 0 && isPotionItem(held.blockId)) {
+      this.drinkPotion(held.blockId);
       return;
     }
     // buckets: scoop water / milk a cow / pour water / drink milk
@@ -1325,16 +1337,32 @@ export class Game {
   // ── buckets: scoop / milk / pour / drink ─────────────────────────────────────
   /** RMB with any bucket. Returns true when the click was consumed. */
   private bucketInteract(id: number): boolean {
-    // milk: drink it (clears poison like MC); the empty bucket comes back
+    // glass bottle: fill from a water source (MC — the water stays put)
+    if (id === ITEM.GLASS_BOTTLE) {
+      const w = this.waterTarget(4.2);
+      if (w) {
+        this.replaceHeld(ITEM.WATER_BOTTLE);
+        audio.bucketFill();
+        this.particles.burstLand(w.x + 0.5, w.y + 0.9, w.z + 0.5, [0.55, 0.7, 0.95], 4);
+        this.placeCooldown = 0.3;
+        this.startSwing();
+        this.syncInventory();
+        return true;
+      }
+      return false;
+    }
+    // milk: drink it (clears ALL potion effects + poison, like MC); the empty bucket comes back
     if (id === ITEM.MILK_BUCKET) {
       this.player.poisonT = 0;
       this.player.poisonTickT = 0;
+      this.player.effects = []; // milk wipes every active potion effect (MC)
       audio.milkDrink();
       this.replaceHeld(ITEM.BUCKET);
-      this.showToast('Poison cleared');
+      this.showToast('Effects cleared');
       this.placeCooldown = 0.35;
       this.startSwing();
       this.syncInventory();
+      this.syncHUD();
       return true;
     }
     // milk a cow in reach
@@ -1409,6 +1437,49 @@ export class Game {
     }
     this.syncHUD();
     this.updateHandMesh();
+  }
+
+  // ── potions + cake (phase 13) ────────────────────────────────────────────────
+  /** drink the held potion: apply its effect, return an empty bottle (MC) */
+  private drinkPotion(id: number): void {
+    if (this.eatCooldown > 0) return;
+    const def = getPotionDef(id);
+    if (!def) return;
+    const p = this.player;
+    const effDef = EFFECTS[def.effect];
+    if (def.effect === 'healing') {
+      p.heal(6); // Instant Health (4 hearts)
+    } else if (def.effect === 'poison') {
+      p.poisonT = Math.max(p.poisonT, def.seconds);
+      p.poisonTickT = 0;
+    } else {
+      const cur = p.effects.find((e) => e.k === def.effect);
+      if (cur) cur.t = Math.max(cur.t, def.seconds);
+      else p.effects.push({ k: def.effect, t: def.seconds });
+    }
+    this.eatCooldown = 1.2;
+    audio.milkDrink();
+    this.showToast(effDef.label + ' · ' + effDef.fa);
+    this.replaceHeld(ITEM.GLASS_BOTTLE);
+    this.placeCooldown = 0.35;
+    this.startSwing();
+    this.syncHUD();
+    this.syncInventory();
+  }
+
+  /** RMB on a cake block: eat one slice (7 slices total, 2 hunger each — MC) */
+  private eatCakeSlice(x: number, y: number, z: number, id: number): void {
+    if (this.eatCooldown > 0) return;
+    if (!this.player.isCreative && this.player.hunger >= 19.6) return; // not hungry
+    this.eatCooldown = 1.0;
+    this.player.hunger = Math.min(20, this.player.hunger + 2);
+    audio.eat();
+    this.startSwing();
+    const next = nextCakeStage(id);
+    if (next === null) this.world.setBlock(x, y, z, BLOCK.AIR);
+    else this.world.setBlock(x, y, z, next);
+    this.achievements.unlock('theLie');
+    this.syncHUD();
   }
 
   /** first WATER SOURCE cell along the look ray; null when a solid block blocks the path first */
@@ -1700,8 +1771,8 @@ export class Game {
         this.startSwing();
         const kx = hit.mob.x - this.player.x;
         const kz = hit.mob.z - this.player.z;
-        // Sharpness: +1 dmg per level (sword/axe)
-        const melee = (heldTool ? heldTool.dmg : 2) + (heldTool ? sharpnessBonus(heldSlot?.ench) : 0);
+        // Sharpness: +1 dmg per level (sword/axe); Strength potion: ×1.5 (phase 13)
+        const melee = ((heldTool ? heldTool.dmg : 2) + (heldTool ? sharpnessBonus(heldSlot?.ench) : 0)) * this.player.strengthMultiplier;
         const killed = this.mobs.hurtMob(hit.mob, melee, kx, kz, this.mobCb ?? undefined);
         if (killed && hit.mob.def.hostile) this.achievements.unlock('monsterHunter');
         this.particles.hurt(hit.mob.x, hit.mob.y, hit.mob.z);
@@ -1756,7 +1827,9 @@ export class Game {
     // Efficiency: faster mining, but only when the held tool is the block's
     // matching class (MC behavior — a sword's Efficiency never digs faster)
     const effF = heldTool && heldSlot?.ench && heldTool.type === def.tool ? efficiencyFactor(heldSlot.ench) : 1;
-    const time = this.instantBreak ? 0.04 : bi.time * effF; // cheat: instant break
+    // Haste potion: −26% break time on everything (MC Haste I ≈ +30% speed)
+    const hasteF = this.player.effects.some((e) => e.k === 'haste') ? 1.35 : 1;
+    const time = this.instantBreak ? 0.04 : (bi.time * effF) / hasteF; // cheat: instant break
     const harvest = bi.harvest;
     if (!Number.isFinite(time)) { this.crackMesh.visible = false; return; }
     this.mineProgress += dt / time;
@@ -1856,6 +1929,7 @@ export class Game {
       if (targetId === BLOCK.ENCHANTING_TABLE) { this.openEnchant(); return; }
       const cont = containerOf(targetId);
       if (cont) { this.openContainer(cont, this.target.x, this.target.y, this.target.z); return; }
+      if (isCake(targetId)) { this.eatCakeSlice(this.target.x, this.target.y, this.target.z, targetId); return; }
       if (targetId === BLOCK.BED) { this.sleepInBed(this.target.x, this.target.y, this.target.z); return; }
       // ignite TNT with an empty hand or a non-placeable item (flint-and-steel style)
       if (targetId === BLOCK.TNT) {
@@ -2077,7 +2151,7 @@ export class Game {
   }
 
   /** right-click on chest / furnace */
-  private openContainer(kind: 'furnace' | 'chest', x: number, y: number, z: number): void {
+  private openContainer(kind: 'furnace' | 'chest' | 'brewing', x: number, y: number, z: number): void {
     const st = useGameStore.getState();
     if (st.screen !== 'playing' || st.inv.open) return;
     const be = this.blockEnts.getOrCreate(x, y, z);
@@ -2393,6 +2467,15 @@ export class Game {
         if (idx < 0 || idx >= be.slots.length) return;
         if (shift) this.shiftFromContainer(be.slots, idx);
         else this.clickSlot(be.slots, idx, button);
+      } else if (be.kind === 'brewing') {
+        // brewing: 0 = ingredient, 1 = fuel, 2..4 = bottle slots
+        const list = [be.ing, be.fuel, be.b[0], be.b[1], be.b[2]];
+        if (idx < 0 || idx >= 5) return;
+        if (shift) this.shiftFromContainer(list, idx);
+        else this.clickSlot(list, idx, button);
+        be.ing = list[0];
+        be.fuel = list[1];
+        be.b[0] = list[2]; be.b[1] = list[3]; be.b[2] = list[4];
       } else {
         // furnace: idx 0 = input, 1 = fuel (output handled above)
         const list = [be.input, be.fuel];
@@ -2559,6 +2642,21 @@ export class Game {
     this.craftOut = res
       ? { blockId: res.id, count: res.count, dur: freshDur(res.id) }
       : null;
+    this.craftOutBy = res?.by ?? null;
+  }
+
+  /** byproducts of the current craft output (cake → 3 empty buckets back) */
+  private craftOutBy: { id: number; count: number }[] | null = null;
+
+  /** grant a recipe's byproducts (cake returns the 3 empty milk buckets) */
+  private giveByproducts(by: { id: number; count: number }[] | null | undefined): void {
+    if (!by) return;
+    const p = this.player.entity;
+    for (const b of by) {
+      const left = this.addToInventory(b.id, b.count);
+      if (left > 0) this.drops.spawn(b.id, p.x, p.y + 1, p.z, left);
+    }
+    audio.pop();
   }
 
   private takeCraftOutput(shift: boolean): void {
@@ -2574,14 +2672,17 @@ export class Game {
     };
     if (!shift) {
       const out = this.craftOut;
+      const by = this.craftOutBy;
       if (!this.cursor) {
         this.cursor = { ...out };
         this.onCrafted(out.blockId);
         consume();
+        this.giveByproducts(by);
       } else if (this.cursor.blockId === out.blockId && !isToolItem(out.blockId) && this.cursor.count + out.count <= maxStack(out.blockId)) {
         this.cursor.count += out.count;
         this.onCrafted(out.blockId);
         consume();
+        this.giveByproducts(by);
       } else return;
     } else {
       let guard = 0;
@@ -2595,6 +2696,7 @@ export class Game {
           const p = this.player.entity;
           this.drops.spawn(res.id, p.x, p.y + 1, p.z, left);
         }
+        this.giveByproducts(res.by);
         consume();
         audio.pop();
       }
@@ -2610,6 +2712,8 @@ export class Game {
     if (id === ITEM.WOOD_PICKAXE) this.achievements.unlock('timeToMine');
     if (id === ITEM.STONE_PICKAXE) this.achievements.unlock('gettingUpgrade');
     if (id === ITEM.BREAD) this.achievements.unlock('bakeBread');
+    if (id === BLOCK.BREWING_STAND) this.achievements.unlock('localBrewery');
+    if (id === BLOCK.CAKE) this.achievements.unlock('theLie');
   }
 
   /** consume durability from held tool; breaks it at 0 (creative: no wear) */
@@ -2641,9 +2745,9 @@ export class Game {
     if (this.containerKey) {
       const [xs, ys, zs] = this.containerKey.split(',').map(Number);
       const be = this.blockEnts.get(+xs, +ys, +zs);
-      if (be) containerSlots = be.kind === 'chest' ? be.slots : [be.input, be.fuel, be.output];
+      if (be) containerSlots = be.kind === 'chest' ? be.slots : be.kind === 'brewing' ? [be.ing, be.fuel, ...be.b] : [be.input, be.fuel, be.output];
     }
-    const hash = JSON.stringify([this.player.hotbar, this.player.main, this.player.armor, grid, this.craftOut, this.cursor, containerSlots, this.furnaceRatios()]);
+    const hash = JSON.stringify([this.player.hotbar, this.player.main, this.player.armor, grid, this.craftOut, this.cursor, containerSlots, this.furnaceRatios(), this.brewingRatios()]);
     if (hash === this.lastInvHash && !force) return;
     this.lastInvHash = hash;
     st.setInv({
@@ -2655,6 +2759,7 @@ export class Game {
       cursor: this.cursor ? { ...this.cursor } : null,
       containerSlots: cloneSlots(containerSlots),
       furnace: this.furnaceRatios(),
+      brewing: this.brewingRatios(),
     });
   }
 
@@ -2666,6 +2771,17 @@ export class Game {
     return {
       burn: be.burnMax > 0 ? Math.max(0, Math.min(1, be.burnTime / be.burnMax)) : 0,
       cook: Math.max(0, Math.min(1, be.cookTime / 10)),
+    };
+  }
+
+  private brewingRatios(): { brew: number; fuel: number } | null {
+    if (!this.containerKey) return null;
+    const [xs, ys, zs] = this.containerKey.split(',').map(Number);
+    const be = this.blockEnts.get(+xs, +ys, +zs);
+    if (!be || be.kind !== 'brewing') return null;
+    return {
+      brew: Math.max(0, Math.min(1, be.cookT / BREW_TIME)),
+      fuel: Math.max(0, Math.min(1, be.fuelUses / 20)),
     };
   }
 
@@ -2916,6 +3032,37 @@ export class Game {
   private lastHudHealth = -1;
   private lastHudHunger = -1;
   private lastHotbarHash = '';
+  private lastHudEffects = '';
+  /** smoothed Night Vision shader strength (0..1) */
+  private nvF = 0;
+  /** Regeneration potion heal accumulator */
+  private regenTimer = 0;
+
+  /** potion status effect tick (phase 13): durations, per-frame modifiers */
+  private tickEffects(dt: number): void {
+    const p = this.player;
+    for (let i = p.effects.length - 1; i >= 0; i--) {
+      p.effects[i].t -= dt;
+      if (p.effects[i].t <= 0) p.effects.splice(i, 1);
+    }
+    p.jumpMultiplier = p.effects.some((e) => e.k === 'jump') ? 1.35 : 1;
+    p.breathing = p.effects.some((e) => e.k === 'water_breathing');
+    // Regeneration: +1 hp / 2s, independent of hunger (MC regen)
+    if (p.effects.some((e) => e.k === 'regen') && p.health < p.maxHealth && !p.dead) {
+      this.regenTimer += dt;
+      if (this.regenTimer >= 2) {
+        this.regenTimer = 0;
+        p.heal(1);
+      }
+    } else {
+      this.regenTimer = 0;
+    }
+    // night vision: smooth the shader uniform for a gentle ramp in/out
+    const nvTarget = p.effects.some((e) => e.k === 'night_vision') ? 1 : 0;
+    this.nvF += (nvTarget - this.nvF) * Math.min(1, dt * 3);
+    if (this.nvF < 0.004) this.nvF = 0;
+  }
+
   private syncHUD(force = false): void {
     const store = useGameStore.getState();
     const hp = Math.ceil(this.player.health);
@@ -2956,6 +3103,15 @@ export class Game {
       }
     } else if (store.hud.air !== 10) {
       store.setHud({ air: 10 });
+    }
+    // potion effect chips (whole-second hash → updates once per second)
+    const poisonActive = this.player.poisonT > 0;
+    const effHash = this.player.effects.map((e) => e.k + ':' + Math.ceil(e.t)).join(',') + (poisonActive ? '|poison:' + Math.ceil(this.player.poisonT) : '');
+    if (effHash !== this.lastHudEffects || force) {
+      this.lastHudEffects = effHash;
+      const effs = this.player.effects.map((e) => ({ k: e.k, seconds: Math.ceil(e.t) }));
+      if (poisonActive) effs.push({ k: 'poison', seconds: Math.ceil(this.player.poisonT) });
+      store.setHud({ effects: effs });
     }
   }
 
@@ -3154,7 +3310,8 @@ export class Game {
     }
 
     // camera
-    p.speedMultiplier = this.bowCharging ? 0.5 : 1;
+    // speed compose: bow draw slowdown × Speed potion (phase 13)
+    p.speedMultiplier = (this.bowCharging ? 0.5 : 1) * (p.effects.some((e) => e.k === 'speed') ? 1.25 : 1);
     // sprint FOV kick (MC-like): smoothly widen when sprinting
     const sprintingNow = p.sprinting && Math.hypot(p.entity.vx, p.entity.vz) > 3.2;
     this.sprintFov += ((sprintingNow ? 7 : 0) - this.sprintFov) * Math.min(1, dt * 9);
@@ -3229,6 +3386,9 @@ export class Game {
       if (p.poisonT <= 0) p.poisonTickT = 0;
     }
 
+    // potion status effects (phase 13): tick down, apply per-frame modifiers
+    this.tickEffects(dt);
+
     // interaction
     this.updateTarget();
     this.mineTick(dt);
@@ -3294,7 +3454,7 @@ export class Game {
     if (this.furnaceSyncTimer > 0.3) {
       this.furnaceSyncTimer = 0;
       const iv = useGameStore.getState().inv;
-      if (iv.open && iv.container === 'furnace') {
+      if (iv.open && (iv.container === 'furnace' || iv.container === 'brewing')) {
         this.lastInvHash = ''; // force push (progress ratios change continuously)
         this.syncInventory();
       }
@@ -3475,6 +3635,8 @@ export class Game {
       if (!m) continue;
       m.uniforms.uSunLevel.value = this.sky.sunLevel;
       m.uniforms.uTime.value = performance.now() / 1000;
+      // Night Vision potion: lift the light floor inside the voxel shader
+      if ('uNV' in m.uniforms) m.uniforms.uNV.value = this.nvF;
       if (underwater) {
         // v0.50: murk follows the daylight — midnight water used to swim in
         // the same bright blue fog as noon (graphics-audit finding). Noon is
@@ -3489,6 +3651,8 @@ export class Game {
         m.uniforms.uFogFar.value = fog.far;
       }
     }
+    // grass tufts share the Night Vision lift (separate material from the voxel one)
+    if (this.gfx && this.gfx.grass) this.gfx.grass.nvValue = this.nvF;
     // entity lights follow sun
     // v0.48: lower ambient/directional floors — scene-lit entities (mobs,
     // drops, boats) follow the darker night instead of the old "dim day".

@@ -1,5 +1,6 @@
 // ─── Non-block item registry (id >= 256): food, materials, tools ─────────────
 import type { BlockDef } from './blocks';
+import type { EffectKind } from './effects';
 
 export interface ToolDef {
   type: 'pickaxe' | 'axe' | 'shovel' | 'sword' | 'hoe';
@@ -28,6 +29,8 @@ export interface ItemDef {
   rod?: RodDef;
   /** shears stats */
   shears?: ShearsDef;
+  /** potion: applies this status effect when drunk (brewing system) */
+  potion?: { effect: EffectKind; seconds: number };
   /** draw 16x16 pixel-art icon; returns canvas */
   icon: (ctx: CanvasRenderingContext2D) => void;
 }
@@ -142,6 +145,19 @@ export const ITEM = {
   BUCKET: 341,
   WATER_BUCKET: 342,
   MILK_BUCKET: 343,
+  // ── phase 13: brewing ──
+  GLASS_BOTTLE: 344,
+  WATER_BOTTLE: 345,
+  SUGAR: 346,
+  POTION_SPEED: 347,
+  POTION_STRENGTH: 348,
+  POTION_REGEN: 349,
+  POTION_HASTE: 350,
+  POTION_NIGHT_VISION: 351,
+  POTION_WATER_BREATHING: 352,
+  POTION_JUMP: 353,
+  POTION_HEALING: 354,
+  POTION_POISON: 355,
 } as const;
 
 // ─── armor ───────────────────────────────────────────────────────────────────
@@ -927,6 +943,130 @@ export const ITEMS: Record<number, ItemDef> = {
       px(ctx, 10, 4, '#9c9c9c', 1, 2);
     },
   },
+  // ── phase 13: brewing ──
+  [ITEM.GLASS_BOTTLE]: {
+    id: ITEM.GLASS_BOTTLE, name: 'Glass Bottle',
+    icon: (ctx) => {
+      // narrow neck flask, empty
+      ctx.fillStyle = '#c8dce8';
+      ctx.fillRect(7, 1, 2, 3);      // neck
+      ctx.fillRect(6, 4, 4, 2);      // shoulder
+      ctx.fillRect(4, 6, 8, 8);      // body
+      ctx.fillStyle = '#e8f4f8';
+      ctx.fillRect(7, 1, 1, 3);
+      ctx.fillRect(5, 6, 2, 7);
+      ctx.fillStyle = '#98b4c4';
+      ctx.fillRect(4, 13, 8, 1);
+      ctx.fillRect(11, 8, 1, 5);
+      ctx.fillStyle = '#8a683c';     // cork
+      ctx.fillRect(6, 0, 4, 1);
+    },
+  },
+  [ITEM.WATER_BOTTLE]: {
+    id: ITEM.WATER_BOTTLE, name: 'Water Bottle',
+    icon: (ctx) => {
+      ctx.fillStyle = '#c8dce8';
+      ctx.fillRect(7, 1, 2, 3);
+      ctx.fillRect(6, 4, 4, 2);
+      ctx.fillStyle = '#3868d8';
+      ctx.fillRect(4, 7, 8, 7);      // water fill
+      ctx.fillStyle = '#5890e8';
+      ctx.fillRect(4, 7, 8, 2);
+      ctx.fillStyle = '#88b8f0';
+      ctx.fillRect(5, 8, 2, 1);
+      ctx.fillStyle = '#98b4c4';
+      ctx.fillRect(11, 6, 1, 8);
+      ctx.fillRect(4, 13, 8, 1);
+      ctx.fillStyle = '#8a683c';
+      ctx.fillRect(6, 0, 4, 1);
+    },
+  },
+  [ITEM.SUGAR]: {
+    id: ITEM.SUGAR, name: 'Sugar',
+    icon: (ctx) => {
+      // white sugar pile
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(4, 9, 8, 4);
+      ctx.fillRect(5, 7, 6, 2);
+      ctx.fillRect(7, 5, 2, 2);
+      ctx.fillStyle = '#dcdcdc';
+      ctx.fillRect(4, 12, 8, 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(6, 8, 1, 1);
+      ctx.fillRect(9, 9, 1, 1);
+      ctx.fillRect(5, 10, 1, 1);
+    },
+  },
+};
+
+// ── potions (phase 13): flask with colored liquid ──
+// Shared painter so every potion icon keeps the same flask silhouette (MC style).
+function drawPotion(ctx: CanvasRenderingContext2D, liquid: string, light: string, dark: string): void {
+  ctx.fillStyle = '#c8dce8';
+  ctx.fillRect(7, 1, 2, 3);
+  ctx.fillRect(6, 4, 4, 2);
+  ctx.fillStyle = liquid;
+  ctx.fillRect(4, 7, 8, 7);       // liquid body
+  ctx.fillRect(6, 5, 4, 2);       // liquid shoulder
+  ctx.fillStyle = light;
+  ctx.fillRect(5, 6, 2, 2);
+  ctx.fillRect(4, 7, 2, 2);
+  ctx.fillStyle = dark;
+  ctx.fillRect(11, 6, 1, 8);
+  ctx.fillRect(4, 13, 8, 1);
+  ctx.fillRect(4, 11, 1, 2);
+  ctx.fillStyle = '#8a683c';      // cork
+  ctx.fillRect(6, 0, 4, 1);
+  // sparkle
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(8, 9, 1, 1);
+  ctx.fillRect(10, 11, 1, 1);
+}
+
+ITEMS[ITEM.POTION_SPEED] = {
+  id: ITEM.POTION_SPEED, name: 'Potion of Speed',
+  potion: { effect: 'speed', seconds: 90 },
+  icon: (ctx) => drawPotion(ctx, '#58b8d8', '#a8e8f8', '#2c7898'),
+};
+ITEMS[ITEM.POTION_STRENGTH] = {
+  id: ITEM.POTION_STRENGTH, name: 'Potion of Strength',
+  potion: { effect: 'strength', seconds: 90 },
+  icon: (ctx) => drawPotion(ctx, '#c05838', '#e8a878', '#782818'),
+};
+ITEMS[ITEM.POTION_REGEN] = {
+  id: ITEM.POTION_REGEN, name: 'Potion of Regeneration',
+  potion: { effect: 'regen', seconds: 45 },
+  icon: (ctx) => drawPotion(ctx, '#e858a0', '#f8b8d8', '#982858'),
+};
+ITEMS[ITEM.POTION_HASTE] = {
+  id: ITEM.POTION_HASTE, name: 'Potion of Haste',
+  potion: { effect: 'haste', seconds: 90 },
+  icon: (ctx) => drawPotion(ctx, '#d8c838', '#f8f0a8', '#888018'),
+};
+ITEMS[ITEM.POTION_NIGHT_VISION] = {
+  id: ITEM.POTION_NIGHT_VISION, name: 'Potion of Night Vision',
+  potion: { effect: 'night_vision', seconds: 180 },
+  icon: (ctx) => drawPotion(ctx, '#3858c8', '#88a8f0', '#182868'),
+};
+ITEMS[ITEM.POTION_WATER_BREATHING] = {
+  id: ITEM.POTION_WATER_BREATHING, name: 'Potion of Water Breathing',
+  potion: { effect: 'water_breathing', seconds: 180 },
+  icon: (ctx) => drawPotion(ctx, '#4898d8', '#98d0f8', '#185888'),
+};
+ITEMS[ITEM.POTION_JUMP] = {
+  id: ITEM.POTION_JUMP, name: 'Potion of Jump Boost',
+  potion: { effect: 'jump', seconds: 90 },
+  icon: (ctx) => drawPotion(ctx, '#88c848', '#c8f0a0', '#387818'),
+};
+ITEMS[ITEM.POTION_HEALING] = {
+  id: ITEM.POTION_HEALING, name: 'Potion of Healing',
+  potion: { effect: 'healing', seconds: 0 },
+  icon: (ctx) => drawPotion(ctx, '#f04868', '#f8a8b8', '#981828'),
+};
+ITEMS[ITEM.POTION_POISON] = {
+  id: ITEM.POTION_POISON, name: 'Potion of Poison',
+  potion: { effect: 'poison', seconds: 22 },
+  icon: (ctx) => drawPotion(ctx, '#58a848', '#a8e088', '#186818'),
 };
 
 // register bow
@@ -1035,10 +1175,19 @@ export function getShearsDef(id: number): ShearsDef | undefined {
 export function isShearsItem(id: number): boolean {
   return !!ITEMS[id]?.shears;
 }
+/** potion def for a potion item id (undefined for non-potions) */
+export function getPotionDef(id: number): { effect: EffectKind; seconds: number } | undefined {
+  return ITEMS[id]?.potion;
+}
+export function isPotionItem(id: number): boolean {
+  return !!ITEMS[id]?.potion;
+}
 /** max stack size for an item or block id */
 export function maxStack(id: number): number {
   if (id === ITEM.MILK_BUCKET) return 1; // filled buckets never stack (MC)
   if (id === ITEM.BUCKET || id === ITEM.WATER_BUCKET) return 16; // MC bucket stack size
+  if (id === ITEM.WATER_BOTTLE) return 16; // water bottles stack like buckets
+  if (isPotionItem(id)) return 1; // potions never stack (MC java)
   return isToolItem(id) || isArmorItem(id) || isBowItem(id) || isRodItem(id) || isShearsItem(id) ? 1 : 64;
 }
 

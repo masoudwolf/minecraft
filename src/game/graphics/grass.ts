@@ -85,6 +85,8 @@ const FRAG = /* glsl */ `
   // v0.50 — contour ambient companion uniforms (bounce + blue-hour + zenith tint)
   uniform vec3 uAmbZenith;
   uniform float uAmbBoost;
+  // phase 13 — Night Vision potion (matches the voxel shader lift)
+  uniform float uNV;
   ${GLSL_NOISE}
   ${GLSL_SHADOW}
   ${GLSL_CUBE_SHADOW}
@@ -120,6 +122,8 @@ const FRAG = /* glsl */ `
     float vSky2 = vSky * vSky;
     sunL = max(sunL, 0.055 * (1.0 - sf) * vSky2 * vSky2 * min(uSunLevel, 1.0) * cloudS);
     float light = clamp(max(torchL, sunL), 0.06, 1.0);
+    // Night Vision potion (phase 13): keep tufts matched with the terrain lift
+    if (uNV > 0.001) light = max(light, mix(0.06, 0.62, uNV));
     float torchW = clamp((torchL - sunL) * 1.35, 0.0, 1.0);
     vec3 lightCol = mix(vec3(1.0), vec3(1.30, 0.98, 0.60), torchW * 0.8);
     // contour ambient (up-normal → pure zenith tint), same weighting as terrain
@@ -220,6 +224,7 @@ export class GrassManager {
       uniforms: {
         uTime: { value: 0 },
         uSunLevel: { value: 1 },
+        uNV: { value: 0 },
         uFogColor: { value: new THREE.Color(0x9fc7ff) },
         uFogNear: { value: 60 },
         uFogFar: { value: 120 },
@@ -376,9 +381,13 @@ export class GrassManager {
     this.meshes.clear();
   }
 
+  /** Night Vision potion strength 0..1 (set by the engine each frame) */
+  nvValue = 0;
+
   update(time: number, sunLevel: number, fogColor: THREE.Color, fogNear: number, fogFar: number): void {
     this.mat.uniforms.uTime.value = time;
     this.mat.uniforms.uSunLevel.value = sunLevel;
+    this.mat.uniforms.uNV.value = this.nvValue;
     (this.mat.uniforms.uFogColor.value as THREE.Color).copy(fogColor);
     this.mat.uniforms.uFogNear.value = fogNear;
     this.mat.uniforms.uFogFar.value = fogFar;

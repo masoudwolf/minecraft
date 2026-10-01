@@ -67,6 +67,8 @@ export interface HUDState {
   air: number;
   /** bow draw charge 0..1 (0 = not charging; HUD shows a charge indicator) */
   bowCharge: number;
+  /** active potion effects (for the HUD strip above the hotbar) */
+  effects: { k: string; seconds: number }[];
 }
 
 /** snapshot pushed by engine for the inventory screen */
@@ -78,11 +80,13 @@ export interface InvUIState {
   craft: InvSlot[]; // 4 (2x2) or 9 (3x3)
   craftOut: InvSlot | null;
   cursor: InvSlot | null;
-  /** open container: none = plain inventory, chest = 27 slots, furnace = [input,fuel,output] */
-  container: 'none' | 'chest' | 'furnace';
+  /** open container: none = plain inventory, chest = 27 slots, furnace = [input,fuel,output], brewing = [ing,fuel,b0,b1,b2] */
+  container: 'none' | 'chest' | 'furnace' | 'brewing';
   containerSlots: InvSlot[];
   /** furnace progress ratios (burn 0..1, cook 0..1) */
   furnace: { burn: number; cook: number } | null;
+  /** brewing progress ratios (brew 0..1, fuel charges 0..1) */
+  brewing: { brew: number; fuel: number } | null;
   /** creative item palette open (replaces crafting grid) */
   creative: boolean;
   /** equipped armor slots [helmet, chest, legs, boots] */
@@ -160,9 +164,9 @@ export const useGameStore = create<GameStore>((set) => ({
   debugVisible: false,
   creatorOpen: false,
   settings: loadSettings(),
-  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false, armor: 0, air: 10, bowCharge: 0 },
+  hud: { hotbar: Array.from({ length: 9 }, () => ({ blockId: 0, count: 0 })), selected: 0, health: 20, hunger: 20, underwater: false, loadingProgress: 0, loadingLabel: '', xpLevel: 0, xpProgress: 0, gameMode: 'survival' as GameMode, flying: false, armor: 0, air: 10, bowCharge: 0, effects: [] as { k: string; seconds: number }[] },
   toast: null,
-  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, creative: false, armor: [null, null, null, null] },
+  inv: { open: false, table: false, hotbar: [], main: [], craft: [], craftOut: null, cursor: null, container: 'none', containerSlots: [], furnace: null, brewing: null, creative: false, armor: [null, null, null, null] },
   advancement: null,
   tradeOpen: false,
   enchantOpen: false,

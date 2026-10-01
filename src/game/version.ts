@@ -1,5 +1,5 @@
 // ─── Single source of truth for the game version ─────────────────────────────
 // Mirrors the VERSION file at the repo root. MainMenu + DebugOverlay (F3) read
 // this so the version can never go stale in one UI surface again.
-export const GAME_VERSION = '0.50.0';
-export const GAME_VERSION_LABEL = `${GAME_VERSION} — Contour (Graphics Audit: Per-Face Ambient · Moon Phases · Entity Light Sync)`;
+export const GAME_VERSION = '0.51.0';
+export const GAME_VERSION_LABEL = `${GAME_VERSION} — Alchemy (Brewing Stand · 9 Potions · Status Effects · Cake · Sugar)`;

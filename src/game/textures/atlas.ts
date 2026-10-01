@@ -803,6 +803,101 @@ export function getAtlas(): AtlasData {
     px(ctx, p[0] + 3, p[1] + 8, '#8ff5fb'); px(ctx, p[0] + 11, p[1] + 11, '#8ff5fb');
   }
 
+  // ── phase 13: brewing + cake tiles 78-88 ──
+  // brewing stand rod (blaze-rod proxy: charred wood with ember band)
+  p = T(78);
+  {
+    ctx.clearRect(p[0], p[1], 16, 16);
+    ctx.fillStyle = '#7a5a34';
+    ctx.fillRect(p[0] + 6, p[1] + 1, 4, 15);
+    ctx.fillStyle = '#5d4325';
+    ctx.fillRect(p[0] + 6, p[1] + 1, 1, 15);
+    ctx.fillStyle = '#8f6c40';
+    ctx.fillRect(p[0] + 8, p[1] + 1, 1, 15);
+    // ember band (magic glow)
+    ctx.fillStyle = '#e88a2a';
+    ctx.fillRect(p[0] + 6, p[1] + 7, 4, 2);
+    ctx.fillStyle = '#ffc85a';
+    ctx.fillRect(p[0] + 7, p[1] + 7, 2, 1);
+  }
+  // brewing stand base (dark cobble slab)
+  p = T(79);
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#4c4c4c', '#444444', '#555555', '#3a3a3a'], rnd);
+    ctx.fillStyle = '#5e5e5e';
+    ctx.fillRect(p[0], p[1], 16, 2);
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(p[0], p[1] + 15, 16, 1);
+    // rune glints on the base
+    px(ctx, p[0] + 3, p[1] + 5, '#c86af0'); px(ctx, p[0] + 11, p[1] + 9, '#c86af0');
+    px(ctx, p[0] + 7, p[1] + 12, '#a84ad0');
+  }
+  // cake top (white frosting + red sprinkle dots)
+  p = T(80);
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#f4f0e6', '#efe9dc', '#faf7f0'], rnd);
+    for (const [dx, dy] of [[2, 3], [7, 2], [12, 4], [4, 8], [9, 7], [13, 10], [2, 12], [7, 12], [11, 13]] as [number, number][]) {
+      px(ctx, p[0] + dx, p[1] + dy, '#c8382c', 2, 2);
+      px(ctx, p[0] + dx, p[1] + dy, '#e05a4a');
+    }
+  }
+  // cake side (frosting lip + sponge body with strawberry band)
+  p = T(81);
+  {
+    // sponge body
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#d8a854', '#cf9e4a', '#e0b25e'], rnd);
+    // frosting lip
+    ctx.fillStyle = '#f4f0e6';
+    ctx.fillRect(p[0], p[1], 16, 4);
+    ctx.fillStyle = '#efe9dc';
+    for (const dx of [0, 3, 6, 9, 12, 15]) px(ctx, p[0] + dx, p[1] + 4, '#f4f0e6');
+    // strawberry filling band
+    ctx.fillStyle = '#c8382c';
+    ctx.fillRect(p[0], p[1] + 7, 16, 2);
+    ctx.fillStyle = '#e05a4a';
+    ctx.fillRect(p[0] + 2, p[1] + 7, 2, 1);
+    ctx.fillRect(p[0] + 9, p[1] + 7, 2, 1);
+  }
+  // cake inner cross-section (what a bite reveals: cream + sponge layers)
+  p = T(82);
+  {
+    ctx.fillStyle = '#f4f0e6';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1] + 3, 16, 10, ['#d8a854', '#cf9e4a', '#e0b25e'], rnd);
+    ctx.fillStyle = '#c8382c';
+    ctx.fillRect(p[0], p[1] + 7, 16, 2);
+    ctx.fillStyle = '#f4f0e6';
+    ctx.fillRect(p[0], p[1], 16, 3);
+    ctx.fillRect(p[0], p[1] + 13, 16, 3);
+  }
+  // cake bottom (paper lining)
+  p = T(83);
+  {
+    noiseFill(ctx, p[0], p[1], 16, 16, ['#c8b488', '#bfa97c', '#d2bf94'], rnd);
+    ctx.fillStyle = '#a89058';
+    ctx.fillRect(p[0], p[1] + 15, 16, 1);
+  }
+  // cake bite sides 1-5: inner cross-section with a growing bite notch
+  for (let bite = 1; bite <= 5; bite++) {
+    p = T(83 + bite);
+    ctx.fillStyle = '#f4f0e6';
+    ctx.fillRect(p[0], p[1], 16, 16);
+    noiseFill(ctx, p[0], p[1] + 3, 16, 10, ['#d8a854', '#cf9e4a', '#e0b25e'], rnd);
+    ctx.fillStyle = '#c8382c';
+    ctx.fillRect(p[0], p[1] + 7, 16, 2);
+    ctx.fillStyle = '#f4f0e6';
+    ctx.fillRect(p[0], p[1], 16, 3);
+    ctx.fillRect(p[0], p[1] + 13, 16, 3);
+    // bite notches cut from the top-right corner (deeper each stage)
+    const notchW = 3 + bite * 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
+    ctx.fillRect(p[0] + 16 - notchW, p[1], notchW, 4 + bite);
+    ctx.fillStyle = '#000';
+    for (let i = 0; i < bite + 1; i++) {
+      px(ctx, p[0] + 15 - notchW + i, p[1] + 4 + ((i * 2) % (2 + bite)), '#1a1208');
+    }
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;

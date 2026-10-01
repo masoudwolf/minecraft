@@ -131,6 +131,27 @@ function Flame({ level }: { level: number }) {
   );
 }
 
+/** brewing bubbles (fuel charge indicator, MC-style rising dots) */
+function Bubbles({ level }: { level: number }) {
+  const dots = Math.max(0, Math.min(3, Math.round(level * 3)));
+  return (
+    <div className="flex h-[14px] items-end gap-[3px]" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 2,
+            background: i < dots ? '#c86af0' : '#5a5a5a',
+            boxShadow: i < dots ? '0 0 4px rgba(200,106,240,0.8)' : 'none',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function InventoryScreen() {
   const inv = useGameStore((s) => s.inv);
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
@@ -184,9 +205,11 @@ export function InventoryScreen() {
       ? 'Chest'
       : inv.container === 'furnace'
         ? 'Furnace'
-        : inv.table
-          ? 'Crafting Table'
-          : 'Crafting';
+        : inv.container === 'brewing'
+          ? 'Brewing Stand'
+          : inv.table
+            ? 'Crafting Table'
+            : 'Crafting';
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center" onMouseDown={(e) => e.stopPropagation()}>
@@ -476,6 +499,30 @@ export function InventoryScreen() {
                   {inv.containerSlots[2].count}
                 </span>
               )}
+            </div>
+          </div>
+        )}
+
+        {inv.container === 'brewing' && (
+          <div className="mb-4 flex items-center justify-center gap-6 py-2">
+            {/* ingredient on top, fuel + flame below (MC layout) */}
+            <div className="flex flex-col items-center gap-2">
+              <Slot slot={inv.containerSlots[0] ?? null} area="container" idx={0} onHover={onHover} />
+              <Flame level={inv.brewing?.fuel ?? 0} />
+              <Slot slot={inv.containerSlots[1] ?? null} area="container" idx={1} onHover={onHover} />
+            </div>
+
+            {/* brew arrow + bubbles */}
+            <div className="flex flex-col items-center gap-2" aria-hidden>
+              <Bubbles level={inv.brewing?.fuel ?? 0} />
+              <CookArrow progress={inv.brewing?.brew ?? 0} />
+            </div>
+
+            {/* 3 bottle slots (water bottles brew into potions in place) */}
+            <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(3, 44px)' }}>
+              {[2, 3, 4].map((i) => (
+                <Slot key={i} slot={inv.containerSlots[i] ?? null} area="container" idx={i} onHover={onHover} />
+              ))}
             </div>
           </div>
         )}

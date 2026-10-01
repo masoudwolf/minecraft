@@ -10,6 +10,12 @@ import type { GameMode } from './state';
 /** seconds of air the player can hold underwater before drowning (vanilla: 15s) */
 export const PLAYER_AIR_MAX = 15;
 
+/** active potion status effect ({k, t} pairs, engine ticks them down) */
+export interface ActiveEffect {
+  k: string;
+  t: number;
+}
+
 export interface HotbarSlot {
   blockId: number; // 0 = empty
   count: number;
@@ -49,6 +55,18 @@ export class Player {
   /** poison timer (witch splash potions); ticks 1 damage per poisonTickT while > 0 */
   poisonT = 0;
   poisonTickT = 0;
+
+  // ── potion status effects (phase 13) ──
+  /** active effects with remaining seconds; engine decrements and applies */
+  effects: ActiveEffect[] = [];
+  /** jump velocity multiplier (Jump Boost potion); engine sets per-frame */
+  jumpMultiplier = 1;
+  /** water breathing potion active — air never drains; engine sets per-frame */
+  breathing = false;
+  /** melee damage multiplier (Strength potion) */
+  get strengthMultiplier(): number {
+    return this.effects.some((e) => e.k === 'strength') ? 1.5 : 1;
+  }
 
   // ── drowning (vanilla-style: 15s of air underwater, then 2 dmg/s) ──
   /** remaining air in seconds (max PLAYER_AIR_MAX); shown as the bubble bar */
@@ -179,7 +197,7 @@ export class Player {
       e.vz += (wz * speed - e.vz) * Math.min(1, dt * accel);
       e.vy += GRAVITY * dt;
       if (wishJump && e.onGround) {
-        e.vy = JUMP_VELOCITY;
+        e.vy = JUMP_VELOCITY * this.jumpMultiplier;
         e.onGround = false;
       }
       e.vy = Math.max(e.vy, -60);
@@ -226,9 +244,10 @@ export class Player {
   }
 
   /** vanilla drowning: air drains while the head is submerged; at 0 → 2 dmg/s.
-   *  Creative players and corpses never drown; air refills 4× faster than it drains. */
+   *  Creative players and corpses never drown; air refills 4× faster than it drains.
+   *  Water Breathing potion: air stays full while breathing == true. */
   updateAir(dt: number, headInWater: boolean): void {
-    if (this.isCreative || this.dead) {
+    if (this.isCreative || this.dead || this.breathing) {
       this.air = PLAYER_AIR_MAX;
       this.drownT = 0;
       return;
@@ -295,5 +314,11 @@ export class Player {
     this.fallStartY = y;
     this.air = PLAYER_AIR_MAX;
     this.drownT = 0;
+    // death clears potion effects (MC) — the old poison leak died here too
+    this.effects = [];
+    this.poisonT = 0;
+    this.poisonTickT = 0;
+    this.jumpMultiplier = 1;
+    this.breathing = false;
   }
 }

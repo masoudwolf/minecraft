@@ -10,17 +10,18 @@ import { isItemId } from '@/game/items';
 import { useGameStore } from '@/game/state';
 import { slotIconUrl, slotName } from './slotIcon';
 
-type Cat = 'tools' | 'combat' | 'armor' | 'food' | 'blocks' | 'misc';
+type Cat = 'tools' | 'combat' | 'armor' | 'food' | 'brewing' | 'blocks' | 'misc';
 
 const CAT_LABEL: Record<Cat, string> = {
   tools: 'Tools',
   combat: 'Combat',
   armor: 'Armor',
   food: 'Food',
+  brewing: 'Brewing',
   blocks: 'Blocks',
   misc: 'Misc',
 };
-const CATS: (Cat | 'all')[] = ['all', 'tools', 'combat', 'armor', 'food', 'blocks', 'misc'];
+const CATS: (Cat | 'all')[] = ['all', 'tools', 'combat', 'armor', 'food', 'brewing', 'blocks', 'misc'];
 
 const SWORD_IDS = [273, 277, 281, 285, 289];
 
@@ -32,8 +33,12 @@ function categoryOf(id: number): Cat {
     if (SWORD_IDS.includes(id) || id === 317 || id === 318) return 'combat'; // bow/arrow
     if (id >= 301 && id <= 316) return 'armor';
     if ((id >= 256 && id <= 259) || (id >= 293 && id <= 296) || id === 324) return 'food';
+    // phase 13: glass bottle / water bottle / sugar / potions → brewing
+    if (id >= 344 && id <= 355) return 'brewing';
     return 'misc';
   }
+  if (id === 70) return 'brewing'; // brewing stand
+  if (id >= 71 && id <= 77) return 'food'; // cake stages
   return 'blocks';
 }
 

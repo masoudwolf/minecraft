@@ -301,6 +301,56 @@ export function buildChunkMesh(world: World, chunk: Chunk, group: THREE.Group, m
           continue;
         }
 
+        // ── special model: brewing stand (base slab + center rod) ──
+        if (def.model === 'stand') {
+          const rodTile = Array.isArray(def.tiles) ? def.tiles[0] : def.tiles;
+          const baseTile = Array.isArray(def.tiles) ? def.tiles[2] : def.tiles;
+          const l = world.getLightForMesh(wx, y, wz);
+          const sky = (l >> 4) / 15;
+          const blk = (l & 15) / 15;
+          // rod: 6/16..10/16 wide, standing on a full-footprint 2/16 base slab
+          const a = 0.375, b = 0.625;
+          const rodTop = 0.75;
+          const baseH = 0.125;
+          const rodSideUV = tileSub(rodTile, 5, 0, 11, 16);
+          const rodTopUV = tileSub(rodTile, 5, 0, 11, 6);
+          const boxFaces: { c: [number, number, number][]; uv: [number, number, number, number]; sh: number; n: [number, number, number] }[] = [
+            // rod sides + top
+            { c: [[b, baseH, b], [b, baseH, a], [b, rodTop, a], [b, rodTop, b]], uv: rodSideUV, sh: 0.95, n: [1, 0, 0] },
+            { c: [[a, baseH, a], [a, baseH, b], [a, rodTop, b], [a, rodTop, a]], uv: rodSideUV, sh: 0.95, n: [-1, 0, 0] },
+            { c: [[a, rodTop, b], [b, rodTop, b], [b, rodTop, a], [a, rodTop, a]], uv: rodTopUV, sh: 1.0, n: [0, 1, 0] },
+            { c: [[a, baseH, b], [b, baseH, b], [b, rodTop, b], [a, rodTop, b]], uv: rodSideUV, sh: 0.95, n: [0, 0, 1] },
+            { c: [[b, baseH, a], [a, baseH, a], [a, rodTop, a], [b, rodTop, a]], uv: rodSideUV, sh: 0.95, n: [0, 0, -1] },
+            // base slab (full 16x16 footprint, cropped to 2px tall UV band)
+            { c: [[0, 0, 1], [1, 0, 1], [1, baseH, 1], [0, baseH, 1]], uv: tileSub(baseTile, 0, 13, 16, 16), sh: 0.95, n: [0, 0, 1] },
+            { c: [[1, 0, 0], [0, 0, 0], [0, baseH, 0], [1, baseH, 0]], uv: tileSub(baseTile, 0, 13, 16, 16), sh: 0.95, n: [0, 0, -1] },
+            { c: [[1, 0, 1], [1, 0, 0], [1, baseH, 0], [1, baseH, 1]], uv: tileSub(baseTile, 0, 13, 16, 16), sh: 0.9, n: [1, 0, 0] },
+            { c: [[0, 0, 0], [0, 0, 1], [0, baseH, 1], [0, baseH, 0]], uv: tileSub(baseTile, 0, 13, 16, 16), sh: 0.9, n: [-1, 0, 0] },
+            { c: [[0, baseH, 1], [1, baseH, 1], [1, baseH, 0], [0, baseH, 0]], uv: tileSub(baseTile, 0, 0, 16, 3), sh: 1.0, n: [0, 1, 0] },
+          ];
+          for (const f of boxFaces) {
+            const basePos = cutout.positions.length / 3;
+            for (let c = 0; c < 4; c++) {
+              const cr = f.c[c];
+              cutout.positions.push(lx + cr[0], y + cr[1], lz + cr[2]);
+              // attribute invariants (v0.45.1 lesson): aNormal / aTint / sway /
+              // aDepth MUST stay 1:1 with positions or the buffer runs short
+              // and the chunk tail renders black
+              cutout.normals.push(f.n[0], f.n[1], f.n[2]);
+              const uvc = UV_CORNERS[c];
+              cutout.uvs.push(f.uv[0] + (f.uv[2] - f.uv[0]) * uvc[0], f.uv[1] + (f.uv[3] - f.uv[1]) * uvc[1]);
+              cutout.shades.push(f.sh);
+              cutout.skies.push(sky);
+              cutout.blocks.push(blk);
+              pushTint(cutout, TINT_WHITE);
+              cutout.sways.push(0); // stands are rigid
+              cutout.depths.push(0); // aDepth 1:1 invariant (water-only attribute)
+            }
+            cutout.indices.push(basePos, basePos + 1, basePos + 2, basePos, basePos + 2, basePos + 3);
+          }
+          continue;
+        }
+
         // water surface height: source 0.875, flowing levels get thinner
         const aboveId = getB(wx, y + 1, wz);
         let waterTopH = 1;

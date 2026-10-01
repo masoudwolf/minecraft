@@ -17,13 +17,13 @@ export interface BlockDef {
   lightEmit?: number;      // 0..15
   sound?: 'stone' | 'dirt' | 'grass' | 'wood' | 'sand' | 'glass' | 'wool';
   /** custom render model (default cube) */
-  model?: 'cube' | 'cross' | 'torch' | 'lily';
+  model?: 'cube' | 'cross' | 'torch' | 'lily' | 'stand';
   /** collision + render height 0..1 for partial blocks (bed) */
   height?: number;
   /** inventory icon = flat texture tile instead of isometric cube */
   flatIcon?: boolean;
-  /** block entity attached on placement (furnace/chest) */
-  container?: 'furnace' | 'chest';
+  /** block entity attached on placement (furnace/chest/brewing) */
+  container?: 'furnace' | 'chest' | 'brewing';
   /** needs solid ground below to be placed (torch, flowers) */
   needsGround?: boolean;
 }
@@ -105,7 +105,30 @@ export const BLOCK = {
   // ── phase 11: enchanting ──
   LAPIS_ORE: 68,
   ENCHANTING_TABLE: 69,
+  // ── phase 13: brewing + cake ──
+  BREWING_STAND: 70,
+  CAKE: 71,
+  CAKE_S1: 72,
+  CAKE_S2: 73,
+  CAKE_S3: 74,
+  CAKE_S4: 75,
+  CAKE_S5: 76,
+  CAKE_S6: 77,
 } as const;
+
+/** is this id any cake stage (0..6 bites eaten)? */
+export function isCake(id: number): boolean {
+  return id >= BLOCK.CAKE && id <= BLOCK.CAKE_S6;
+}
+/** number of slices already eaten (0 = whole cake) */
+export function cakeBites(id: number): number {
+  return isCake(id) ? id - BLOCK.CAKE : 0;
+}
+/** next bitten stage of a cake; null when the last slice was eaten */
+export function nextCakeStage(id: number): number | null {
+  if (!isCake(id) || id >= BLOCK.CAKE_S6) return null;
+  return id + 1;
+}
 
 /** wheat crop growth stages (0 = sprout, 3 = mature golden) */
 export function isWheatCrop(id: number): boolean {
@@ -158,6 +181,9 @@ export const TILE = {
   wheat_0: 69, wheat_1: 70, wheat_2: 71, wheat_3: 72,
   oak_sapling: 73, spruce_sapling: 74,
   lapis_ore: 75, enchanting_top: 76, enchanting_side: 77,
+  brew_rod: 78, brew_base: 79,
+  cake_top: 80, cake_side: 81, cake_inner: 82, cake_bottom: 83,
+  cake_b1: 84, cake_b2: 85, cake_b3: 86, cake_b4: 87, cake_b5: 88,
 } as const;
 
 function t(...faces: number[]): number[] {
@@ -246,6 +272,16 @@ export const BLOCKS: Record<number, BlockDef> = {
   // ── phase 11: enchanting ──
   [BLOCK.LAPIS_ORE]: { id: BLOCK.LAPIS_ORE, name: 'Lapis Ore', tiles: TILE.lapis_ore, solid: true, opaque: true, hardness: 3.0, tool: 'pickaxe', minTier: 2, drop: ITEM.LAPIS_LAZULI, sound: 'stone' },
   [BLOCK.ENCHANTING_TABLE]: { id: BLOCK.ENCHANTING_TABLE, name: 'Enchanting Table', tiles: t(TILE.enchanting_side, TILE.enchanting_side, TILE.enchanting_top, TILE.obsidian, TILE.enchanting_side, TILE.enchanting_side), solid: true, opaque: false, height: 0.75, flatIcon: true, needsGround: true, hardness: 5, tool: 'pickaxe', minTier: 1, lightEmit: 7, sound: 'stone' },
+
+  // ── phase 13: brewing + cake ──
+  [BLOCK.BREWING_STAND]: { id: BLOCK.BREWING_STAND, name: 'Brewing Stand', tiles: t(TILE.brew_rod, TILE.brew_rod, TILE.brew_base, TILE.brew_base, TILE.brew_rod, TILE.brew_rod), solid: true, opaque: false, cutout: true, model: 'stand', height: 0.875, container: 'brewing', flatIcon: true, needsGround: true, hardness: 0.6, tool: 'pickaxe', sound: 'stone' },
+  [BLOCK.CAKE]: { id: BLOCK.CAKE, name: 'Cake', tiles: t(TILE.cake_side, TILE.cake_side, TILE.cake_top, TILE.cake_bottom, TILE.cake_side, TILE.cake_side), solid: true, opaque: false, height: 0.4375, flatIcon: true, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S1]: { id: BLOCK.CAKE_S1, name: 'Cake', tiles: t(TILE.cake_b1, TILE.cake_b1, TILE.cake_top, TILE.cake_bottom, TILE.cake_b1, TILE.cake_b1), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S2]: { id: BLOCK.CAKE_S2, name: 'Cake', tiles: t(TILE.cake_b2, TILE.cake_b2, TILE.cake_top, TILE.cake_bottom, TILE.cake_b2, TILE.cake_b2), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S3]: { id: BLOCK.CAKE_S3, name: 'Cake', tiles: t(TILE.cake_b3, TILE.cake_b3, TILE.cake_top, TILE.cake_bottom, TILE.cake_b3, TILE.cake_b3), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S4]: { id: BLOCK.CAKE_S4, name: 'Cake', tiles: t(TILE.cake_b4, TILE.cake_b4, TILE.cake_top, TILE.cake_bottom, TILE.cake_b4, TILE.cake_b4), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S5]: { id: BLOCK.CAKE_S5, name: 'Cake', tiles: t(TILE.cake_b5, TILE.cake_b5, TILE.cake_top, TILE.cake_bottom, TILE.cake_b5, TILE.cake_b5), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
+  [BLOCK.CAKE_S6]: { id: BLOCK.CAKE_S6, name: 'Cake', tiles: t(TILE.cake_inner, TILE.cake_inner, TILE.cake_top, TILE.cake_bottom, TILE.cake_inner, TILE.cake_inner), solid: true, opaque: false, height: 0.4375, needsGround: true, hardness: 0.5, drop: null, sound: 'wool' },
 };
 
 /** flowing water defs share appearance with source water */
@@ -302,7 +338,7 @@ export function blockHeight(id: number): number {
   const d = BLOCKS[id];
   return d?.height ?? 1;
 }
-/** openable container block? (furnace incl. lit) */
-export function containerOf(id: number): 'furnace' | 'chest' | undefined {
+/** openable container block? (furnace incl. lit, brewing stand) */
+export function containerOf(id: number): 'furnace' | 'chest' | 'brewing' | undefined {
   return BLOCKS[id]?.container;
 }

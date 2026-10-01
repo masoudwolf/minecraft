@@ -5,6 +5,8 @@ import { ITEM, isToolItem, isArmorItem, isBowItem, isRodItem, isShearsItem, getT
 export interface CraftResult {
   id: number;
   count: number;
+  /** bonus stacks granted on craft (cake returns the 3 empty milk buckets) */
+  by?: { id: number; count: number }[];
 }
 
 interface ShapedRecipe {
@@ -142,6 +144,22 @@ export const RECIPES: Recipe[] = [
   // ── farming ──
   // bread: 3 wheat in a row (MC pattern)
   shaped(3, 1, [ITEM.WHEAT, ITEM.WHEAT, ITEM.WHEAT], ITEM.BREAD),
+  // ── phase 13: brewing + cake ──
+  // glass bottle: 3 glass in a row → 3 (MC)
+  shaped(3, 1, [BLOCK.GLASS, BLOCK.GLASS, BLOCK.GLASS], ITEM.GLASS_BOTTLE, 3),
+  // sugar: 1 sugarcane → 1 sugar (MC is 1:1)
+  shapeless([BLOCK.SUGARCANE], ITEM.SUGAR, 1),
+  // brewing stand: 2 sticks on a cobblestone base (blaze-rod proxy)
+  shaped(3, 3, [0, ITEM.STICK, 0, 0, ITEM.STICK, 0, C, C, C], BLOCK.BREWING_STAND),
+  // cake: 3 milk buckets + 2 sugar + 3 wheat (MC layout minus the egg);
+  // the buckets come back as a byproduct, MC-style
+  {
+    kind: 'shaped',
+    w: 3,
+    h: 3,
+    cells: [ITEM.MILK_BUCKET, ITEM.MILK_BUCKET, ITEM.MILK_BUCKET, ITEM.SUGAR, ITEM.WHEAT, ITEM.SUGAR, ITEM.WHEAT, ITEM.WHEAT, ITEM.WHEAT],
+    out: { id: BLOCK.CAKE, count: 1, by: [{ id: ITEM.BUCKET, count: 3 }] },
+  },
   // ── transport (phase 10) ──
   // boat: MC pattern (planks U-shape, 3x2)
   shaped(3, 2, [P, 0, P, P, P, P], ITEM.BOAT),
@@ -198,9 +216,9 @@ export function matchRecipe(grid: number[], size: number): CraftResult | null {
     // shaped: bounding box must fit (2x2 grid can only make w,h <= 2)
     if (recipe.w !== bw || recipe.h !== bh) continue;
     if (bw > size || bh > size) continue;
-    if (matchesAt(grid, size, recipe, minC, minR)) return { ...recipe.out };
+    if (matchesAt(grid, size, recipe, minC, minR)) return { ...recipe.out, by: recipe.out.by };
     // try mirrored
-    if (matchesAt(grid, size, mirror(recipe), minC, minR)) return { ...recipe.out };
+    if (matchesAt(grid, size, mirror(recipe), minC, minR)) return { ...recipe.out, by: recipe.out.by };
   }
   return null;
 }

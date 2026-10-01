@@ -4,8 +4,44 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/game/state';
 import { isItemId, getToolDef } from '@/game/items';
+import { EFFECTS, effectIconUrl, isEffectKind } from '@/game/effects';
 import { slotIconUrl, slotName } from './slotIcon';
 import { Heart } from './ui';
+
+/** potion effect chips above the XP bar (icon + countdown, MC style) */
+function EffectStrip({ effects }: { effects: { k: string; seconds: number }[] }) {
+  if (effects.length === 0) return null;
+  return (
+    <div className="mb-1 flex max-w-[420px] flex-wrap items-start justify-center gap-1.5">
+      {effects.map((e) => {
+        const def = isEffectKind(e.k) ? EFFECTS[e.k] : undefined;
+        if (!def) return null;
+        const m = Math.floor(e.seconds / 60);
+        const s = e.seconds % 60;
+        const timer = e.seconds >= 3600 ? `${m}m` : `${m}:${String(s).padStart(2, '0')}`;
+        return (
+          <div
+            key={e.k}
+            title={`${def.label} · ${def.fa}`}
+            className="flex flex-col items-center gap-[1px] px-1 py-[2px]"
+            style={{
+              background: 'rgba(0,0,0,0.55)',
+              border: `2px solid ${def.color}`,
+              boxShadow: `0 0 5px ${def.color}55`,
+            }}
+          >
+            <img src={effectIconUrl(e.k)} alt={def.label} className="h-[18px] w-[18px]" style={{ imageRendering: 'pixelated' }} draggable={false} />
+            {def.instant ? (
+              <span className="text-[9px] font-bold" style={{ fontFamily: 'var(--font-mc)', color: def.color, textShadow: '1px 1px 0 #000' }}>✓</span>
+            ) : (
+              <span className="text-[9px] font-bold leading-none" style={{ fontFamily: 'var(--font-mc)', color: '#fff', textShadow: '1px 1px 0 #000' }}>{timer}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function HUD() {
   const hud = useGameStore((s) => s.hud);
@@ -91,6 +127,9 @@ export function HUD() {
 
       {/* bottom bars */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
+        {/* potion effect chips (above the XP bar) */}
+        <EffectStrip effects={hud.effects ?? []} />
+
         {/* XP bar (MC green, above status bars) — survival only */}
         {hud.gameMode === 'survival' && (
           <div className="relative mb-0.5 h-[7px] w-[366px]" style={{ background: 'rgba(0,0,0,0.55)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.9)' }}>

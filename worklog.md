@@ -1370,3 +1370,36 @@ Stage Summary:
 - 月相为首个"游戏玩法级"图形特性：满月夜=熟悉亮度，新月夜=3.5% 恐怖里程碑，8 天周期自然推进
 - 环境 warns：今日沙箱 SwiftShader 极慢（两版本均 2fps），下轮 QA 前建议先测基线 fps 再判断回归；llvmpipe runbook（杀 chrome 重启）对 SwiftShader 同样适用但恢复后仍慢
 - NEXT QUEUE：用户实机（真 GPU）反馈 v0.50 观感（尤其 contour 日落西墙暖色/新月夜难度/grain 是否可感）；research B 组剩余项（水下雾 ray-march、接触硬化 PCF）；旧遗留（创造连挖、云速、brewing/potions、item frames、cake）
+
+---
+Task ID: 53
+Agent: Z.ai Code (main)
+Task: 用户确认图形满意（RTX 3060 实机 ~180 FPS），指示"进入下一阶段开发"→ 按 worklog NEXT QUEUE 交付 v0.51.0 "Alchemy"：酿造/药水系统 + 状态效果 + 蛋糕/糖（MC 原版对齐）
+
+Work Log:
+- restore 脚本运行：tree 与 origin/main 一致（origin/main = 7dd3651 / 514953d 链，v0.50.0 Contour），无回退
+- 【调研】Explore 子代理产出 15 区架构地图（blocks/items/blockEntities/inventory/state/engine/crafting/trades/mobs/UI/persistence 全部 file:line 级），确认：绿场（无任何 brew/cake/sugar 残留）、块 ID 70+ / 物品 344+ / tile 78+ 可用、container 联合类型扩展点、furnace 为 BE 模板
+- 【方块】BREWING_STAND(70, container:'brewing', model:'stand' 自定义, height 0.875, cutout) + CAKE(71)..CAKE_S6(77) 七阶段（height 0.4375=MC 7/16，drop:null，needsGround）；新 tile 78-88（brew_rod 火焰棒风木杆/brew_base 暗石座/cake_top 白糖霜红点/cake_side/cake_inner/cake_bottom/cake_b1..b5 渐进咬痕过程贴图）
+- 【mesher】新增 'stand' 模型：底板 2/16 全脚印 + 中心杆 6/16 宽×12/16 高，10 个面全部按 v0.45.1 不变量守卫逐顶点推 aNormal/aTint/sway/aDepth（黑斑教训防线再次执行）
+- 【物品】GLASS_BOTTLE(344)/WATER_BOTTLE(345)/SUGAR(346) + 9 瓶药水(347-355)：speed/strength/regen/haste/night_vision/water_breathing/jump/healing/poison（ItemDef 新增 potion:{effect,seconds} 字段）；药水 maxStack 1、水瓶 16（MC Java 对齐）；drawPotion 共享瓶颈瓶绘制器，每效色不同；新增 src/game/effects.ts 纯数据注册表（EN+FA 双语标签 + HUD 像素图标绘制器 + effectIconUrl 缓存）
+- 【酿造逻辑】BrewingBE{ing,fuel,b[3],fuelUses,cookT}；BREW_TIME=20s；燃料 coal=20 次/原木木板=4/木棍=2（blaze powder 等价物）；配方表：糖→速度(MC原版)、燧石→力量、骨头→再生、青金石→急迫、萤石→夜视(MC近似)、鱼→水下呼吸、羽毛→跳跃、金锭→瞬间治疗、蜘蛛眼→中毒(MC原版)；仅转化 WATER_BOTTLE、燃料逐次扣减、材料逐个消耗——全部 MC 规则
+- 【状态效果】Player.effects[]+tickEffects()：speed(×1.25 与拉弓减速复合)、haste(挖掘时间÷1.35)、strength(近战×1.5 getter)、jump(JUMP_VELOCITY×1.35)、water_breathing(air 不减)、regen(每 2s +1HP 独立于饥饿)、night_vision(uNV uniform 平滑爬升)、healing(+6HP 瞬时)、poison(复用 witch 的 poisonT 管线)；牛奶清空全部效果(MC)；死亡/重生清空（顺手修了旧 poisonT 重生不清的泄漏）；效果存档持久化（SaveData.player.effects，容错过滤加载）
+- 【shader】world.ts 体素 shader + graphics/grass.ts 草叶 shader 新增 uNV uniform：light = max(light, mix(地板, 0.62, uNV))——QA 抓到草叶系统漏加导致午夜 NV 下草叶黑刺的断层，补齐后地表/植被亮度一致；engine.applySkyFog 每帧喂 nvF + grass.nvValue
+- 【交互】rightClick 新顺序：弓→村民→剪→鱼竿→【药水饮用】→桶；bucketInteract 新增 GLASS_BOTTLE 分支（waterTarget 装瓶、水源保留=MC）；placeBlock 新增蛋糕右键吃切片（hunger+2、7 阶段递进、末阶段消失、theLie 成就）；药水饮用 1.2s 冷却+空瓶回收(replaceHeld)+双语 toast
+- 【UI】InventoryScreen 新增 Brewing 布局（材料槽+火焰/紫气泡燃料指示+进度箭头+3 瓶槽，MC 排版）；HUD 新增 EffectStrip 药效芯片（彩色边框像素图标+mm:ss 倒计时+FA tooltip，位于 XP 条上方）；RecipeBook 新增 Brewing 分类；creativeItems functional 词表 +brewing/cake
+- 【配方】玻璃瓶(3 玻璃→3)、糖(甘蔗 1:1)、酿造台(2 木棍+3 圆石=blaze rod 代用)、蛋糕(3 奶桶+2 糖+3 小麦，MC 版型无蛋)；CraftResult 新增 by 字段+engine.giveByproducts——蛋糕合成返还 3 空桶（MC 行为，避免 3 铁白吃）；onCrafted 新增酿造台/蛋糕成就
+- 【成就】localBrewery(首次酿造)、theLie(烘焙/吃蛋糕)
+- 【QA】agent-browser（SwiftShader ~4fps，一次 CDP 卡死按 runbook 杀 chrome 重启恢复）：
+  * 酿造全链路实测：setBlock 放台→BE 注入 糖×2+煤×1+水瓶×2→40s 后 b0/b1=347(Potion of Speed)、糖 2→1、fuelUses 20→19 ✓
+  * 酿造 UI 截图：标题/材料槽/火焰/紫气泡/箭头/3 瓶槽全部渲染正确，2 药水在槽 ✓
+  * 饮用：347→speed 效果 t=90 递减+空瓶 344 回位+speedMultiplier 1.25 实测 ✓；healing 8→14HP(+6) ✓；牛奶清空全部效果+桶回收 ✓
+  * 蛋糕：71→72→73 阶段递进、hunger 10→12→14(+2/片) ✓；世界截图：酿造台模型（石座+木杆+橙焰环）与蛋糕（糖霜红点+咬痕内芯）渲染正确 ✓
+  * 夜视：午夜 sunLevel 0.065+NV→地表全亮可读+HUD 芯片(眼睛图标+2:58 倒计时) ✓；发现草叶黑刺断层→grass.ts 补 uNV 后复测地表/植被亮度一致 ✓
+  * 装瓶：对水 RMB→水瓶入包+水源保留 ✓；成就 brewery/lie 均解锁；26 shader program 0 诊断；console 无错误（唯一 dev-overlay issue 为无手势 pointer-lock 的自动化伪影，非游戏 bug）
+  * 收尾：测试方块+BE 清除、玩家/时间还原 (239.3,42,-108.5, yaw-0.75, pitch-0.10, t≈249)+autosave PUT 200；用户主世界 cmunbv1a API 时间戳 22:39 未变（全程未触碰）✓
+- 【诚实台账】QA 世界 cmuonnnhs 的 hotbar slot0/1/2 原始内容在测试中被 QA 物品覆盖且不可逆（slot2 原为火把堆）——该世界为此前 cron/QA 轮次建立的测试世界（原始位置早已被覆盖），按往轮惯例仅还原位置/时间/方块；位置换算失误一次（pitch 正负号）即改；MultiEdit 原子性一次未按预期回滚（potions 分支残留），随即核对文件状态并补齐方法定义
+- lint 通过；VERSION + version.ts → 0.51.0 "Alchemy (Brewing Stand · 9 Potions · Status Effects · Cake · Sugar)"
+
+Stage Summary:
+- v0.51.0 = 首个"玩法大阶段"版本：完整 MC 式酿造系统（9 药水+状态效果+HUD 芯片+燃料/材料经济）+ 蛋糕七阶段吃法 + 糖/玻璃瓶材料链 + 蛋糕返桶 byproduct 机制（合成系统新能力）+ 夜视真实改变渲染（体素+草叶双 shader）
+- NEXT QUEUE：item frames/armor stands、villager restock UI（profession 系统）、药水抛掷(splash, 手持消耗品→投掷物)、药水延长/二级(redstone/glowstone 细化)、火把反弹光照、llvmpipe 之外的真机性能观察（用户 3060 上 180fps 已很宽裕）

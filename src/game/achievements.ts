@@ -33,6 +33,9 @@ export const ACHIEVEMENTS: Record<string, AchievementDef> = {
   fisherman: { id: 'fisherman', title: 'Fisherman', desc: 'Catch a fish with a fishing rod', iconTile: 12 },
   shearBrilliance: { id: 'shearBrilliance', title: 'Shear Brilliance', desc: 'Shear a sheep with shears', iconTile: 48 },
   enchanter: { id: 'enchanter', title: 'Enchanter', desc: 'Enchant an item at the table', iconTile: 76 },
+  // phase 13: brewing + cake
+  localBrewery: { id: 'localBrewery', title: 'Local Brewery', desc: 'Brew a potion in the brewing stand', iconTile: 78 },
+  theLie: { id: 'theLie', title: 'The Lie', desc: 'Bake a cake — and eat a slice too', iconTile: 80 },
 };
 
 export class AchievementManager {
